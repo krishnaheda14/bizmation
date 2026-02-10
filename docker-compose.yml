@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: jewelry-postgres
+    environment:
+      POSTGRES_DB: jewelry_retail
+      POSTGRES_USER: jewelry_admin
+      POSTGRES_PASSWORD: secure_password_here
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jewelry-network
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: ../../infrastructure/docker/backend.Dockerfile
+    container_name: jewelry-backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://jewelry_admin:secure_password_here@postgres:5432/jewelry_retail
+      PORT: 3000
+      JWT_SECRET: your_jwt_secret_here
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    networks:
+      - jewelry-network
+
+  web-app:
+    build:
+      context: ./apps/web-app
+      dockerfile: ../../infrastructure/docker/web-app.Dockerfile
+    container_name: jewelry-web-app
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web-app:/app
+      - /app/node_modules
+    networks:
+      - jewelry-network
+
+  ai-services:
+    build:
+      context: ./ai-services
+      dockerfile: ../infrastructure/docker/ai-services.Dockerfile
+    container_name: jewelry-ai-services
+    environment:
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-services:/app
+    networks:
+      - jewelry-network
+
+volumes:
+  postgres_data:
+
+networks:
+  jewelry-network:
+    driver: bridge
