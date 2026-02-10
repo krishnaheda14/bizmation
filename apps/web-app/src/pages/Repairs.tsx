@@ -229,6 +229,201 @@ export const Repairs: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* New Job Modal */}
+      {showNewJobModal && (
+        <NewJobModal
+          onClose={() => setShowNewJobModal(false)}
+          onSuccess={(newJob) => {
+            setJobs([newJob, ...jobs]);
+            setShowNewJobModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// New Job Modal Component
+interface NewJobModalProps {
+  onClose: () => void;
+  onSuccess: (job: RepairJob) => void;
+}
+
+const NewJobModal: React.FC<NewJobModalProps> = ({ onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    customerName: '',
+    customerPhone: '',
+    itemDescription: '',
+    repairType: 'Repair' as RepairJob['repairType'],
+    estimatedCost: 0,
+    advancePayment: 0,
+    promisedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    notes: '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const newJob: RepairJob = {
+      id: String(Date.now()),
+      jobNo: `REP${String(Date.now()).slice(-4)}`,
+      ...formData,
+      receivedDate: new Date(),
+      promisedDate: new Date(formData.promisedDate),
+      status: 'Pending',
+      images: [],
+    };
+
+    onSuccess(newJob);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">New Repair Job</h2>
+          <button onClick={onClose} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-3xl leading-none">
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Customer Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.customerName}
+                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Enter customer name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Customer Phone *
+              </label>
+              <input
+                type="tel"
+                required
+                value={formData.customerPhone}
+                onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="+91-9876543210"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Item Description *
+              </label>
+              <textarea
+                required
+                value={formData.itemDescription}
+                onChange={(e) => setFormData({ ...formData, itemDescription: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="e.g., Gold chain - broken link repair"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Repair Type *
+              </label>
+              <select
+                required
+                value={formData.repairType}
+                onChange={(e) => setFormData({ ...formData, repairType: e.target.value as RepairJob['repairType'] })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="Repair">Repair</option>
+                <option value="Customization">Customization</option>
+                <option value="Resizing">Resizing</option>
+                <option value="Polishing">Polishing</option>
+                <option value="Stone Setting">Stone Setting</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Promised Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={formData.promisedDate}
+                onChange={(e) => setFormData({ ...formData, promisedDate: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Estimated Cost (₹) *
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={formData.estimatedCost}
+                onChange={(e) => setFormData({ ...formData, estimatedCost: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Advance Payment (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.advancePayment}
+                onChange={(e) => setFormData({ ...formData, advancePayment: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="0"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Notes
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                placeholder="Any special instructions or notes..."
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-4 pt-4">
+            <button
+              type="submit"
+              className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            >
+              Create Job
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

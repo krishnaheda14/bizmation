@@ -51,7 +51,14 @@ export class GoldRateService {
       
       // Step 2: Fetch USD to INR conversion rate
       const currencyResponse = await axios.get('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
-      const usdToInrRate = 1 / currencyResponse.data.usd.inr;
+      
+      // FIXED: The API returns usd.inr as the conversion rate (how many INR for 1 USD)
+      // Example: if usd.inr = 0.012, it means 1 USD = 83.33 INR (1/0.012)
+      const usdData = currencyResponse.data.usd;
+      const usdToInrRate = 1 / usdData.inr; // Convert to INR per USD
+      
+      console.log(`[Gold Rate API] XAU Price: $${goldData.xauPrice}, XAG Price: $${goldData.xagPrice}`);
+      console.log(`[Gold Rate API] USD to INR Rate: ₹${usdToInrRate.toFixed(2)}`);
       
       // Get price per troy ounce in USD
       let pricePerOunceUSD = 0;
@@ -67,6 +74,8 @@ export class GoldRateService {
       // Convert to INR per gram
       // 1 troy ounce = 31.1035 grams
       const pricePerGramINR = (pricePerOunceUSD * usdToInrRate) / 31.1035;
+      
+      console.log(`[Gold Rate API] ${metalType} price per gram: ₹${pricePerGramINR.toFixed(2)}`);
       
       // Calculate rates for different purities (for gold)
       const calculatePurityRate = (purity: number) => {

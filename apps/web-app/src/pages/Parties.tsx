@@ -30,6 +30,10 @@ interface Party {
   state: string;
   pincode: string;
   gstin?: string;
+  trn?: string; // Tax Registration Number
+  loyaltyNumber?: string; // For customers
+  loyaltyPoints?: number; // For customers
+  balance: number; // Outstanding balance
   totalPurchases: number;
   lastPurchaseDate?: string;
 }

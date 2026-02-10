@@ -7,25 +7,10 @@
 
 import React, { useState } from 'react';
 import { Coins, Plus, Search, TrendingUp, Calendar, Users } from 'lucide-react';
-
-interface Scheme {
-  id: string;
-  schemeNo: string;
-  customerName: string;
-  customerPhone: string;
-  schemeType: 'Gold Savings' | 'Diamond Scheme' | 'Platinum Scheme';
-  monthlyInstallment: number;
-  totalMonths: number;
-  paidMonths: number;
-  startDate: Date;
-  maturityDate: Date;
-  totalPaid: number;
-  bonusPercentage: number;
-  status: 'Active' | 'Matured' | 'Closed' | 'Defaulted';
-}
+import NewSchemeModal from '../components/NewSchemeModal';
 
 export const Schemes: React.FC = () => {
-  const [schemes, setSchemes] = useState<Scheme[]>([
+  const [schemes, setSchemes] = useState([
     {
       id: '1',
       schemeNo: 'SCH001',
@@ -59,7 +44,8 @@ export const Schemes: React.FC = () => {
   ]);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [showNewSchemeModal, setShowNewSchemeModal] = useState(false);
 
   const statusColors = {
     'Active': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
@@ -98,6 +84,7 @@ export const Schemes: React.FC = () => {
           </p>
         </div>
         <button
+          onClick={() => setShowNewSchemeModal(true)}
           className="flex items-center gap-2 px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 font-semibold"
         >
           <Plus size={20} />
@@ -262,6 +249,18 @@ export const Schemes: React.FC = () => {
           })
         )}
       </div>
+
+      {/* New Scheme Modal */}
+      {showNewSchemeModal && (
+        <NewSchemeModal
+          onClose={() => setShowNewSchemeModal(false)}
+          onSuccess={(newScheme) => {
+            setSchemes([newScheme, ...schemes]);
+            setShowNewSchemeModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };
+

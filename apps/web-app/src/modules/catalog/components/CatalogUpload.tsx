@@ -125,52 +125,85 @@ export const CatalogUpload: React.FC = () => {
     await recognizeJewelry(file);
   };
 
-  // Recognize jewelry from image
+  // Recognize jewelry from image with multiple AI fallbacks
   const recognizeJewelry = async (file: File) => {
     setIsRecognizing(true);
     
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('remove_background', 'true');
-      formData.append('auto_fill', 'true');
+    // Try multiple AI services in order of preference (DeepSeek → OpenAI → Gemini → Local)
+    const aiServices = [
+      {
+        name: 'DeepSeek AI',
+        url: '/api/ai/deepseek-vision', // Primary: DeepSeek via backend proxy
+      },
+      {
+        name: 'Primary AI Service',
+        url: `${import.meta.env.VITE_AI_SERVICE_URL}/catalog/upload-with-recognition`,
+      },
+      {
+        name: 'OpenAI GPT-4 Vision',
+        url: '/api/ai/openai-vision', // Fallback to backend proxy
+      },
+      {
+        name: 'Google Gemini Vision',
+        url: '/api/ai/gemini-vision', // Fallback to backend proxy
+      },
+      {
+        name: 'Local Vision Model',
+        url: '/api/ai/local-vision', // Local model fallback
+      },
+    ];
+    
+    for (const service of aiServices) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('remove_background', 'true');
+        formData.append('auto_fill', 'true');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_AI_SERVICE_URL}/catalog/upload-with-recognition`,
-        {
+        const response = await fetch(service.url, {
           method: 'POST',
           body: formData,
-        }
-      );
+          signal: AbortSignal.timeout(15000), // 15 second timeout
+        });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setRecognition(data.recognition);
+        if (!response.ok) {
+          console.warn(`${service.name} failed with status ${response.status}, trying next...`);
+          continue;
+        }
+
+        const data = await response.json();
         
-        // Auto-fill form with suggested details
-        if (data.suggested_details) {
-          const suggested: SuggestedDetails = data.suggested_details;
-          setFormData(prev => ({
-            ...prev,
-            name: suggested.name || prev.name,
-            description: suggested.description || prev.description,
-            category: suggested.category || prev.category,
-            metalType: suggested.metal_type || prev.metalType,
-            hsnCode: suggested.hsn_code || prev.hsnCode,
-            tags: suggested.tags || prev.tags,
-          }));
-        }
+        if (data.success && data.recognition) {
+          setRecognition(data.recognition);
+          
+          // Auto-fill form with suggested details
+          if (data.suggested_details) {
+            const suggested: SuggestedDetails = data.suggested_details;
+            setFormData(prev => ({
+              ...prev,
+              name: suggested.name || prev.name,
+              description: suggested.description || prev.description,
+              category: suggested.category || prev.category,
+              metalType: suggested.metal_type || prev.metalType,
+              hsnCode: suggested.hsn_code || prev.hsnCode,
+              tags: suggested.tags || prev.tags,
+            }));
+          }
 
-        alert(`✨ Recognized: ${data.recognition.jewelry_type} (${data.recognition.metal}) - Confidence: ${(data.recognition.confidence * 100).toFixed(0)}%`);
+          alert(`✨ Recognized by ${service.name}: ${data.recognition.jewelry_type} (${data.recognition.metal}) - Confidence: ${(data.recognition.confidence * 100).toFixed(0)}%`);
+          setIsRecognizing(false);
+          return; // Success - exit function
+        }
+      } catch (error) {
+        console.warn(`${service.name} failed:`, error);
+        // Continue to next service
       }
-    } catch (error) {
-      console.error('Recognition failed:', error);
-      alert('⚠️ AI recognition service unavailable. Please fill product details manually.');
-      setRecognition(null);
-    } finally {
-      setIsRecognizing(false);
     }
+    
+    // All services failed - provide helpful message
+    setRecognition(null);
+    alert('⚠️ AI recognition services are currently unavailable. Please fill product details manually.\n\nTip: You can still save the image - our AI will process it later when services are online.');
+    setIsRecognizing(false);
   };
 
   // Handle form submission

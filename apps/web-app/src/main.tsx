@@ -12,6 +12,10 @@ import { Parties } from './pages/Parties';
 import { AIInsights } from './pages/AIInsights';
 import { Repairs } from './pages/Repairs';
 import { Schemes } from './pages/Schemes';
+import { Suppliers } from './pages/Suppliers';
+import { PurchaseOrders } from './pages/PurchaseOrders';
+import { StockOnHand } from './pages/StockOnHand';
+import { StockMovement } from './pages/StockMovement';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -45,6 +49,14 @@ function App() {
         return <Schemes />;
       case '/parties':
         return <Parties />;
+      case '/suppliers':
+        return <Suppliers />;
+      case '/purchase-orders':
+        return <PurchaseOrders />;
+      case '/stock-on-hand':
+        return <StockOnHand />;
+      case '/stock-movement':
+        return <StockMovement />;
       case '/insights':
         return <AIInsights />;
       case '/rates':

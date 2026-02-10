@@ -18,9 +18,25 @@ import {
 import { formatCurrency } from '@/utils/format';
 import { Plus, Trash2, Search } from 'lucide-react';
 
+interface CustomerDetails {
+  id?: string;
+  name: string;
+  businessName?: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+  trn?: string;
+  loyaltyNumber?: string;
+  loyaltyPoints?: number;
+}
+
 interface InvoiceFormData {
   customerId?: string;
-  customer?: Customer;
+  customerDetails?: CustomerDetails;
   items: TransactionItem[];
   discount: number;
   notes?: string;
@@ -29,14 +45,25 @@ interface InvoiceFormData {
 interface InvoiceFormProps {
   onSubmit: (data: InvoiceFormData) => Promise<void>;
   onCancel: () => void;
+  partyType?: 'customer' | 'wholesaler'; // To differentiate B2C vs B2B
 }
 
-export const InvoiceForm: React.FC<InvoiceFormProps> = ({ onSubmit, onCancel }) => {
+export const InvoiceForm: React.FC<InvoiceFormProps> = ({ 
+  onSubmit, 
+  onCancel, 
+  partyType = 'customer' 
+}) => {
   const [goldRates, setGoldRates] = useState<Record<string, GoldRate>>({});
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchingProduct, setSearchingProduct] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
+    name: '',
+    phone: '',
+  });
 
   const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<InvoiceFormData>({
     defaultValues: {
@@ -226,13 +253,72 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ onSubmit, onCancel }) 
   const totals = calculateTotals();
 
   const handleFormSubmit = async (data: InvoiceFormData) => {
+    // Validate customer details
+    if (!customerDetails.name || !customerDetails.phone) {
+      alert('Please provide customer name and phone number');
+      return;
+    }
+
+    // For wholesalers, GSTIN is mandatory for B2B invoicing
+    if (partyType === 'wholesaler' && !customerDetails.gstin) {
+      const confirmProceed = confirm(
+        'GSTIN is recommended for B2B transactions. Continue without GSTIN?'
+      );
+      if (!confirmProceed) return;
+    }
+
     setIsSubmitting(true);
     try {
-      await onSubmit(data);
+      await onSubmit({
+        ...data,
+        customerId: selectedCustomerId || undefined,
+        customerDetails: customerDetails,
+      });
     } catch (error) {
       console.error('Failed to submit invoice:', error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCustomerSelect = (customerId: string) => {
+    setSelectedCustomerId(customerId);
+    
+    if (customerId === 'new') {
+      // New customer - show form
+      setShowCustomerForm(true);
+      setCustomerDetails({
+        name: '',
+        phone: '',
+      });
+    } else if (customerId === '') {
+      // Walk-in customer - show minimal form
+      setShowCustomerForm(true);
+      setCustomerDetails({
+        name: 'Walk-in Customer',
+        phone: '',
+      });
+    } else {
+      // Existing customer - load their details
+      const customer = customers.find((c) => c.id === customerId);
+      if (customer) {
+        setShowCustomerForm(true);
+        setCustomerDetails({
+          id: customer.id,
+          name: customer.name,
+          businessName: customer.businessName,
+          phone: customer.phone,
+          email: customer.email,
+          address: customer.address,
+          city: customer.city,
+          state: customer.state,
+          pincode: customer.pincode,
+          gstin: customer.gstin,
+          trn: customer.trn,
+          loyaltyNumber: customer.loyaltyTier,
+          loyaltyPoints: customer.balance, // Assuming balance field stores loyalty points
+        });
+      }
     }
   };
 
@@ -243,19 +329,21 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ onSubmit, onCancel }) 
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">New Invoice</h2>
         
         {/* Customer Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Customer
+              Select {partyType === 'customer' ? 'Customer' : 'Wholesaler/Supplier'} *
             </label>
             <select
-              {...register('customerId')}
+              value={selectedCustomerId}
+              onChange={(e) => handleCustomerSelect(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="">Walk-in Customer</option>
+              <option value="">Walk-in {partyType === 'customer' ? 'Customer' : 'Party'}</option>
+              <option value="new">➕ Add New {partyType === 'customer' ? 'Customer' : 'Wholesaler'}</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
-                  {customer.name} ({customer.phone})
+                  {customer.name} - {customer.phone} {customer.businessName ? `(${customer.businessName})` : ''}
                 </option>
               ))}
             </select>
@@ -284,6 +372,215 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({ onSubmit, onCancel }) 
             </div>
           </div>
         </div>
+
+        {/* Customer Details Form */}
+        {showCustomerForm && (
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
+              {partyType === 'customer' ? 'Customer' : 'Wholesaler/Supplier'} Details
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  {partyType === 'customer' ? 'Customer Name' : 'Contact Person'} *
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.name}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, name: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="Full name"
+                />
+              </div>
+
+              {/* Business Name */}
+              {partyType === 'wholesaler' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Business/Company Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={customerDetails.businessName || ''}
+                    onChange={(e) => setCustomerDetails({ ...customerDetails, businessName: e.target.value })}
+                    required={partyType === 'wholesaler'}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Business name"
+                  />
+                </div>
+              )}
+
+              {/* Phone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  value={customerDetails.phone}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, phone: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="+91-XXXXXXXXXX"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={customerDetails.email || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="email@example.com"
+                />
+              </div>
+
+              {/* GSTIN */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  GSTIN {partyType === 'wholesaler' && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.gstin || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, gstin: e.target.value.toUpperCase() })}
+                  maxLength={15}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="22AAAAA0000A1Z5"
+                />
+              </div>
+
+              {/* TRN */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  TRN (Tax Registration No.)
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.trn || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, trn: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="TRN number"
+                />
+              </div>
+
+              {/* Loyalty Details - Only for customers */}
+              {partyType === 'customer' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Loyalty Card Number
+                    </label>
+                    <input
+                      type="text"
+                      value={customerDetails.loyaltyNumber || ''}
+                      onChange={(e) => setCustomerDetails({ ...customerDetails, loyaltyNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="LOYAL-XXXX"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Current Loyalty Points
+                    </label>
+                    <input
+                      type="number"
+                      value={customerDetails.loyaltyPoints || 0}
+                      onChange={(e) => setCustomerDetails({ ...customerDetails, loyaltyPoints: parseInt(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="0"
+                      readOnly={!!selectedCustomerId && selectedCustomerId !== 'new'}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Address */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Address
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.address || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, address: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="Street address"
+                />
+              </div>
+
+              {/* City */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.city || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, city: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="City"
+                />
+              </div>
+
+              {/* State */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  State
+                </label>
+                <select
+                  value={customerDetails.state || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, state: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="">Select State</option>
+                  <option value="Andhra Pradesh">Andhra Pradesh</option>
+                  <option value="Karnataka">Karnataka</option>
+                  <option value="Kerala">Kerala</option>
+                  <option value="Tamil Nadu">Tamil Nadu</option>
+                  <option value="Telangana">Telangana</option>
+                  <option value="Maharashtra">Maharashtra</option>
+                  <option value="Gujarat">Gujarat</option>
+                  <option value="Rajasthan">Rajasthan</option>
+                  <option value="Delhi">Delhi</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Pincode */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Pincode
+                </label>
+                <input
+                  type="text"
+                  value={customerDetails.pincode || ''}
+                  onChange={(e) => setCustomerDetails({ ...customerDetails, pincode: e.target.value })}
+                  maxLength={6}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  placeholder="XXXXXX"
+                />
+              </div>
+            </div>
+
+            {/* Info box */}
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-sm text-blue-800 dark:text-blue-300">
+                💡 <strong>Analytics Tip:</strong> Collecting complete customer details helps with sales analytics, 
+                customer segmentation, regional insights, and personalized marketing. 
+                {partyType === 'wholesaler' && ' GSTIN is mandatory for GST-compliant B2B invoicing.'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Items */}

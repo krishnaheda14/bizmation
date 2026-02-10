@@ -99,7 +99,11 @@ export const BillingEnhanced: React.FC = () => {
 
       {/* Invoice Form */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <InvoiceForm onSubmit={handleSubmit} onCancel={handleCancel} />
+        <InvoiceForm 
+          onSubmit={handleSubmit} 
+          onCancel={handleCancel} 
+          partyType={partyType}
+        />
       </div>
     </div>
   );

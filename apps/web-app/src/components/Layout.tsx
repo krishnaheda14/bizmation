@@ -19,6 +19,10 @@ import {
   Moon,
   Wrench,
   Coins,
+  Building2,
+  ClipboardList,
+  PackageCheck,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
@@ -44,7 +48,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'catalog', label: 'Catalog', icon: <Camera size={20} />, path: '/catalog' },
     { id: 'repairs', label: 'Repairs', icon: <Wrench size={20} />, path: '/repairs' },
     { id: 'schemes', label: 'Schemes', icon: <Coins size={20} />, path: '/schemes' },
-    { id: 'parties', label: 'Parties', icon: <Users size={20} />, path: '/parties' },
+    { id: 'parties', label: 'Customers', icon: <Users size={20} />, path: '/parties' },
+    { id: 'suppliers', label: 'Suppliers', icon: <Building2 size={20} />, path: '/suppliers' },
+    { id: 'purchase-orders', label: 'Purchase Orders', icon: <ClipboardList size={20} />, path: '/purchase-orders' },
+    { id: 'stock-on-hand', label: 'Stock on Hand', icon: <PackageCheck size={20} />, path: '/stock-on-hand' },
+    { id: 'stock-movement', label: 'Stock Movement', icon: <ArrowRightLeft size={20} />, path: '/stock-movement' },
     { id: 'insights', label: 'AI Insights', icon: <Brain size={20} />, path: '/insights' },
     { id: 'rates', label: 'Gold Rates', icon: <TrendingUp size={20} />, path: '/rates' },
   ];
