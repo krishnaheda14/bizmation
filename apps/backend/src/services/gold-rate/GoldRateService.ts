@@ -29,15 +29,21 @@ export class GoldRateService {
       ORDER BY effective_date DESC
       LIMIT 1
     `;
-    
-    const result = await this.db.query(query, [metalType, purity]);
-    
-    if (result.rows.length === 0) {
-      // Fetch from API if not in database
+
+    try {
+      const result = await this.db.query(query, [metalType, purity]);
+
+      if (result.rows.length === 0) {
+        // Fetch from API if not in database
+        return this.fetchAndSaveRate(metalType, purity);
+      }
+
+      return this.mapToGoldRate(result.rows[0]);
+    } catch (err: any) {
+      // If database is unreachable, fall back to fetching from external API
+      console.warn('[GoldRateService] Database unavailable, falling back to external API:', err?.message || err);
       return this.fetchAndSaveRate(metalType, purity);
     }
-    
-    return this.mapToGoldRate(result.rows[0]);
   }
 
   /**
@@ -46,19 +52,35 @@ export class GoldRateService {
   private async fetchFromAPI(metalType: MetalType): Promise<any> {
     try {
       // Step 1: Fetch gold/silver prices in USD
-      const goldPriceResponse = await axios.get('https://data-asg.goldprice.org/dbXRates/USD');
-      const goldData = goldPriceResponse.data.items[0];
-      
+      console.log('[GoldRateService] Fetching gold/silver prices from data-asg.goldprice.org');
+      const goldPriceResponse = await axios.get('https://data-asg.goldprice.org/dbXRates/USD', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; gold-rate-fetcher/1.0)',
+          'Accept': 'application/json',
+        },
+        timeout: 10000,
+      });
+      const goldData = goldPriceResponse?.data?.items && goldPriceResponse.data.items[0];
+
       // Step 2: Fetch USD to INR conversion rate
-      const currencyResponse = await axios.get('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');
+      console.log('[GoldRateService] Fetching currency conversion from jsDelivr currency-api');
+      const currencyResponse = await axios.get('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; gold-rate-fetcher/1.0)',
+          'Accept': 'application/json',
+        },
+        timeout: 10000,
+      });
       
-      // FIXED: The API returns usd.inr as the conversion rate (how many INR for 1 USD)
-      // Example: if usd.inr = 0.012, it means 1 USD = 83.33 INR (1/0.012)
-      const usdData = currencyResponse.data.usd;
-      const usdToInrRate = 1 / usdData.inr; // Convert to INR per USD
-      
+      // The currency API returns `usd.inr` as INR per 1 USD (e.g. 83.33)
+      const usdData = currencyResponse.data && currencyResponse.data.usd;
+      const usdToInrRate = usdData && typeof usdData.inr === 'number' ? usdData.inr : undefined; // INR per USD
+
       console.log(`[Gold Rate API] XAU Price: $${goldData.xauPrice}, XAG Price: $${goldData.xagPrice}`);
-      console.log(`[Gold Rate API] USD to INR Rate: ₹${usdToInrRate.toFixed(2)}`);
+      console.log(`[Gold Rate API] USD to INR Rate (raw): ${usdToInrRate}`);
+      if (!usdToInrRate || isNaN(usdToInrRate)) {
+        throw new Error('Currency conversion (USD->INR) not available from currency API');
+      }
       
       // Get price per troy ounce in USD
       let pricePerOunceUSD = 0;
@@ -71,9 +93,12 @@ export class GoldRateService {
         pricePerOunceUSD = goldData.xauPrice;
       }
       
-      // Convert to INR per gram
-      // 1 troy ounce = 31.1035 grams
+      // Convert to INR per gram (1 troy ounce = 31.1035 grams)
       const pricePerGramINR = (pricePerOunceUSD * usdToInrRate) / 31.1035;
+
+      if (!isFinite(pricePerGramINR) || isNaN(pricePerGramINR)) {
+        throw new Error('Computed price per gram is invalid');
+      }
       
       console.log(`[Gold Rate API] ${metalType} price per gram: ₹${pricePerGramINR.toFixed(2)}`);
       
@@ -83,7 +108,7 @@ export class GoldRateService {
       };
       
       return {
-        price_gram_24k: metalType === 'GOLD' ? pricePerGramINR : pricePerGramINR,
+        price_gram_24k: pricePerGramINR,
         price_gram_22k: metalType === 'GOLD' ? calculatePurityRate(22) : pricePerGramINR,
         price_gram_21k: metalType === 'GOLD' ? calculatePurityRate(21) : pricePerGramINR,
         price_gram_20k: metalType === 'GOLD' ? calculatePurityRate(20) : pricePerGramINR,
@@ -96,9 +121,9 @@ export class GoldRateService {
         usdToInr: usdToInrRate,
         priceUSD: pricePerOunceUSD,
       };
-    } catch (error) {
-      console.error('Failed to fetch gold rate from API:', error);
-      throw new Error('Failed to fetch gold rate from external source');
+    } catch (error: any) {
+      console.error('[GoldRateService] Failed to fetch gold rate from API:', error?.message || error, error?.response?.data || 'no response body');
+      throw new Error(error?.message || 'Failed to fetch gold rate from external source');
     }
   }
 
@@ -157,8 +182,14 @@ export class GoldRateService {
       goldRate.updatedAt,
     ];
     
-    const result = await this.db.query(query, values);
-    return this.mapToGoldRate(result.rows[0]);
+    try {
+      const result = await this.db.query(query, values);
+      return this.mapToGoldRate(result.rows[0]);
+    } catch (err: any) {
+      console.warn('[GoldRateService] Failed to save fetched rate to DB, returning rate without persisting:', err?.message || err);
+      // Return the constructed goldRate even if DB insert failed
+      return goldRate;
+    }
   }
 
   /**

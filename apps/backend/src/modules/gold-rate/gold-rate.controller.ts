@@ -39,7 +39,7 @@ export function goldRateRouter(goldRateService: GoldRateService): Router {
 
   /**
    * GET /api/gold-rates/fetch-live
-   * Force fetch from GoldAPI.io (manual refresh)
+   * Force fetch from live source (manual refresh)
    */
   router.get('/fetch-live', async (req: Request, res: Response) => {
     try {
@@ -60,7 +60,7 @@ export function goldRateRouter(goldRateService: GoldRateService): Router {
       console.error('[Gold Rate API] Error fetching live rate:', error);
       res.status(500).json({
         success: false,
-        error: error.message || 'Failed to fetch live gold rate. Check your GOLD_API_KEY in .env',
+        error: error.message || 'Failed to fetch live gold rate from upstream source',
       });
     }
   });

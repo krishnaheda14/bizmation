@@ -244,7 +244,7 @@ export const GoldRates: React.FC = () => {
       )}
 
       {/* Gold Rates */}
-      <div className="bg-white dadark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+      <div className="bg-white dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 About Gold Rates</h3>
         <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
           <li>• Rates are fetched from GoldAPI.io (live market data)</li>
@@ -261,7 +261,8 @@ export const GoldRates: React.FC = () => {
             <li>Open browser console (F12) to see detailed logs</li>
             <li>Backend logs are in terminal where you ran <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">npm run dev</code></li>
           </ol>
-        </div className="p-6">
+        </div>
+        <div className="p-6">
           {goldRates.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
               No gold rates available. Click "Fetch Live Rates" to update.
