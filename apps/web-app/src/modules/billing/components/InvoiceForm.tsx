@@ -103,7 +103,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       setFetchingRate(true);
       // Fetch rates for common purities
       const purities = [24, 22, 18];
-      const metalTypes: MetalType[] = ['GOLD', 'SILVER'];
+      const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
       const rates: Record<string, GoldRate> = {};
 
       for (const metalType of metalTypes) {
@@ -132,7 +132,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       setFetchingRate(true);
       // Fetch live rate from GoldAPI.io
       const purities = [24, 22, 18];
-      const metalTypes: MetalType[] = ['GOLD', 'SILVER'];
+      const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
       const rates: Record<string, GoldRate> = {};
 
       for (const metalType of metalTypes) {
@@ -306,17 +306,17 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         setCustomerDetails({
           id: customer.id,
           name: customer.name,
-          businessName: customer.businessName,
+          businessName: undefined,
           phone: customer.phone,
           email: customer.email,
-          address: customer.address,
-          city: customer.city,
-          state: customer.state,
-          pincode: customer.pincode,
-          gstin: customer.gstin,
-          trn: customer.trn,
-          loyaltyNumber: customer.loyaltyTier,
-          loyaltyPoints: customer.balance, // Assuming balance field stores loyalty points
+          address: customer.address ? `${customer.address.street}, ${customer.address.city}, ${customer.address.state} ${customer.address.pincode}` : undefined,
+          city: customer.address?.city,
+          state: customer.address?.state,
+          pincode: customer.address?.pincode,
+          gstin: customer.gstNumber,
+          trn: undefined,
+          loyaltyNumber: undefined,
+          loyaltyPoints: customer.loyaltyPoints,
         });
       }
     }
@@ -343,7 +343,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               <option value="new">➕ Add New {partyType === 'customer' ? 'Customer' : 'Wholesaler'}</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
-                  {customer.name} - {customer.phone} {customer.businessName ? `(${customer.businessName})` : ''}
+                  {customer.name} - {customer.phone}
                 </option>
               ))}
             </select>
@@ -357,7 +357,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <div className="flex gap-2">
               <div className="flex-1 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                 <p className="text-lg font-semibold text-yellow-900 dark:text-yellow-200">
-                  {fetchingRate ? 'Loading...' : `₹${getGoldRate('GOLD', 22).toFixed(2)}/gram`}
+                  {fetchingRate ? 'Loading...' : `₹${getGoldRate(MetalType.GOLD, 22).toFixed(2)}/gram`}
                 </p>
               </div>
               <button

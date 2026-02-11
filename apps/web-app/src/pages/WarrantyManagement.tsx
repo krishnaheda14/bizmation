@@ -393,14 +393,14 @@ const WarrantiesList: React.FC<WarrantiesListProps> = ({ warranties }) => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
                         {warranty.whatsappSent ? (
-                          <CheckCircle className="text-green-600 dark:text-green-400" size={18} title="WhatsApp sent" />
+                          <CheckCircle className="text-green-600 dark:text-green-400" size={18} />
                         ) : (
-                          <Clock className="text-gray-400" size={18} title="WhatsApp pending" />
+                          <Clock className="text-gray-400" size={18} />
                         )}
                         {warranty.emailSent ? (
-                          <CheckCircle className="text-blue-600 dark:text-blue-400" size={18} title="Email sent" />
+                          <CheckCircle className="text-blue-600 dark:text-blue-400" size={18} />
                         ) : (
-                          <Clock className="text-gray-400" size={18} title="Email pending" />
+                          <Clock className="text-gray-400" size={18} />
                         )}
                       </div>
                     </td>
