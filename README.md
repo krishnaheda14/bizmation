@@ -189,18 +189,49 @@ npm run test:e2e
 
 ## 📦 Deployment
 
-### Development
+### Web App (Cloudflare Pages) - Recommended ⭐
+
+Deploy the web app to Cloudflare Pages for global CDN, automatic SSL, and zero-configuration:
+
+```bash
+# Validate build locally
+./validate-deployment.ps1   # Windows
+./validate-deployment.sh    # Linux/Mac
+```
+
+**Cloudflare Pages Settings:**
+- Build command: `npm ci && npm run build:web`
+- Build output: `apps/web-app/dist`
+- Node version: `20`
+
+📖 **[Complete Cloudflare Deployment Guide](CLOUDFLARE_DEPLOYMENT.md)** - Step-by-step instructions with custom domain setup.
+
+### Backend (Railway / AWS / Docker)
+
+#### Option 1: Docker Compose (Development)
 ```bash
 docker-compose up -d
 ```
 
-### Production (AWS ECS / Railway)
+#### Option 2: Production Deployment
 ```bash
 # Build production images
 npm run build
 
 # Deploy using GitHub Actions
 git push origin main
+```
+
+### Full Stack Local Testing
+```bash
+# Install dependencies
+npm ci
+
+# Build all packages
+npm run build:packages
+
+# Start development servers
+npm run dev
 ```
 
 ## 🐛 Monitoring & Debugging

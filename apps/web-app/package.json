@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "prebuild": "npm run build --workspace=packages/shared-types",
+    "build": "tsc -p tsconfig.build.json && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
     "@jewelry-platform/shared-types": "^1.0.0",
-    "@jewelry-platform/sync-engine": "^1.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",

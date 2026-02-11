@@ -13,6 +13,8 @@
     "dev:backend": "npm run dev --workspace=apps/backend",
     "dev:mobile": "npm run dev --workspace=apps/mobile-app",
     "build": "tsc -b && npm run build -w apps/web-app",
+    "build:packages": "npm run build -w packages/shared-types && npm run build -w packages/sync-engine",
+    "build:web": "npm run build:packages && npm run build -w apps/web-app",
     "test": "npm run test --workspaces",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
