@@ -101,60 +101,121 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const fetchGoldRates = async () => {
     try {
       setFetchingRate(true);
-      // Fetch rates for common purities
-      const purities = [24, 22, 18];
-      const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
-      const rates: Record<string, GoldRate> = {};
-
-      for (const metalType of metalTypes) {
-        for (const purity of purities) {
-          const response = await fetch(
-            `/api/gold-rates/current?metalType=${metalType}&purity=${purity}`
-          );
-          const data = await response.json();
-          if (data.success) {
-            rates[`${metalType}-${purity}`] = data.data;
-          }
+      
+      // Fetch directly from free public APIs (same as GoldRates page)
+      const GOLD_API = 'https://data-asg.goldprice.org/dbXRates/USD';
+      const CURRENCY_API = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
+      const IMPORT_DUTY = 1.09; // 9% import duty for India
+      
+      // Step 1: Fetch precious metal prices
+      const goldResponse = await fetch(GOLD_API);
+      if (!goldResponse.ok) throw new Error('Failed to fetch gold prices');
+      const goldData = await goldResponse.json();
+      
+      const xauPrice = goldData.items?.[0]?.xauPrice || 0; // Gold in USD per troy ounce
+      const xagPrice = goldData.items?.[0]?.xagPrice || 0; // Silver in USD per troy ounce
+      
+      if (!xauPrice || !xagPrice) throw new Error('Invalid gold/silver prices');
+      
+      // Step 2: Fetch USD to INR rate
+      const currencyResponse = await fetch(CURRENCY_API);
+      if (!currencyResponse.ok) throw new Error('Failed to fetch currency rates');
+      const currencyData = await currencyResponse.json();
+      
+      const usdToInr = currencyData.usd?.inr || 0;
+      if (!usdToInr) throw new Error('Invalid USD to INR rate');
+      
+      // Step 3: Calculate rates per gram with import duty
+      const GRAMS_PER_OUNCE = 31.1035;
+      const gold24kPerGram = ((xauPrice * usdToInr) / GRAMS_PER_OUNCE) * IMPORT_DUTY;
+      const silver24kPerGram = ((xagPrice * usdToInr) / GRAMS_PER_OUNCE) * IMPORT_DUTY;
+      
+      // Build rates object
+      const now = new Date();
+      
+      const rates: Record<string, GoldRate> = {
+        'GOLD-24': {
+          id: 'gold-24',
+          metalType: MetalType.GOLD,
+          purity: 24,
+          ratePerGram: gold24kPerGram,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        'GOLD-22': {
+          id: 'gold-22',
+          metalType: MetalType.GOLD,
+          purity: 22,
+          ratePerGram: (gold24kPerGram * 22) / 24,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        'GOLD-18': {
+          id: 'gold-18',
+          metalType: MetalType.GOLD,
+          purity: 18,
+          ratePerGram: (gold24kPerGram * 18) / 24,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        'SILVER-24': {
+          id: 'silver-24',
+          metalType: MetalType.SILVER,
+          purity: 24,
+          ratePerGram: silver24kPerGram,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        'SILVER-22': {
+          id: 'silver-22',
+          metalType: MetalType.SILVER,
+          purity: 22,
+          ratePerGram: (silver24kPerGram * 22) / 24,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        'SILVER-18': {
+          id: 'silver-18',
+          metalType: MetalType.SILVER,
+          purity: 18,
+          ratePerGram: (silver24kPerGram * 18) / 24,
+          effectiveDate: now,
+          source: 'Live Market',
+          isActive: true,
+          createdAt: now,
+          updatedAt: now
         }
-      }
+      };
 
       setGoldRates(rates);
+      console.log('Gold rates fetched successfully (includes 9% import duty):', rates);
     } catch (error) {
       console.error('Failed to fetch gold rates:', error);
-      alert('Failed to fetch gold rates. Please check your connection.');
+      alert('Failed to fetch gold rates from free APIs. Please check your internet connection.');
     } finally {
       setFetchingRate(false);
     }
   };
 
   const fetchLiveGoldRate = async () => {
-    try {
-      setFetchingRate(true);
-      // Fetch live rate from free public APIs
-      const purities = [24, 22, 18];
-      const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
-      const rates: Record<string, GoldRate> = {};
-
-      for (const metalType of metalTypes) {
-        for (const purity of purities) {
-          const response = await fetch(
-            `/api/gold-rates/fetch-live?metalType=${metalType}&purity=${purity}`
-          );
-          const data = await response.json();
-          if (data.success) {
-            rates[`${metalType}-${purity}`] = data.data;
-          }
-        }
-      }
-
-      setGoldRates(rates);
-      alert('Live gold rates fetched successfully!');
-    } catch (error) {
-      console.error('Failed to fetch live gold rates:', error);
-      alert('Failed to fetch live gold rates from free APIs. Please check your internet connection.');
-    } finally {
-      setFetchingRate(false);
-    }
+    // Same as fetchGoldRates - always live
+    await fetchGoldRates();
+    alert('✅ Live gold rates updated! (includes 9% import duty for Indian market)');
   };
 
   const fetchCustomers = async () => {
@@ -352,22 +413,25 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
           {/* Gold Rate Display */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Today's Gold Rate (22K)
+              Today's Gold Rate (22K) • With 9% Import Duty
             </label>
             <div className="flex gap-2">
-              <div className="flex-1 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                <p className="text-lg font-semibold text-yellow-900 dark:text-yellow-200">
+              <div className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg shadow-sm">
+                <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
                   {fetchingRate ? 'Loading...' : `₹${getGoldRate(MetalType.GOLD, 22).toFixed(2)}/gram`}
+                </p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                  Live international market • Includes import duty
                 </p>
               </div>
               <button
                 type="button"
                 onClick={fetchLiveGoldRate}
                 disabled={fetchingRate}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
-                title="Fetch live gold rate from free public APIs (no keys required)"
+                className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-sm font-semibold shadow-lg transition-all"
+                title="Fetch live gold rate from free public APIs (includes 9% import duty)"
               >
-                {fetchingRate ? '⏳' : '🔄 Fetch Price'}
+                {fetchingRate ? '⏳' : '🔄 Update Rate'}
               </button>
             </div>
           </div>
