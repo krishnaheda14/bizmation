@@ -151,7 +151,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       alert('Live gold rates fetched successfully!');
     } catch (error) {
       console.error('Failed to fetch live gold rates:', error);
-      alert('Failed to fetch live gold rates. Please check your GOLD_API_KEY in .env');
+      alert('Failed to fetch live gold rates from free APIs. Please check your internet connection.');
     } finally {
       setFetchingRate(false);
     }

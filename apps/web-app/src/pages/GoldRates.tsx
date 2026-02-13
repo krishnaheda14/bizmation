@@ -99,7 +99,7 @@ export const GoldRates: React.FC = () => {
     }
     
     setLoading(true);
-    addDebugLog('🌍 Starting LIVE fetch from GoldAPI.io...');
+    addDebugLog('🌍 Starting LIVE fetch from free public endpoints (goldprice.org + currency-api)...');
     
     try {
       const metals = ['GOLD', 'SILVER'];
@@ -139,7 +139,7 @@ export const GoldRates: React.FC = () => {
         alert(`✅ Live rates fetched successfully! (${successCount} rates updated)`);
         await fetchRates();
       } else {
-        addErrorLog('❌ All live fetches failed. Check GOLD_API_KEY in .env');
+        addErrorLog('❌ All live fetches failed. Check your internet connection and API endpoints.');
         alert('❌ Failed to fetch live rates. Check console for details.');
       }
     } catch (error: any) {
@@ -237,7 +237,7 @@ export const GoldRates: React.FC = () => {
           <ul className="text-sm text-red-800 dark:text-red-300 space-y-1">
             <li>• Database might be empty (no rates fetched yet)</li>
             <li>• Backend server might not be running (check http://localhost:3000)</li>
-            <li>• Click "Fetch Live Rates" to get fresh data from GoldAPI.io</li>
+            <li>• Click "Fetch Live Rates" to get fresh data from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
             <li>• Check the debug console above for detailed error messages</li>
           </ul>
         </div>
@@ -247,7 +247,7 @@ export const GoldRates: React.FC = () => {
       <div className="bg-white dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 About Gold Rates</h3>
         <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-          <li>• Rates are fetched from GoldAPI.io (live market data)</li>
+          <li>• Rates are fetched from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
           <li>• Prices include all applicable taxes and charges</li>
           <li>• Auto-updates daily at 9 AM (configurable in backend)</li>
           <li>• Click "Fetch Live Rates" for immediate updates</li>
@@ -257,7 +257,11 @@ export const GoldRates: React.FC = () => {
           <p className="font-semibold text-blue-900 dark:text-blue-200 mb-2">🔧 Troubleshooting:</p>
           <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
             <li>Ensure backend is running: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">cd apps/backend && npm run dev</code></li>
-            <li>Check GOLD_API_KEY in .env file (should not be empty)</li>
+            <li>Check your internet connection</li>
+            <li>Verify free API endpoints are accessible:<br/>
+              <span className="ml-4">• data-asg.goldprice.org (Gold/Silver prices)</span><br/>
+              <span className="ml-4">• cdn.jsdelivr.net (Currency rates)</span>
+            </li>
             <li>Open browser console (F12) to see detailed logs</li>
             <li>Backend logs are in terminal where you ran <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">npm run dev</code></li>
           </ol>
@@ -325,8 +329,8 @@ export const GoldRates: React.FC = () => {
       {/* Rate Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 mb-2">📌 About Gold Rates</h3>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• Rates are fetched from GoldAPI.io (live market data)</li>
+          <ul className="text-sm text-blue-800 space-y-1">
+          <li>• Rates are fetched from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
           <li>• Prices include all applicable taxes and charges</li>
           <li>• Auto-updates daily at 9 AM (configurable in backend)</li>
           <li>• Click "Fetch Live Rates" for immediate updates</li>
