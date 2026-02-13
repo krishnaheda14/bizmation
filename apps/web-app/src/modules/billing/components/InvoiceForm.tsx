@@ -130,7 +130,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const fetchLiveGoldRate = async () => {
     try {
       setFetchingRate(true);
-      // Fetch live rate from GoldAPI.io
+      // Fetch live rate from free public APIs
       const purities = [24, 22, 18];
       const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
       const rates: Record<string, GoldRate> = {};
@@ -365,7 +365,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                 onClick={fetchLiveGoldRate}
                 disabled={fetchingRate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
-                title="Fetch live gold rate from GoldAPI.io (paid API)"
+                title="Fetch live gold rate from free public APIs (no keys required)"
               >
                 {fetchingRate ? '⏳' : '🔄 Fetch Price'}
               </button>

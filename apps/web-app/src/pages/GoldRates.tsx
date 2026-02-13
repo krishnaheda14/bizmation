@@ -1,7 +1,8 @@
 /**
  * Gold Rates Page
  * 
- * View and manage gold/silver rates
+ * Fetches live gold/silver rates DIRECTLY from free public APIs
+ * NO BACKEND REQUIRED - Works standalone on Cloudflare Pages
  */
 
 import React, { useState, useEffect } from 'react';
@@ -14,6 +15,10 @@ interface GoldRate {
   effectiveDate: string;
   source: string;
 }
+
+// Free API endpoints (NO API KEYS NEEDED!)
+const GOLD_API = 'https://data-asg.goldprice.org/dbXRates/USD';
+const CURRENCY_API = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
 
 export const GoldRates: React.FC = () => {
   const [rates, setRates] = useState<GoldRate[]>([]);
@@ -39,116 +44,137 @@ export const GoldRates: React.FC = () => {
 
   useEffect(() => {
     addDebugLog('🔧 GoldRates component mounted');
+    addDebugLog('🌍 Fetching from FREE public APIs (no backend needed)');
     fetchRates();
   }, []);
 
   const fetchRates = async () => {
     setLoading(true);
-    addDebugLog('📡 Starting to fetch gold rates from database...');
+    addDebugLog('📡 Starting to fetch LIVE gold rates from free APIs...');
+    addDebugLog(`🔗 Gold API: ${GOLD_API}`);
+    addDebugLog(`🔗 Currency API: ${CURRENCY_API}`);
     
     try {
-      const metals = ['GOLD', 'SILVER'];
-      const purities = [24, 22, 18];
-      const allRates: GoldRate[] = [];
-
-      addDebugLog(`🔍 Will fetch rates for: ${metals.join(', ')} with purities: ${purities.join('K, ')}K`);
-
-      for (const metal of metals) {
-        for (const purity of purities) {
-          const url = `/api/gold-rates/current?metalType=${metal}&purity=${purity}`;
-          addDebugLog(`📞 Fetching: ${url}`);
-          
-          try {
-            const response = await fetch(url);
-            addDebugLog(`📥 Response status for ${metal}-${purity}K: ${response.status} ${response.statusText}`);
-            
-            const data = await response.json();
-            addDebugLog(`📦 Response data for ${metal}-${purity}K: ${JSON.stringify(data)}`);
-            
-            if (data.success && data.data) {
-              allRates.push(data.data);
-              addDebugLog(`✅ Successfully fetched ${metal}-${purity}K: ₹${data.data.ratePerGram}/gram`);
-            } else {
-              addErrorLog(`No data returned for ${metal}-${purity}K. Response: ${JSON.stringify(data)}`);
-            }
-          } catch (fetchError: any) {
-            addErrorLog(`Failed to fetch ${metal}-${purity}K: ${fetchError.message}`);
-          }
-        }
+      // Step 1: Fetch XAU (Gold) and XAG (Silver) prices in USD
+      addDebugLog('📞 Fetching precious metals prices (XAU/XAG in USD)...');
+      const goldResponse = await fetch(GOLD_API);
+      addDebugLog(`📥 Gold API Response Status: ${goldResponse.status} ${goldResponse.statusText}`);
+      
+      if (!goldResponse.ok) {
+        throw new Error(`Gold API returned ${goldResponse.status}: ${goldResponse.statusText}`);
       }
 
-      addDebugLog(`📊 Total rates fetched: ${allRates.length}`);
+      const goldData = await goldResponse.json();
+      addDebugLog(`📦 Gold API Response: ${JSON.stringify(goldData, null, 2)}`);
+
+      // Extract prices (USD per troy ounce)
+      const xauPrice = goldData.items?.[0]?.xauPrice || 0; // Gold price in USD
+      const xagPrice = goldData.items?.[0]?.xagPrice || 0; // Silver price in USD
+      
+      addDebugLog(`💰 XAU (Gold): $${xauPrice} per troy ounce`);
+      addDebugLog(`💰 XAG (Silver): $${xagPrice} per troy ounce`);
+
+      if (!xauPrice || !xagPrice) {
+        throw new Error('Invalid gold/silver prices received from API');
+      }
+
+      // Step 2: Fetch USD to INR conversion rate
+      addDebugLog('📞 Fetching USD to INR exchange rate...');
+      const currencyResponse = await fetch(CURRENCY_API);
+      addDebugLog(`📥 Currency API Response Status: ${currencyResponse.status} ${currencyResponse.statusText}`);
+      
+      if (!currencyResponse.ok) {
+        throw new Error(`Currency API returned ${currencyResponse.status}: ${currencyResponse.statusText}`);
+      }
+
+      const currencyData = await currencyResponse.json();
+      addDebugLog(`📦 Currency API Response: ${JSON.stringify(currencyData, null, 2)}`);
+
+      const usdToInr = currencyData.usd?.inr || 0;
+      addDebugLog(`💱 USD to INR rate: ${usdToInr}`);
+
+      if (!usdToInr) {
+        throw new Error('Invalid USD to INR rate received from API');
+      }
+
+      // Step 3: Calculate rates per gram in INR
+      // 1 troy ounce = 31.1035 grams
+      const GRAMS_PER_OUNCE = 31.1035;
+      
+      const gold24kPerGram = (xauPrice * usdToInr) / GRAMS_PER_OUNCE;
+      const silver24kPerGram = (xagPrice * usdToInr) / GRAMS_PER_OUNCE;
+
+      addDebugLog(`🧮 Calculation: (USD per ounce × INR per USD) ÷ 31.1035 grams`);
+      addDebugLog(`🧮 Gold 24K: (${xauPrice} × ${usdToInr}) ÷ ${GRAMS_PER_OUNCE} = ₹${gold24kPerGram.toFixed(2)}/gram`);
+      addDebugLog(`🧮 Silver 24K: (${xagPrice} × ${usdToInr}) ÷ ${GRAMS_PER_OUNCE} = ₹${silver24kPerGram.toFixed(2)}/gram`);
+
+      // Calculate different purities
+      const allRates: GoldRate[] = [
+        // Gold rates
+        {
+          metalType: 'GOLD',
+          purity: 24,
+          ratePerGram: gold24kPerGram,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        },
+        {
+          metalType: 'GOLD',
+          purity: 22,
+          ratePerGram: (gold24kPerGram * 22) / 24,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        },
+        {
+          metalType: 'GOLD',
+          purity: 18,
+          ratePerGram: (gold24kPerGram * 18) / 24,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        },
+        // Silver rates
+        {
+          metalType: 'SILVER',
+          purity: 24,
+          ratePerGram: silver24kPerGram,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        },
+        {
+          metalType: 'SILVER',
+          purity: 22,
+          ratePerGram: (silver24kPerGram * 22) / 24,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        },
+        {
+          metalType: 'SILVER',
+          purity: 18,
+          ratePerGram: (silver24kPerGram * 18) / 24,
+          effectiveDate: new Date().toISOString(),
+          source: 'data-asg.goldprice.org + jsDelivr'
+        }
+      ];
+
+      addDebugLog(`📊 Successfully calculated ${allRates.length} rates`);
+      allRates.forEach(rate => {
+        addDebugLog(`  ✅ ${rate.metalType}-${rate.purity}K: ₹${rate.ratePerGram.toFixed(2)}/gram`);
+      });
+
       setRates(allRates);
       setLastUpdated(new Date().toLocaleString());
+      addDebugLog('✅ All rates updated successfully!');
       
-      if (allRates.length === 0) {
-        addErrorLog('⚠️ NO RATES FETCHED! Database might be empty or backend not responding.');
-      }
     } catch (error: any) {
-      addErrorLog(`Fatal error in fetchRates: ${error.message}`);
+      addErrorLog(`Failed to fetch rates: ${error.message}`);
       console.error('Failed to fetch rates:', error);
+      // Keep existing rates if we have them
+      if (rates.length === 0) {
+        addErrorLog('⚠️ No rates available. Check your internet connection.');
+      }
     } finally {
       setLoading(false);
       addDebugLog('✅ Fetch operation completed');
-    }
-  };
-
-  const fetchLiveRates = async () => {
-    if (!confirm('⚠️ This will fetch live gold and silver rates from international markets. Continue?')) {
-      return;
-    }
-    
-    setLoading(true);
-    addDebugLog('🌍 Starting LIVE fetch from free public endpoints (goldprice.org + currency-api)...');
-    
-    try {
-      const metals = ['GOLD', 'SILVER'];
-      const purities = [24, 22, 18];
-      let successCount = 0;
-      let failCount = 0;
-      
-      for (const metal of metals) {
-        for (const purity of purities) {
-          const url = `/api/gold-rates/fetch-live?metalType=${metal}&purity=${purity}`;
-          addDebugLog(`📞 Live fetch: ${url}`);
-          
-          try {
-            const response = await fetch(url);
-            addDebugLog(`📥 Live fetch response for ${metal}-${purity}K: ${response.status}`);
-            
-            const data = await response.json();
-            addDebugLog(`📦 Live data for ${metal}-${purity}K: ${JSON.stringify(data)}`);
-            
-            if (data.success) {
-              successCount++;
-              addDebugLog(`✅ Live fetch SUCCESS for ${metal}-${purity}K`);
-            } else {
-              failCount++;
-              addErrorLog(`Live fetch FAILED for ${metal}-${purity}K: ${data.error || 'Unknown error'}`);
-            }
-          } catch (fetchError: any) {
-            failCount++;
-            addErrorLog(`Exception during live fetch ${metal}-${purity}K: ${fetchError.message}`);
-          }
-        }
-      }
-
-      addDebugLog(`📊 Live fetch complete: ${successCount} success, ${failCount} failed`);
-      
-      if (successCount > 0) {
-        alert(`✅ Live rates fetched successfully! (${successCount} rates updated)`);
-        await fetchRates();
-      } else {
-        addErrorLog('❌ All live fetches failed. Check your internet connection and API endpoints.');
-        alert('❌ Failed to fetch live rates. Check console for details.');
-      }
-    } catch (error: any) {
-      addErrorLog(`Fatal error in fetchLiveRates: ${error.message}`);
-      console.error('Failed to fetch live rates:', error);
-      alert('❌ Failed to fetch live rates. Please check your internet connection.');
-    } finally {
-      setLoading(false);
-      addDebugLog('✅ Live fetch operation completed');
     }
   };
 
@@ -173,12 +199,12 @@ export const GoldRates: React.FC = () => {
             {showDebug ? '🐛 Hide Debug' : '🐛 Show Debug'}
           </button>
           <button
-            onClick={fetchLiveRates}
+            onClick={fetchRates}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-            {loading ? 'Fetching...' : 'Fetch Live Rates (Manual)'}
+            {loading ? 'Fetching...' : 'Refresh Live Rates'}
           </button>
         </div>
       </div>
@@ -200,10 +226,12 @@ export const GoldRates: React.FC = () => {
             </button>
           </div>
           
-          {/* API Base URL Info */}
+          {/* API Info */}
           <div className="mb-3 text-yellow-400">
-            <p>📡 API Base URL: {window.location.origin}/api/gold-rates</p>
-            <p>🔧 Backend should be: http://localhost:3000</p>
+            <p>📡 Fetching DIRECTLY from free APIs (no backend needed):</p>
+            <p className="ml-4">🔗 Gold/Silver: {GOLD_API}</p>
+            <p className="ml-4">🔗 Currency: {CURRENCY_API}</p>
+            <p className="mt-2">✅ NO API KEYS REQUIRED!</p>
           </div>
 
           {/* Error Log */}
@@ -235,41 +263,54 @@ export const GoldRates: React.FC = () => {
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
           <h3 className="font-semibold text-red-900 dark:text-red-200 mb-2">⚠️ No Gold Rates Available</h3>
           <ul className="text-sm text-red-800 dark:text-red-300 space-y-1">
-            <li>• Database might be empty (no rates fetched yet)</li>
-            <li>• Backend server might not be running (check http://localhost:3000)</li>
-            <li>• Click "Fetch Live Rates" to get fresh data from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
-            <li>• Check the debug console above for detailed error messages</li>
+            <li>• Check your internet connection</li>
+            <li>• Verify free API endpoints are accessible (check debug console)</li>
+            <li>• Click "Refresh Live Rates" to try again</li>
+            <li>• Open browser console (F12) for detailed error messages</li>
           </ul>
         </div>
       )}
 
-      {/* Gold Rates */}
-      <div className="bg-white dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+      {/* Info Banner */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">📌 About Gold Rates</h3>
         <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-          <li>• Rates are fetched from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
-          <li>• Prices include all applicable taxes and charges</li>
-          <li>• Auto-updates daily at 9 AM (configurable in backend)</li>
-          <li>• Click "Fetch Live Rates" for immediate updates</li>
+          <li>• Rates fetched DIRECTLY from free public APIs (no backend needed)</li>
+          <li>• Live international market data (XAU/XAG)</li>
+          <li>• Automatic USD → INR conversion</li>
+          <li>• NO API KEYS required - completely free!</li>
+          <li>• Data sources:
+            <ul className="ml-6 mt-1 space-y-1">
+              <li>→ data-asg.goldprice.org (Gold/Silver prices)</li>
+              <li>→ cdn.jsdelivr.net (Currency exchange)</li>
+            </ul>
+          </li>
         </ul>
         
         <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
-          <p className="font-semibold text-blue-900 dark:text-blue-200 mb-2">🔧 Troubleshooting:</p>
+          <p className="font-semibold text-blue-900 dark:text-blue-200 mb-2">🔧 How It Works:</p>
           <ol className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-decimal list-inside">
-            <li>Ensure backend is running: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">cd apps/backend && npm run dev</code></li>
-            <li>Check your internet connection</li>
-            <li>Verify free API endpoints are accessible:<br/>
-              <span className="ml-4">• data-asg.goldprice.org (Gold/Silver prices)</span><br/>
-              <span className="ml-4">• cdn.jsdelivr.net (Currency rates)</span>
-            </li>
-            <li>Open browser console (F12) to see detailed logs</li>
-            <li>Backend logs are in terminal where you ran <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">npm run dev</code></li>
+            <li>Fetch XAU (gold) price in USD per troy ounce</li>
+            <li>Fetch XAG (silver) price in USD per troy ounce</li>
+            <li>Fetch USD to INR exchange rate</li>
+            <li>Calculate: (USD per ounce × INR per USD) ÷ 31.1035 grams</li>
+            <li>Calculate different purities: 22K = (24K × 22) ÷ 24</li>
           </ol>
+        </div>
+      </div>
+
+      {/* Gold Rates */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+        <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 px-6 py-4">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <TrendingUp size={24} />
+            Gold Rates (INR per gram)
+          </h2>
         </div>
         <div className="p-6">
           {goldRates.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-              No gold rates available. Click "Fetch Live Rates" to update.
+              {loading ? 'Loading...' : 'No gold rates available. Click "Refresh Live Rates" to fetch.'}
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -303,7 +344,7 @@ export const GoldRates: React.FC = () => {
         <div className="p-6">
           {silverRates.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-              No silver rates available. Click "Fetch Live Rates" to update.
+              {loading ? 'Loading...' : 'No silver rates available. Click "Refresh Live Rates" to fetch.'}
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -312,11 +353,11 @@ export const GoldRates: React.FC = () => {
                   <div className="text-gray-600 dark:text-gray-400 text-sm font-medium mb-2">
                     {rate.purity}K Silver
                   </div>
-                  <div className="text-3xl font-bold text-gray-800 mb-1">
+                  <div className="text-3xl font-bold text-gray-800 dark:text-white mb-1">
                     ₹{rate.ratePerGram.toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">per gram</div>
-                  <div className="mt-3 text-xs text-gray-400">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">per gram</div>
+                  <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
                     Source: {rate.source}
                   </div>
                 </div>
@@ -324,17 +365,6 @@ export const GoldRates: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Rate Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="font-semibold text-blue-900 mb-2">📌 About Gold Rates</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-          <li>• Rates are fetched from free public endpoints (data-asg.goldprice.org + jsDelivr currency API)</li>
-          <li>• Prices include all applicable taxes and charges</li>
-          <li>• Auto-updates daily at 9 AM (configurable in backend)</li>
-          <li>• Click "Fetch Live Rates" for immediate updates</li>
-        </ul>
       </div>
     </div>
   );
