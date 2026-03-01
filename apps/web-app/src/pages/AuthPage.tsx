@@ -41,12 +41,12 @@ const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size
 
 // --- Types ----------------------------------------------------------------
 type Tab       = 'login'    | 'signup';
-type LoginMode = 'password' | 'otp';
+type LoginMode = 'password' | 'otp' | 'phone';
 type OtpStep   = 'input'    | 'sent';
 
 // --- Main component -------------------------------------------------------
 const AuthPage: React.FC = () => {
-  const { signIn, signUp, sendOtp, verifyOtp } = useAuth();
+  const { signIn, signUp, sendOtp, verifyOtp, sendPhoneOtp, verifyPhoneOtp } = useAuth();
 
   const [tab,       setTab]       = useState<Tab>('login');
   const [loginMode, setLoginMode] = useState<LoginMode>('password');
@@ -55,6 +55,9 @@ const AuthPage: React.FC = () => {
   const [info,      setInfo]      = useState('');
   const [loading,   setLoading]   = useState(false);
   const [showPass,  setShowPass]  = useState(false);
+  const [phoneNum,   setPhoneNum]  = useState('');
+  const [phoneCode,  setPhoneCode] = useState('');
+  const [phoneSent,  setPhoneSent] = useState(false);
 
   useEffect(() => {
     if (window.location.hash.includes('/auth/verify') || window.location.search.includes('mode=signIn')) {
@@ -85,6 +88,23 @@ const AuthPage: React.FC = () => {
     finally        { setLoading(false); }
   };
 
+  const handleSendPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs(); setLoading(true);
+    try {
+      await sendPhoneOtp(phoneNum.trim(), 'recaptcha-container');
+      setPhoneSent(true);
+    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally           { setLoading(false); }
+  };
+
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs(); setLoading(true);
+    try {
+      await verifyPhoneOtp(phoneCode.trim());
+    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally           { setLoading(false); }
+  };
+
   const [otpEmail, setOtpEmail] = useState('');
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
@@ -97,6 +117,7 @@ const AuthPage: React.FC = () => {
     name: '', email: '', password: '', phone: '',
     city: '', state: '', country: 'India',
     dateOfBirth: '', panNumber: '', aadhaarLast4: '',
+    role: 'CUSTOMER', shopName: '',
   });
   const [form,        setForm]        = useState<SignUpData>(blankForm);
   const [confirmPass, setConfirmPass] = useState('');
@@ -146,7 +167,7 @@ const AuthPage: React.FC = () => {
           Bizmation Gold
         </h1>
         <p className="text-sm text-amber-600 mt-1 tracking-widest">
-          Trusted Since 2024 &middot; Jaipur
+          Trusted Since 2024 &middot; Ahilyanagar
         </p>
       </div>
 
@@ -196,15 +217,15 @@ const AuthPage: React.FC = () => {
 
               <div className="flex gap-2 p-1 mb-6 rounded-2xl"
                 style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                {(['password', 'otp'] as LoginMode[]).map(m => (
+                {(['password', 'otp', 'phone'] as LoginMode[]).map(m => (
                   <button key={m}
-                    onClick={() => { setLoginMode(m); setOtpStep('input'); clearMsgs(); }}
+                    onClick={() => { setLoginMode(m); setOtpStep('input'); setPhoneSent(false); clearMsgs(); }}
                     className="flex-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all"
                     style={loginMode === m ? {
                       background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
                       color: '#451a03',
                     } : { color: '#92400e' }}>
-                    {m === 'password' ? 'Password' : 'Magic Link'}
+                    {m === 'password' ? 'Password' : m === 'otp' ? 'Magic Link' : 'Phone OTP'}
                   </button>
                 ))}
               </div>
@@ -230,6 +251,34 @@ const AuthPage: React.FC = () => {
                     </button>
                   </p>
                 </form>
+              ) : loginMode === 'phone' ? (
+                phoneSent ? (
+                  <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
+                    <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
+                      style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                      Enter the 6-digit OTP sent to <strong>{phoneNum}</strong>
+                    </div>
+                    <GoldInput label="OTP Code" type="text" inputMode="numeric" maxLength={6}
+                      value={phoneCode} onChange={e => setPhoneCode(e.target.value)}
+                      required autoFocus placeholder="6-digit OTP" />
+                    <GoldButton loading={loading}>Verify OTP</GoldButton>
+                    <button type="button" onClick={() => { setPhoneSent(false); clearMsgs(); }}
+                      className="text-xs text-amber-500 underline underline-offset-2 w-full text-center">
+                      Wrong number? Try again
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleSendPhoneOtp} className="space-y-4">
+                    <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
+                      style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                      Enter your mobile number with country code. We will send a one-time password (OTP).
+                    </div>
+                    <GoldInput label="Mobile Number" type="tel" value={phoneNum}
+                      onChange={e => setPhoneNum(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
+                    <div id="recaptcha-container" />
+                    <GoldButton loading={loading}>Send OTP</GoldButton>
+                  </form>
+                )
               ) : otpStep === 'input' ? (
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
@@ -308,6 +357,35 @@ const AuthPage: React.FC = () => {
                       value={confirmPass} onChange={e => setConfirmPass(e.target.value)} required placeholder="Repeat password" />
                     <GoldInput label="Mobile Number" type="tel" value={form.phone}
                       onChange={setF('phone')} required placeholder="+91 98765 43210" />
+
+                    {/* Account type selector */}
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Account Type</label>
+                      <div className="flex gap-2">
+                        {(['CUSTOMER', 'OWNER'] as const).map(r => (
+                          <button key={r} type="button"
+                            onClick={() => setForm(f => ({ ...f, role: r }))}
+                            className="flex-1 py-2 rounded-2xl text-xs font-semibold transition-all"
+                            style={form.role === r ? {
+                              background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
+                              color: '#451a03',
+                              boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
+                            } : {
+                              background: 'rgba(253,243,212,0.8)',
+                              border: '1px solid rgba(251,191,36,0.3)',
+                              color: '#b45309',
+                            }}>
+                            {r === 'CUSTOMER' ? '👤 Customer' : '🏥 Shop Owner'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {form.role === 'OWNER' && (
+                      <GoldInput label="Shop / Business Name" value={form.shopName ?? ''}
+                        onChange={setF('shopName')} required={form.role === 'OWNER'} placeholder="e.g. Lakshmi Gold Palace" />
+                    )}
+
                     <GoldButton loading={false}>Continue</GoldButton>
                   </>
                 ) : (
@@ -403,15 +481,20 @@ const GoldButton: React.FC<{
 // --- Firebase error map --------------------------------------------------
 const friendlyError = (code: string): string =>
   ({
-    'auth/user-not-found':         'No account found with this email. Please sign up.',
-    'auth/wrong-password':         'Incorrect password. Please try again.',
-    'auth/invalid-credential':     'Incorrect email or password. Please try again.',
-    'auth/email-already-in-use':   'This email is already registered. Please sign in.',
-    'auth/invalid-email':          'Please enter a valid email address.',
-    'auth/weak-password':          'Password must be at least 6 characters.',
-    'auth/too-many-requests':      'Too many attempts. Please wait a few minutes.',
-    'auth/network-request-failed': 'Network error. Please check your connection.',
-    'auth/invalid-action-code':    'Magic link is invalid or expired. Request a new one.',
+    'auth/user-not-found':             'No account found with this email. Please sign up.',
+    'auth/wrong-password':             'Incorrect password. Please try again.',
+    'auth/invalid-credential':         'Incorrect email or password. Try signing in with Magic Link if you registered without a password.',
+    'auth/email-already-in-use':       'This email is already registered. Please sign in.',
+    'auth/invalid-email':              'Please enter a valid email address.',
+    'auth/weak-password':              'Password must be at least 6 characters.',
+    'auth/too-many-requests':          'Too many attempts. Please wait a few minutes.',
+    'auth/network-request-failed':     'Network error. Please check your connection.',
+    'auth/invalid-action-code':        'Magic link is invalid or expired. Request a new one.',
+    'auth/invalid-phone-number':       'Invalid phone number. Include country code (e.g. +91 98765 43210).',
+    'auth/code-expired':               'OTP has expired. Please request a new code.',
+    'auth/invalid-verification-code':  'Invalid OTP. Please check and try again.',
+    'auth/missing-phone-number':       'Please enter your phone number.',
+    'auth/quota-exceeded':             'SMS quota exceeded. Please try again later.',
   } as Record<string, string>)[code] ?? code;
 
 export default AuthPage;

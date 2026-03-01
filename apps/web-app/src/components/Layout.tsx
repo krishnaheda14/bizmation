@@ -25,6 +25,7 @@ import {
   ArrowRightLeft,
   LogOut,
   UserCircle,
+  Briefcase,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -50,22 +51,31 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     window.location.hash = '#/auth';
   };
 
-  const navItems: NavItem[] = [
-    { id: 'home', label: 'Home', icon: <Home size={20} />, path: '/' },
-    { id: 'dashboard', label: 'Dashboard', icon: <TrendingUp size={20} />, path: '/dashboard' },
-    { id: 'billing', label: 'Billing', icon: <ShoppingCart size={20} />, path: '/billing' },
-    { id: 'inventory', label: 'Inventory', icon: <Package size={20} />, path: '/inventory' },
-    { id: 'catalog', label: 'Catalog', icon: <Camera size={20} />, path: '/catalog' },
-    { id: 'repairs', label: 'Repairs', icon: <Wrench size={20} />, path: '/repairs' },
-    { id: 'schemes', label: 'Schemes', icon: <Coins size={20} />, path: '/schemes' },
-    { id: 'parties', label: 'Customers', icon: <Users size={20} />, path: '/parties' },
-    { id: 'suppliers', label: 'Suppliers', icon: <Building2 size={20} />, path: '/suppliers' },
-    { id: 'purchase-orders', label: 'Purchase Orders', icon: <ClipboardList size={20} />, path: '/purchase-orders' },
-    { id: 'stock-on-hand', label: 'Stock on Hand', icon: <PackageCheck size={20} />, path: '/stock-on-hand' },
-    { id: 'stock-movement', label: 'Stock Movement', icon: <ArrowRightLeft size={20} />, path: '/stock-movement' },
-    { id: 'insights', label: 'AI Insights', icon: <Brain size={20} />, path: '/insights' },
-    { id: 'rates', label: 'Gold Rates', icon: <TrendingUp size={20} />, path: '/rates' },
+  const isCustomer = userProfile?.role === 'CUSTOMER';
+
+  const allNavItems: NavItem[] = [
+    { id: 'home',           label: 'Home',            icon: <Home size={20} />,           path: '/' },
+    { id: 'portfolio',      label: 'My Portfolio',    icon: <Briefcase size={20} />,       path: '/portfolio' },
+    { id: 'dashboard',      label: 'Dashboard',       icon: <TrendingUp size={20} />,      path: '/dashboard' },
+    { id: 'billing',        label: 'Billing',         icon: <ShoppingCart size={20} />,    path: '/billing' },
+    { id: 'inventory',      label: 'Inventory',       icon: <Package size={20} />,         path: '/inventory' },
+    { id: 'catalog',        label: 'Catalog',         icon: <Camera size={20} />,          path: '/catalog' },
+    { id: 'repairs',        label: 'Repairs',         icon: <Wrench size={20} />,          path: '/repairs' },
+    { id: 'schemes',        label: 'Schemes',         icon: <Coins size={20} />,           path: '/schemes' },
+    { id: 'parties',        label: 'Customers',       icon: <Users size={20} />,           path: '/parties' },
+    { id: 'suppliers',      label: 'Suppliers',       icon: <Building2 size={20} />,       path: '/suppliers' },
+    { id: 'purchase-orders',label: 'Purchase Orders', icon: <ClipboardList size={20} />,   path: '/purchase-orders' },
+    { id: 'stock-on-hand',  label: 'Stock on Hand',   icon: <PackageCheck size={20} />,   path: '/stock-on-hand' },
+    { id: 'stock-movement', label: 'Stock Movement',  icon: <ArrowRightLeft size={20} />, path: '/stock-movement' },
+    { id: 'insights',       label: 'AI Insights',     icon: <Brain size={20} />,           path: '/insights' },
+    { id: 'rates',          label: 'Gold Rates',      icon: <TrendingUp size={20} />,      path: '/rates' },
   ];
+
+  // Customers only see Home and Portfolio; shop users see everything
+  const customerIds = new Set(['home', 'portfolio']);
+  const navItems = isCustomer
+    ? allNavItems.filter(item => customerIds.has(item.id))
+    : allNavItems.filter(item => item.id !== 'portfolio'); // portfolio is customer-only
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-gray-900">
@@ -94,11 +104,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           {/* Logo */}
           <div className="flex items-center justify-between p-5 border-b border-amber-200/80 dark:border-gray-700">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center shadow-md shadow-amber-300/40">
-                <span className="text-white font-bold text-lg">💎</span>
-              </div>
+              <img
+                src="/logo.png"
+                alt="Bizmation"
+                className="w-9 h-9 object-contain rounded-xl"
+                style={{ mixBlendMode: 'multiply' }}
+              />
               <div>
-                <h1 className="text-base font-black text-amber-900 dark:text-white leading-tight">Jewelry POS</h1>
+                <h1 className="text-base font-black text-amber-900 dark:text-white leading-tight">Bizmation Gold</h1>
                 <p className="text-xs text-amber-500 dark:text-gray-400 font-medium">Gold & Silver Online</p>
               </div>
             </div>
@@ -146,6 +159,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <p className="text-xs font-semibold text-amber-900 dark:text-white truncate">
                     {userProfile?.name ?? currentUser.displayName ?? 'User'}
                   </p>
+                  {userProfile?.shopName && (
+                    <p className="text-[10px] text-amber-700 dark:text-yellow-500 truncate font-medium">{userProfile.shopName}</p>
+                  )}
                   <p className="text-[10px] text-amber-500 dark:text-gray-400 truncate">{currentUser.email}</p>
                 </div>
               </div>
@@ -201,7 +217,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Menu size={24} />
             </button>
             <h1 className="text-base font-black text-amber-900 dark:text-white">
-              <span className="text-amber-500">💎</span> Jewelry POS
+              Bizmation Gold
             </h1>
             <div className="w-6" /> {/* Spacer for centering */}
           </div>

@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthPage from './pages/AuthPage';
 import { Layout } from './components/Layout';
 import { HomeLanding } from './pages/HomeLanding';
+import { CustomerPortfolio } from './pages/CustomerPortfolio';
 import { Dashboard } from './pages/Dashboard';
 import { Billing } from './pages/BillingEnhanced';
 import { Inventory } from './pages/Inventory';
@@ -22,7 +23,7 @@ import { StockMovement } from './pages/StockMovement';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
-  const { currentUser, loadingAuth }     = useAuth();
+  const { currentUser, loadingAuth, userProfile } = useAuth();
 
   // Simple hash-based routing
   useEffect(() => {
@@ -51,20 +52,30 @@ function App() {
     );
   }
 
-  // ── Email-link OTP verification page (public) ─────────────────────────────
-  if (currentRoute === '/auth/verify' || currentRoute.startsWith('/auth/verify')) {
-    // AuthPage handles the verification logic internally
+  // ── Auth wall: not signed in ──────────────────────────────────────────────
+  if (!currentUser) {
     return <ThemeProvider><AuthPage /></ThemeProvider>;
   }
 
-  // ── Auth wall ─────────────────────────────────────────────────────────────
-  // /auth is always public; everything else requires signed-in user
-  if (!currentUser || currentRoute === '/auth') {
-    return <ThemeProvider><AuthPage /></ThemeProvider>;
+  // ── Redirect signed-in user away from /auth pages ─────────────────────────
+  if (currentRoute === '/auth' || currentRoute.startsWith('/auth/')) {
+    window.location.hash = '#/';
+    return null;
   }
+
+  const isCustomer = userProfile?.role === 'CUSTOMER';
 
   // Render component based on route
   const renderPage = () => {
+    // Customer-only routes
+    if (currentRoute === '/portfolio') return <CustomerPortfolio />;
+
+    // For customer accounts, only home is allowed; redirect others back to home
+    if (isCustomer) {
+      return <HomeLanding />;
+    }
+
+    // Shop / staff / owner routes
     switch (currentRoute) {
       case '/':
         return <HomeLanding />;
@@ -100,7 +111,7 @@ function App() {
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates']);
+  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio']);
 
   return (
     <ThemeProvider>

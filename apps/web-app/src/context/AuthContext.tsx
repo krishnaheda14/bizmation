@@ -27,6 +27,9 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
+  signInWithPhoneNumber,
+  RecaptchaVerifier,
+  ConfirmationResult,
 } from 'firebase/auth';
 import {
   doc, setDoc, getDoc, serverTimestamp, updateDoc,
@@ -48,6 +51,7 @@ export interface UserProfile {
   aadhaarLast4: string;          // last 4 digits only (for KYC display)
   kycStatus: 'PENDING' | 'VERIFIED';
   role: 'CUSTOMER' | 'STAFF' | 'OWNER';
+  shopName?: string;             // for OWNER/STAFF accounts
   totalGoldPurchasedGrams: number;
   totalSilverPurchasedGrams: number;
   totalInvestedInr: number;
@@ -66,6 +70,8 @@ export interface SignUpData {
   dateOfBirth: string;
   panNumber: string;
   aadhaarLast4: string;
+  role?: 'CUSTOMER' | 'OWNER';
+  shopName?: string;
 }
 
 interface AuthContextType {
@@ -76,6 +82,8 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   sendOtp: (email: string) => Promise<void>;
   verifyOtp: () => Promise<{ success: boolean; email: string | null }>;
+  sendPhoneOtp: (phone: string, containerId: string) => Promise<void>;
+  verifyPhoneOtp: (otp: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -93,9 +101,11 @@ const ACTION_CODE_URL = `${window.location.origin}${window.location.pathname}#/a
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser]   = useState<User | null>(null);
-  const [userProfile, setUserProfile]   = useState<UserProfile | null>(null);
-  const [loadingAuth, setLoadingAuth]   = useState(true);
+  const [currentUser, setCurrentUser]         = useState<User | null>(null);
+  const [userProfile, setUserProfile]         = useState<UserProfile | null>(null);
+  const [loadingAuth, setLoadingAuth]         = useState(true);
+  const [confirmResult, setConfirmResult]     = useState<ConfirmationResult | null>(null);
+  const recaptchaRef                          = React.useRef<RecaptchaVerifier | null>(null);
 
   // ── Load Firestore profile ───────────────────────────────────────────────
   const loadProfile = useCallback(async (user: User) => {
@@ -148,7 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       panNumber:                  data.panNumber.toUpperCase(),
       aadhaarLast4:               data.aadhaarLast4,
       kycStatus:                  'PENDING',
-      role:                       'CUSTOMER',
+      role:                       data.role ?? 'CUSTOMER',
+      ...(data.shopName ? { shopName: data.shopName } : {}),
       totalGoldPurchasedGrams:    0,
       totalSilverPurchasedGrams:  0,
       totalInvestedInr:           0,
@@ -163,6 +174,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Sign In (email + password) ───────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
+  };
+
+  // ── Phone OTP ─────────────────────────────────────────────────────────────
+  const sendPhoneOtp = async (phone: string, containerId: string) => {
+    // Destroy any previous verifier
+    if (recaptchaRef.current) {
+      recaptchaRef.current.clear();
+      recaptchaRef.current = null;
+    }
+    const verifier = new RecaptchaVerifier(auth, containerId, { size: 'invisible' });
+    recaptchaRef.current = verifier;
+    const result = await signInWithPhoneNumber(auth, phone, verifier);
+    setConfirmResult(result);
+  };
+
+  const verifyPhoneOtp = async (otp: string) => {
+    if (!confirmResult) throw new Error('No OTP session found. Please request again.');
+    const cred = await confirmResult.confirm(otp);
+    const user = cred.user;
+    // Create a Firestore profile if this is a new user
+    const ref  = doc(db, 'users', user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      const profile: UserProfile = {
+        uid:                       user.uid,
+        name:                      user.displayName ?? '',
+        email:                     user.email ?? '',
+        phone:                     user.phoneNumber ?? '',
+        city: '', state: '', country: 'India', dateOfBirth: '',
+        panNumber: '', aadhaarLast4: '',
+        kycStatus:                 'PENDING',
+        role:                      'CUSTOMER',
+        totalGoldPurchasedGrams:   0,
+        totalSilverPurchasedGrams: 0,
+        totalInvestedInr:          0,
+        createdAt:                 serverTimestamp(),
+        updatedAt:                 serverTimestamp(),
+      };
+      await setDoc(ref, profile);
+    }
+    setConfirmResult(null);
   };
 
   // ── Send Email OTP (magic link) ──────────────────────────────────────────
@@ -212,7 +264,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{
       currentUser, userProfile, loadingAuth,
-      signUp, signIn, sendOtp, verifyOtp, signOut, refreshProfile,
+      signUp, signIn, sendOtp, verifyOtp, sendPhoneOtp, verifyPhoneOtp, signOut, refreshProfile,
     }}>
       {children}
     </AuthContext.Provider>

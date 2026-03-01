@@ -27,23 +27,15 @@ interface ModalState {
 
 interface BuyFormData {
   grams: string;
-  name: string;
-  email: string;
-  phone: string;
 }
 
 interface AutoPayFormData {
   amount: string;
-  name: string;
-  email: string;
-  phone: string;
 }
 
 interface SellFormData {
   grams: string;
   purity: string;
-  name: string;
-  phone: string;
   bank: string;
   account: string;
   ifsc: string;
@@ -53,16 +45,17 @@ interface SellFormData {
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
   const [rates, setRates] = useState<MetalRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
   const [error, setError] = useState('');
   const [modal, setModal] = useState<ModalState>({ type: null });
-  const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '', name: '', email: '', phone: '' });
-  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', name: '', email: '', phone: '' });
+  const [lockedRate, setLockedRate] = useState<number | null>(null);
+  const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
+  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500' });
   const [sellForm, setSellForm] = useState<SellFormData>({
-    grams: '', purity: '24', name: '', phone: '', bank: '', account: '', ifsc: '',
+    grams: '', purity: '24', bank: '', account: '', ifsc: '',
   });
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -87,48 +80,53 @@ export const HomeLanding: React.FC = () => {
 
   useEffect(() => {
     loadRates();
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(loadRates, 5 * 60 * 1000);
+    // Auto-refresh every 5 seconds
+    const interval = setInterval(loadRates, 5000);
     return () => clearInterval(interval);
   }, [loadRates]);
 
   // ── Buy Gold ──────────────────────────────────────────────────────────────
   const handleBuy = () => {
-    if (!buyForm.grams || !buyForm.name || !buyForm.phone) return;
-    if (!gold22) return;
-    const grams        = parseFloat(buyForm.grams);
-    const ratePerGram  = gold22.ratePerGram;
-    const totalAmount  = grams * ratePerGram;
+    if (!buyForm.grams) return;
+    const effectiveRate = lockedRate ?? gold22?.ratePerGram;
+    if (!effectiveRate) return;
+    const grams       = parseFloat(buyForm.grams);
+    const ratePerGram = effectiveRate;
+    const totalAmount = grams * ratePerGram;
+    const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custEmail   = userProfile?.email ?? currentUser?.email ?? '';
+    const custPhone   = userProfile?.phone ?? '';
     setPaying(true);
     buyGold({
       grams, ratePerGram,
-      customerName:  buyForm.name,
-      customerEmail: buyForm.email,
-      customerPhone: buyForm.phone,
+      customerName:  custName,
+      customerEmail: custEmail,
+      customerPhone: custPhone,
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
+        setLockedRate(null);
         setSuccessMsg(`✅ Gold purchased! Payment ID: ${id}`);
-        setBuyForm({ grams: '', name: '', email: '', phone: '' });
+        setBuyForm({ grams: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
 
-        // ── Write order to Firestore ──────────────────────────────────────
+        // ── Write order to Firestore ────────────────────────────────────
         try {
           await addDoc(collection(db, 'goldOnlineOrders'), {
-            userId:           currentUser?.uid ?? 'anonymous',
-            type:             'BUY',
-            metal:            'GOLD',
-            purity:           22,
+            userId:            currentUser?.uid ?? 'anonymous',
+            type:              'BUY',
+            metal:             'GOLD',
+            purity:            22,
             grams,
             ratePerGram,
-            totalAmountInr:   totalAmount,
+            totalAmountInr:    totalAmount,
             razorpayPaymentId: id,
-            status:           'SUCCESS',
-            customerName:     buyForm.name,
-            customerPhone:    buyForm.phone,
-            customerEmail:    buyForm.email,
-            createdAt:        serverTimestamp(),
-            updatedAt:        serverTimestamp(),
+            status:            'SUCCESS',
+            customerName:      custName,
+            customerPhone:     custPhone,
+            customerEmail:     custEmail,
+            createdAt:         serverTimestamp(),
+            updatedAt:         serverTimestamp(),
           });
           // Update aggregate counters on the user document
           if (currentUser) {
@@ -151,19 +149,22 @@ export const HomeLanding: React.FC = () => {
 
   // ── AutoPay ───────────────────────────────────────────────────────────────
   const handleAutoPay = () => {
-    if (!autoPayForm.amount || !autoPayForm.name || !autoPayForm.phone) return;
-    const planAmount = parseFloat(autoPayForm.amount);
+    if (!autoPayForm.amount) return;
+    const planAmount   = parseFloat(autoPayForm.amount);
+    const custName     = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custEmail    = userProfile?.email ?? currentUser?.email ?? '';
+    const custPhone    = userProfile?.phone ?? '';
     setPaying(true);
     setupGoldAutoPay({
       planAmount,
-      customerName:  autoPayForm.name,
-      customerEmail: autoPayForm.email,
-      customerPhone: autoPayForm.phone,
+      customerName:  custName,
+      customerEmail: custEmail,
+      customerPhone: custPhone,
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setSuccessMsg(`✅ AutoPay activated! ID: ${id}. Gold SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/month is set up.`);
-        setAutoPayForm({ amount: '500', name: '', email: '', phone: '' });
+        setAutoPayForm({ amount: '500' });
         setTimeout(() => setSuccessMsg(''), 10000);
 
         // ── Write subscription to Firestore ───────────────────────────────
@@ -175,9 +176,9 @@ export const HomeLanding: React.FC = () => {
             frequencyDays:          30,
             razorpaySubscriptionId: id,
             status:                 'ACTIVE',
-            customerName:           autoPayForm.name,
-            customerPhone:          autoPayForm.phone,
-            customerEmail:          autoPayForm.email,
+            customerName:           custName,
+            customerPhone:          custPhone,
+            customerEmail:          custEmail,
             createdAt:              serverTimestamp(),
             updatedAt:              serverTimestamp(),
           });
@@ -194,15 +195,17 @@ export const HomeLanding: React.FC = () => {
 
   // ── Sell Gold (form submit, no direct payout from frontend) ──────────────
   const handleSell = async () => {
-    if (!sellForm.grams || !sellForm.name || !sellForm.phone) return;
+    if (!sellForm.grams) return;
     const grams       = parseFloat(sellForm.grams);
     const purityNum   = Number(sellForm.purity);
     const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
     const totalAmount = sellRate ? grams * sellRate.ratePerGram * 0.95 : 0;
+    const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custPhone   = userProfile?.phone ?? '';
 
     setModal({ type: null });
-    setSuccessMsg(`✅ Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${sellForm.phone} within 24 hours.`);
-    setSellForm({ grams: '', purity: '24', name: '', phone: '', bank: '', account: '', ifsc: '' });
+    setSuccessMsg(`✅ Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${custPhone || 'your registered number'} within 24 hours.`);
+    setSellForm({ grams: '', purity: '24', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
 
     // ── Write sell request to Firestore ──────────────────────────────────
@@ -216,8 +219,8 @@ export const HomeLanding: React.FC = () => {
         ratePerGram:    sellRate?.ratePerGram ?? 0,
         totalAmountInr: totalAmount,
         status:         'PENDING',
-        customerName:   sellForm.name,
-        customerPhone:  sellForm.phone,
+        customerName:   custName,
+        customerPhone:  custPhone,
         bankName:       sellForm.bank,
         accountNumber:  sellForm.account,
         ifscCode:       sellForm.ifsc,
@@ -227,8 +230,9 @@ export const HomeLanding: React.FC = () => {
     } catch { /* non-blocking */ }
   };
 
-  const buyTotal = gold22 && buyForm.grams
-    ? (parseFloat(buyForm.grams) * gold22.ratePerGram).toFixed(2)
+  const activeRate = lockedRate ?? gold22?.ratePerGram ?? 0;
+  const buyTotal = buyForm.grams && activeRate
+    ? (parseFloat(buyForm.grams) * activeRate).toFixed(2)
     : null;
 
   const sellEst = sellForm.grams && rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))
@@ -292,7 +296,7 @@ export const HomeLanding: React.FC = () => {
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => setModal({ type: 'buy' })}
+                  onClick={() => { if (gold22) setLockedRate(gold22.ratePerGram); setModal({ type: 'buy' }); }}
                   className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
                 >
                   <ShoppingCart size={18} />
@@ -348,28 +352,16 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              {/* Gold 24K + Silver */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/70 dark:bg-gray-900 border border-amber-200 dark:border-yellow-800/40 rounded-xl p-4 shadow-md">
-                  <p className="text-amber-700 dark:text-yellow-500 text-xs font-bold uppercase tracking-wide mb-2">Gold 24K / 10g</p>
-                  {loading ? (
-                    <Loader2 size={16} className="animate-spin text-amber-500" />
-                  ) : (
-                    <p className="text-2xl font-black text-amber-900 dark:text-yellow-300">
-                      ₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-                    </p>
-                  )}
-                </div>
-                <div className="bg-white/70 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
-                  <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-2">Silver 24K / 1kg</p>
-                  {loading ? (
-                    <Loader2 size={16} className="animate-spin text-gray-400" />
-                  ) : (
-                    <p className="text-2xl font-black text-gray-800 dark:text-gray-200">
-                      ₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-                    </p>
-                  )}
-                </div>
+              {/* Silver */}
+              <div className="bg-white/70 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
+                <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-2">Silver 24K / 1kg</p>
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-black text-gray-800 dark:text-gray-200">
+                    ₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+                  </p>
+                )}
               </div>
 
               {/* Last updated + refresh */}
@@ -570,7 +562,7 @@ export const HomeLanding: React.FC = () => {
             </table>
           </div>
           <p className="mt-4 text-xs text-amber-600/60 dark:text-gray-500">
-            Prices include 9% Indian import duty. Source: Swissquote International Markets. Updated every 5 minutes.
+            Prices include 9% Indian import duty. Source: Swissquote International Markets. Updated every 5 seconds.
           </p>
         </div>
       </section>
@@ -664,43 +656,28 @@ export const HomeLanding: React.FC = () => {
               />
             </div>
 
-            {buyTotal && gold22 && (
+            {buyTotal && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm">
                 <div className="flex justify-between text-amber-800 dark:text-amber-300">
-                  <span>{buyForm.grams}g × ₹{gold22.ratePerGram.toFixed(2)}/g</span>
+                  <span>{buyForm.grams}g × ₹{activeRate.toFixed(2)}/g {lockedRate ? <span className="text-xs text-green-600 dark:text-green-400 ml-1">(price locked)</span> : null}</span>
                   <span className="font-black text-lg text-amber-900 dark:text-yellow-300">₹{Number(buyTotal).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             )}
 
-            <div>
-              <label className="fieldLabel"><User size={13} className="inline mr-1" />Full Name</label>
-              <input type="text" placeholder="Your name"
-                value={buyForm.name}
-                onChange={(e) => setBuyForm((f) => ({ ...f, name: e.target.value }))}
-                className="fieldInput"
-              />
-            </div>
-            <div>
-              <label className="fieldLabel"><Mail size={13} className="inline mr-1" />Email</label>
-              <input type="email" placeholder="you@email.com"
-                value={buyForm.email}
-                onChange={(e) => setBuyForm((f) => ({ ...f, email: e.target.value }))}
-                className="fieldInput"
-              />
-            </div>
-            <div>
-              <label className="fieldLabel"><Phone size={13} className="inline mr-1" />Phone</label>
-              <input type="tel" placeholder="10-digit mobile"
-                value={buyForm.phone}
-                onChange={(e) => setBuyForm((f) => ({ ...f, phone: e.target.value }))}
-                className="fieldInput"
-              />
-            </div>
+            {userProfile && (
+              <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm">
+                <User size={16} className="text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-900 dark:text-white">{userProfile.name}</p>
+                  {userProfile.phone && <p className="text-xs text-amber-600 dark:text-amber-400">{userProfile.phone}</p>}
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleBuy}
-              disabled={paying || !buyForm.grams || !buyForm.name || !buyForm.phone}
+              disabled={paying || !buyForm.grams}
               className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
@@ -738,16 +715,15 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
-            <div>
-              <label className="fieldLabel"><User size={13} className="inline mr-1" />Name</label>
-              <input type="text" placeholder="Your name" value={sellForm.name}
-                onChange={(e) => setSellForm((f) => ({ ...f, name: e.target.value }))} className="fieldInput" />
-            </div>
-            <div>
-              <label className="fieldLabel"><Phone size={13} className="inline mr-1" />Phone</label>
-              <input type="tel" placeholder="Contact number" value={sellForm.phone}
-                onChange={(e) => setSellForm((f) => ({ ...f, phone: e.target.value }))} className="fieldInput" />
-            </div>
+            {userProfile && (
+              <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm">
+                <User size={16} className="text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-900 dark:text-white">{userProfile.name}</p>
+                  {userProfile.phone && <p className="text-xs text-amber-600 dark:text-amber-400">{userProfile.phone}</p>}
+                </div>
+              </div>
+            )}
             <div>
               <label className="fieldLabel">Bank Name</label>
               <input type="text" placeholder="e.g. State Bank of India" value={sellForm.bank}
@@ -765,7 +741,7 @@ export const HomeLanding: React.FC = () => {
             </div>
             <button
               onClick={handleSell}
-              disabled={!sellForm.grams || !sellForm.name || !sellForm.phone}
+              disabled={!sellForm.grams}
               className="w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               <ArrowUpRight size={18} />
@@ -808,25 +784,19 @@ export const HomeLanding: React.FC = () => {
               )}
             </div>
 
-            <div>
-              <label className="fieldLabel"><User size={13} className="inline mr-1" />Full Name</label>
-              <input type="text" placeholder="Your name" value={autoPayForm.name}
-                onChange={(e) => setAutoPayForm((f) => ({ ...f, name: e.target.value }))} className="fieldInput" />
-            </div>
-            <div>
-              <label className="fieldLabel"><Mail size={13} className="inline mr-1" />Email</label>
-              <input type="email" placeholder="you@email.com" value={autoPayForm.email}
-                onChange={(e) => setAutoPayForm((f) => ({ ...f, email: e.target.value }))} className="fieldInput" />
-            </div>
-            <div>
-              <label className="fieldLabel"><Phone size={13} className="inline mr-1" />Phone</label>
-              <input type="tel" placeholder="10-digit mobile" value={autoPayForm.phone}
-                onChange={(e) => setAutoPayForm((f) => ({ ...f, phone: e.target.value }))} className="fieldInput" />
-            </div>
+            {userProfile && (
+              <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm mb-1">
+                <User size={16} className="text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-900 dark:text-white">{userProfile.name}</p>
+                  {userProfile.email && <p className="text-xs text-amber-600 dark:text-amber-400">{userProfile.email}</p>}
+                </div>
+              </div>
+            )}
 
             <button
               onClick={handleAutoPay}
-              disabled={paying || !autoPayForm.amount || !autoPayForm.name || !autoPayForm.phone}
+              disabled={paying || !autoPayForm.amount}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}
