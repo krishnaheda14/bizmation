@@ -7,6 +7,7 @@ import AuthPage from './pages/AuthPage';
 import { Layout } from './components/Layout';
 import { HomeLanding } from './pages/HomeLanding';
 import { CustomerPortfolio } from './pages/CustomerPortfolio';
+import { ShopCustomers } from './pages/ShopCustomers';
 import { Dashboard } from './pages/Dashboard';
 import { Billing } from './pages/BillingEnhanced';
 import { Inventory } from './pages/Inventory';
@@ -93,6 +94,8 @@ function App() {
         return <Schemes />;
       case '/parties':
         return <Parties />;
+      case '/shop-customers':
+        return <ShopCustomers />;
       case '/suppliers':
         return <Suppliers />;
       case '/purchase-orders':

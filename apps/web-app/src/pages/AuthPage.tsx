@@ -133,10 +133,24 @@ const AuthPage: React.FC = () => {
     setLoading(true);
     try {
       await signUp(form);
-      setInfo('Account created! Check your email for a verification link, then sign in.');
-      setTab('login'); setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
+      // After signup, require phone verification. Show post-signup verification UI.
+      setPostSignup({ phone: form.phone, email: form.email });
+      setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
     finally           { setLoading(false); }
+  };
+
+  // Post-signup verification state
+  const [postSignup, setPostSignup] = useState<{ phone: string; email: string } | null>(null);
+  const handleSendPostSignupOtp = async () => {
+    clearMsgs(); setLoading(true);
+    try {
+      if (!postSignup) throw new Error('No phone to verify');
+      await sendPhoneOtp(postSignup.phone, 'recaptcha-container-postsignup');
+      setPhoneSent(true);
+      setInfo('OTP sent to ' + postSignup.phone);
+    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -308,7 +322,7 @@ const AuthPage: React.FC = () => {
           )}
 
           {/* SIGN UP */}
-          {tab === 'signup' && (
+          {tab === 'signup' && !postSignup && (
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">
                 {signupStep === 1 ? 'Create your account' : 'Identity Details'}
@@ -381,9 +395,9 @@ const AuthPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {form.role === 'OWNER' && (
+                    {(form.role === 'OWNER' || form.role === 'CUSTOMER') && (
                       <GoldInput label="Shop / Business Name" value={form.shopName ?? ''}
-                        onChange={setF('shopName')} required={form.role === 'OWNER'} placeholder="e.g. Lakshmi Gold Palace" />
+                        onChange={setF('shopName')} required placeholder="e.g. Lakshmi Gold Palace" />
                     )}
 
                     <GoldButton loading={false}>Continue</GoldButton>
@@ -414,6 +428,28 @@ const AuthPage: React.FC = () => {
                   </>
                 )}
               </form>
+            </div>
+          )}
+
+          {/* Post-signup: prompt phone verification */}
+          {postSignup && (
+            <div>
+              <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">Verify your phone</h2>
+              <p className="text-sm text-amber-600 mb-4">We sent an email verification. Before you can sign in, verify your phone to activate your account.</p>
+              <div className="mb-4 text-sm text-amber-700">Phone: <strong>{postSignup.phone}</strong></div>
+              <div id="recaptcha-container-postsignup" />
+              <div className="flex gap-3">
+                <button type="button" onClick={handleSendPostSignupOtp}
+                  className="flex-1 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-semibold">Send OTP</button>
+                <button type="button" onClick={() => setPostSignup(null)}
+                  className="flex-1 py-3 rounded-2xl bg-white border border-amber-200 text-amber-700">Cancel</button>
+              </div>
+              {phoneSent && (
+                <form onSubmit={handleVerifyPhoneOtp} className="mt-4 space-y-3">
+                  <GoldInput label="Enter OTP" type="text" value={phoneCode} onChange={e => setPhoneCode(e.target.value)} required placeholder="6-digit OTP" />
+                  <GoldButton loading={loading}>Verify</GoldButton>
+                </form>
+              )}
             </div>
           )}
         </div>

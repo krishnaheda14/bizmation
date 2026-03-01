@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users: owners may read customers from their shop; users may read/write their own doc
+    match /users/{uid} {
+      allow read: if request.auth != null && (
+        // owner/staff can read customers in same shop
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
+          && resource.data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName)
+        // or the user reads their own doc
+        || request.auth.uid == uid
+      );
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Orders and subscriptions: creators can create; owners can read orders for customers in their shop
+    match /goldOnlineOrders/{id} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid // owner of order
+        || (
+          // allow shop owner/staff to read orders for users in their shop
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
+          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName
+        )
+      );
+    }
+
+    match /autoPaySubscriptions/{id} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid
+        || (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
+          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName
+        )
+      );
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
