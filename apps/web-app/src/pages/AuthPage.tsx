@@ -146,14 +146,14 @@ const AuthPage: React.FC = () => {
               background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 50%, #d97706 100%)',
               boxShadow: '0 8px 32px rgba(245,158,11,0.4), inset 0 1px 0 rgba(255,255,255,0.4)',
             }}>
-            <span className="text-4xl select-none">ðŸ’Ž</span>
+            <img src="/logo.png" alt="Bizmation" className="w-10 h-10 object-contain" />
           </div>
         </div>
         <h1 className="font-display text-4xl font-semibold text-amber-900 tracking-wide leading-none">
           Bizmation Gold
         </h1>
         <p className="font-display text-base italic text-amber-600 mt-1 tracking-widest">
-          Trusted Since 2024 Â· à¤œà¤¯à¤ªà¥à¤°
+          Trusted Since 2024 · Jaipur
         </p>
       </div>
 
@@ -210,7 +210,7 @@ const AuthPage: React.FC = () => {
                       background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
                       color: '#451a03',
                     } : { color: '#92400e' }}>
-                    {m === 'password' ? 'ðŸ” Password' : 'âœ‰ï¸ Magic Link'}
+                      {m === 'password' ? 'Password' : 'Magic Link'}
                   </button>
                 ))}
               </div>
@@ -227,7 +227,7 @@ const AuthPage: React.FC = () => {
                       {showPass ? 'Hide' : 'Show'}
                     </button>
                   </div>
-                  <GoldButton loading={loading}>Sign In âœ¦</GoldButton>
+                  <GoldButton loading={loading}>Sign In</GoldButton>
                   <p className="text-center text-xs text-amber-500 mt-1">
                     New here?{' '}
                     <button type="button" onClick={() => setTab('signup')}
@@ -244,11 +244,11 @@ const AuthPage: React.FC = () => {
                   </div>
                   <GoldInput label="Email Address" type="email" value={otpEmail}
                     onChange={e => setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
-                  <GoldButton loading={loading}>Send Magic Link âœ¦</GoldButton>
+                    <GoldButton loading={loading}>Send Magic Link</GoldButton>
                 </form>
               ) : (
                 <div className="text-center py-6 space-y-4">
-                  <div className="text-6xl animate-float">ðŸ“¬</div>
+                  <div className="text-6xl animate-float">📧</div>
                   <h3 className="font-display text-xl font-semibold text-amber-900">Check your inbox</h3>
                   <p className="text-sm text-amber-600 leading-relaxed">
                     We sent a magic link to<br />
@@ -315,7 +315,7 @@ const AuthPage: React.FC = () => {
                       value={confirmPass} onChange={e => setConfirmPass(e.target.value)} required placeholder="Repeat password" />
                     <GoldInput label="Mobile Number" type="tel" value={form.phone}
                       onChange={setF('phone')} required placeholder="+91 98765 43210" />
-                    <GoldButton loading={false}>Continue â€º</GoldButton>
+                    <GoldButton loading={false}>Continue ›</GoldButton>
                   </>
                 ) : (
                   <>
@@ -336,9 +336,9 @@ const AuthPage: React.FC = () => {
                       <button type="button" onClick={() => setSignupStep(1)}
                         className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all"
                         style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.4)', color: '#92400e' }}>
-                        â€¹ Back
+                        ‹ Back
                       </button>
-                      <GoldButton loading={loading} className="flex-1">Create Account âœ¦</GoldButton>
+                      <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>
                     </div>
                   </>
                 )}
@@ -349,7 +349,7 @@ const AuthPage: React.FC = () => {
       </div>
 
       <p className="relative z-10 mt-7 text-xs text-amber-500/70 text-center">
-        ðŸ”’ Secured by Firebase Auth Â· TLS 1.3 Â· 256-bit encrypted
+        Secured by Firebase Auth · TLS 1.3 · 256-bit encrypted
       </p>
     </div>
   );
