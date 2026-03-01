@@ -158,14 +158,11 @@ const AuthPage: React.FC = () => {
       </div>
 
       {/* Auth card */}
-      <div className="relative z-10 w-full max-w-md rounded-3xl overflow-hidden"
-        style={{
-          background: 'rgba(255,251,240,0.95)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(251,191,36,0.3)',
-          boxShadow: '0 25px 60px rgba(180,120,0,0.12), 0 4px 16px rgba(180,120,0,0.08)',
-        }}>
-
+      <div className="relative z-10 w-full max-w-md rounded-3xl overflow-hidden">
+        {/* Use project logo (place your transparent logo at apps/web-app/public/logo.png) */}
+        <div className="p-6 flex justify-center">
+          <img src="/logo.png" alt="Bizmation" className="w-20 h-20 object-contain" />
+        </div>
         {/* Tab bar */}
         <div className="flex">
           {(['login', 'signup'] as Tab[]).map(t => (
