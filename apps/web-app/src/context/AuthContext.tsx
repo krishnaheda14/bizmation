@@ -52,6 +52,7 @@ export interface UserProfile {
   kycStatus: 'PENDING' | 'VERIFIED';
   role: 'CUSTOMER' | 'STAFF' | 'OWNER';
   shopName?: string;             // for OWNER/STAFF accounts
+  phoneVerified?: boolean;
   totalGoldPurchasedGrams: number;
   totalSilverPurchasedGrams: number;
   totalInvestedInr: number;
@@ -160,6 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       kycStatus:                  'PENDING',
       role:                       data.role ?? 'CUSTOMER',
       ...(data.shopName ? { shopName: data.shopName } : {}),
+      phoneVerified:              false,
       totalGoldPurchasedGrams:    0,
       totalSilverPurchasedGrams:  0,
       totalInvestedInr:           0,
@@ -173,7 +175,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Sign In (email + password) ───────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const user = cred.user;
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      const profile = snap.exists() ? (snap.data() as any) : null;
+      if (profile && profile.phoneVerified !== true) {
+        // Force sign-out if phone not verified
+        await firebaseSignOut(auth);
+        throw new Error('Phone number not verified. Please verify your phone before signing in.');
+      }
+    } catch (e) {
+      // rethrow to be handled by UI
+      throw e;
+    }
   };
 
   // ── Phone OTP ─────────────────────────────────────────────────────────────
@@ -206,6 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         panNumber: '', aadhaarLast4: '',
         kycStatus:                 'PENDING',
         role:                      'CUSTOMER',
+        phoneVerified:             true,
         totalGoldPurchasedGrams:   0,
         totalSilverPurchasedGrams: 0,
         totalInvestedInr:          0,
@@ -213,6 +229,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt:                 serverTimestamp(),
       };
       await setDoc(ref, profile);
+    }
+    else {
+      // mark existing profile as phoneVerified
+      try {
+        await updateDoc(ref, { phone: user.phoneNumber ?? '', phoneVerified: true, updatedAt: serverTimestamp() });
+      } catch (err) {
+        // ignore
+      }
     }
     setConfirmResult(null);
   };
@@ -240,8 +264,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (!email) return { success: false, email: null };
 
-    await signInWithEmailLink(auth, email, window.location.href);
+    const cred = await signInWithEmailLink(auth, email, window.location.href) as any;
     localStorage.removeItem(OTP_EMAIL_KEY);
+    const user = cred.user ?? auth.currentUser;
+    // After sign-in, ensure phoneVerified is true on the user's profile
+    try {
+      if (user) {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        const profile = snap.exists() ? (snap.data() as any) : null;
+        if (profile && profile.phoneVerified !== true) {
+          // Sign out and signal failure so UI can prompt phone verification
+          await firebaseSignOut(auth);
+          throw new Error('Phone number not verified. Please verify your phone before signing in.');
+        }
+      }
+    } catch (e) {
+      throw e;
+    }
     return { success: true, email };
   };
 
