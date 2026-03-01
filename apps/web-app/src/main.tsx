@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthPage from './pages/AuthPage';
 import { Layout } from './components/Layout';
 import { HomeLanding } from './pages/HomeLanding';
 import { Dashboard } from './pages/Dashboard';
@@ -20,11 +22,13 @@ import { StockMovement } from './pages/StockMovement';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
+  const { currentUser, loadingAuth }     = useAuth();
 
   // Simple hash-based routing
   useEffect(() => {
     const handleHashChange = () => {
-      setCurrentRoute(window.location.hash.slice(1) || '/');
+      const hash = window.location.hash.slice(1) || '/';
+      setCurrentRoute(hash);
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -32,6 +36,32 @@ function App() {
 
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  // ── Loading spinner while Firebase resolves auth ──────────────────────────
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 flex items-center justify-center shadow-lg animate-pulse">
+            <span className="text-2xl">💰</span>
+          </div>
+          <p className="text-amber-700 font-medium text-sm">Loading Bizmation Gold…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Email-link OTP verification page (public) ─────────────────────────────
+  if (currentRoute === '/auth/verify' || currentRoute.startsWith('/auth/verify')) {
+    // AuthPage handles the verification logic internally
+    return <ThemeProvider><AuthPage /></ThemeProvider>;
+  }
+
+  // ── Auth wall ─────────────────────────────────────────────────────────────
+  // /auth is always public; everything else requires signed-in user
+  if (!currentUser || currentRoute === '/auth') {
+    return <ThemeProvider><AuthPage /></ThemeProvider>;
+  }
 
   // Render component based on route
   const renderPage = () => {
@@ -77,7 +107,7 @@ function App() {
       <Layout>
         {fullWidthRoutes.has(currentRoute)
           ? renderPage()
-          : <div className="p-4 lg:p-8">{renderPage()}</div>}
+          : <div className="p-4 lg:p-8 bg-stone-50 dark:bg-gray-900 min-h-screen">{renderPage()}</div>}
       </Layout>
     </ThemeProvider>
   );
@@ -85,6 +115,8 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </React.StrictMode>,
 );

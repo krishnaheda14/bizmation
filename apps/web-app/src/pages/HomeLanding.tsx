@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
+import { useAuth } from '../context/AuthContext';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -50,6 +53,7 @@ interface SellFormData {
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
+  const { currentUser } = useAuth();
   const [rates, setRates] = useState<MetalRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
@@ -92,19 +96,49 @@ export const HomeLanding: React.FC = () => {
   const handleBuy = () => {
     if (!buyForm.grams || !buyForm.name || !buyForm.phone) return;
     if (!gold22) return;
+    const grams        = parseFloat(buyForm.grams);
+    const ratePerGram  = gold22.ratePerGram;
+    const totalAmount  = grams * ratePerGram;
     setPaying(true);
     buyGold({
-      grams: parseFloat(buyForm.grams),
-      ratePerGram: gold22.ratePerGram,
-      customerName: buyForm.name,
+      grams, ratePerGram,
+      customerName:  buyForm.name,
       customerEmail: buyForm.email,
       customerPhone: buyForm.phone,
-      onSuccess: (id) => {
+      onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setSuccessMsg(`✅ Gold purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '', name: '', email: '', phone: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
+
+        // ── Write order to Firestore ──────────────────────────────────────
+        try {
+          await addDoc(collection(db, 'goldOnlineOrders'), {
+            userId:           currentUser?.uid ?? 'anonymous',
+            type:             'BUY',
+            metal:            'GOLD',
+            purity:           22,
+            grams,
+            ratePerGram,
+            totalAmountInr:   totalAmount,
+            razorpayPaymentId: id,
+            status:           'SUCCESS',
+            customerName:     buyForm.name,
+            customerPhone:    buyForm.phone,
+            customerEmail:    buyForm.email,
+            createdAt:        serverTimestamp(),
+            updatedAt:        serverTimestamp(),
+          });
+          // Update aggregate counters on the user document
+          if (currentUser) {
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              totalGoldPurchasedGrams: increment(grams),
+              totalInvestedInr:        increment(totalAmount),
+              updatedAt:               serverTimestamp(),
+            });
+          }
+        } catch { /* non-blocking */ }
       },
       onFailure: (err) => {
         setPaying(false);
@@ -118,18 +152,36 @@ export const HomeLanding: React.FC = () => {
   // ── AutoPay ───────────────────────────────────────────────────────────────
   const handleAutoPay = () => {
     if (!autoPayForm.amount || !autoPayForm.name || !autoPayForm.phone) return;
+    const planAmount = parseFloat(autoPayForm.amount);
     setPaying(true);
     setupGoldAutoPay({
-      planAmount: parseFloat(autoPayForm.amount),
-      customerName: autoPayForm.name,
+      planAmount,
+      customerName:  autoPayForm.name,
       customerEmail: autoPayForm.email,
       customerPhone: autoPayForm.phone,
-      onSuccess: (id) => {
+      onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setSuccessMsg(`✅ AutoPay activated! ID: ${id}. Gold SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/month is set up.`);
         setAutoPayForm({ amount: '500', name: '', email: '', phone: '' });
         setTimeout(() => setSuccessMsg(''), 10000);
+
+        // ── Write subscription to Firestore ───────────────────────────────
+        try {
+          await addDoc(collection(db, 'autoPaySubscriptions'), {
+            userId:                 currentUser?.uid ?? 'anonymous',
+            metal:                  'GOLD',
+            amountInr:              planAmount,
+            frequencyDays:          30,
+            razorpaySubscriptionId: id,
+            status:                 'ACTIVE',
+            customerName:           autoPayForm.name,
+            customerPhone:          autoPayForm.phone,
+            customerEmail:          autoPayForm.email,
+            createdAt:              serverTimestamp(),
+            updatedAt:              serverTimestamp(),
+          });
+        } catch { /* non-blocking */ }
       },
       onFailure: (err) => {
         setPaying(false);
@@ -141,12 +193,38 @@ export const HomeLanding: React.FC = () => {
   };
 
   // ── Sell Gold (form submit, no direct payout from frontend) ──────────────
-  const handleSell = () => {
+  const handleSell = async () => {
     if (!sellForm.grams || !sellForm.name || !sellForm.phone) return;
+    const grams       = parseFloat(sellForm.grams);
+    const purityNum   = Number(sellForm.purity);
+    const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
+    const totalAmount = sellRate ? grams * sellRate.ratePerGram * 0.95 : 0;
+
     setModal({ type: null });
     setSuccessMsg(`✅ Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${sellForm.phone} within 24 hours.`);
     setSellForm({ grams: '', purity: '24', name: '', phone: '', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
+
+    // ── Write sell request to Firestore ──────────────────────────────────
+    try {
+      await addDoc(collection(db, 'goldOnlineOrders'), {
+        userId:         currentUser?.uid ?? 'anonymous',
+        type:           'SELL',
+        metal:          'GOLD',
+        purity:         purityNum,
+        grams,
+        ratePerGram:    sellRate?.ratePerGram ?? 0,
+        totalAmountInr: totalAmount,
+        status:         'PENDING',
+        customerName:   sellForm.name,
+        customerPhone:  sellForm.phone,
+        bankName:       sellForm.bank,
+        accountNumber:  sellForm.account,
+        ifscCode:       sellForm.ifsc,
+        createdAt:      serverTimestamp(),
+        updatedAt:      serverTimestamp(),
+      });
+    } catch { /* non-blocking */ }
   };
 
   const buyTotal = gold22 && buyForm.grams
@@ -163,7 +241,7 @@ export const HomeLanding: React.FC = () => {
   // Render
   // ────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-amber-50 dark:bg-black text-gray-900 dark:text-white">
+    <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
 
       {/* ── Success Toast ────────────────────────────────────────────────── */}
       {successMsg && (
@@ -188,7 +266,7 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           HERO
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-amber-100 via-yellow-50 to-amber-200 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-200 dark:border-yellow-900/30">
+      <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30">
         {/* Decorative circles */}
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-yellow-300/30 dark:bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-300/30 dark:bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -229,7 +307,7 @@ export const HomeLanding: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setModal({ type: 'autopay' })}
-                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-yellow-600 to-amber-700 hover:from-yellow-700 hover:to-amber-800 text-white font-bold rounded-xl shadow-lg hover:shadow-amber-600/30 transition-all hover:-translate-y-0.5 text-base"
+                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
                 >
                   <Repeat size={18} />
                   Setup AutoPay
@@ -316,9 +394,9 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           FEATURES STRIP
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="bg-amber-900 dark:bg-yellow-500 py-4">
+      <section className="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-400 dark:bg-yellow-500 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-amber-100 dark:text-black text-sm font-semibold">
+          <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-amber-950 dark:text-black text-sm font-semibold">
             {['✓ 100% Pure Gold', '✓ Live Market Prices', '✓ Secure Payments via Razorpay', '✓ AutoPay / Monthly SIP', '✓ Sell Anytime'].map((f) => (
               <span key={f}>{f}</span>
             ))}
@@ -331,7 +409,7 @@ export const HomeLanding: React.FC = () => {
       ════════════════════════════════════════════════════════════════════ */}
       <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-black text-amber-900 dark:text-white mb-3">
+          <h2 className="text-3xl sm:text-4xl font-black text-stone-800 dark:text-white mb-3">
             How It <span className="text-amber-500 dark:text-yellow-400">Works</span>
           </h2>
           <p className="text-amber-700/80 dark:text-gray-400 max-w-lg mx-auto">
@@ -402,7 +480,7 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           LIVE RATES TABLE
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="py-12 bg-amber-50/50 dark:bg-gray-950 border-y border-amber-100 dark:border-yellow-900/20">
+      <section className="py-12 bg-white/70 dark:bg-gray-950 border-y border-amber-100/80 dark:border-yellow-900/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-black text-amber-900 dark:text-white flex items-center gap-2">
@@ -525,19 +603,19 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           AUTOPAY BANNER
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-amber-900 via-yellow-800 to-amber-900 dark:from-yellow-600 dark:via-amber-500 dark:to-yellow-600 py-14 px-4 sm:px-6 lg:px-8">
+      <section className="relative overflow-hidden bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 dark:from-yellow-600 dark:via-amber-500 dark:to-yellow-600 py-14 px-4 sm:px-6 lg:px-8">
         <div className="absolute inset-0 opacity-10 dark:opacity-5"
           style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '30px 30px' }}
         />
         <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-white/10 text-yellow-200 dark:text-black text-xs font-bold px-3 py-1.5 rounded-full mb-4">
+          <div className="inline-flex items-center gap-2 bg-white/20 text-amber-950 dark:text-black text-xs font-bold px-3 py-1.5 rounded-full mb-4">
             <Repeat size={13} />
             GOLD AUTOPAY / SIP
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black text-white dark:text-black mb-4">
+          <h2 className="text-3xl sm:text-4xl font-black text-amber-950 dark:text-black mb-4">
             Invest in Gold Every Month, Automatically
           </h2>
-          <p className="text-yellow-100 dark:text-black/80 text-lg mb-8 max-w-xl mx-auto">
+          <p className="text-amber-900 dark:text-black/80 text-lg mb-8 max-w-xl mx-auto">
             Starting from just ₹500/month. Build your gold portfolio systematically with AutoPay — your digital gold SIP.
           </p>
           <div className="flex flex-wrap justify-center gap-3 mb-8">
@@ -548,7 +626,7 @@ export const HomeLanding: React.FC = () => {
                   setAutoPayForm((f) => ({ ...f, amount: amt.replace(/[₹,]/g, '') }));
                   setModal({ type: 'autopay' });
                 }}
-                className="px-6 py-2.5 bg-white/20 dark:bg-black/20 hover:bg-white/30 dark:hover:bg-black/30 text-white dark:text-black font-bold rounded-xl border border-white/30 dark:border-black/30 transition-colors"
+                className="px-6 py-2.5 bg-white/30 dark:bg-black/20 hover:bg-white/50 dark:hover:bg-black/30 text-amber-950 dark:text-black font-bold rounded-xl border border-white/50 dark:border-black/30 transition-colors"
               >
                 {amt}/mo
               </button>
@@ -556,7 +634,7 @@ export const HomeLanding: React.FC = () => {
           </div>
           <button
             onClick={() => setModal({ type: 'autopay' })}
-            className="inline-flex items-center gap-2 px-8 py-4 bg-white dark:bg-black text-amber-800 dark:text-yellow-400 font-black rounded-xl shadow-2xl hover:bg-amber-50 dark:hover:bg-gray-900 transition-all hover:-translate-y-1 text-base"
+            className="inline-flex items-center gap-2 px-8 py-4 bg-white dark:bg-black text-amber-900 dark:text-yellow-400 font-black rounded-xl shadow-xl shadow-amber-200/40 hover:bg-amber-50 dark:hover:bg-gray-900 transition-all hover:-translate-y-1 text-base"
           >
             <Repeat size={20} />
             Setup AutoPay Now
@@ -749,7 +827,7 @@ export const HomeLanding: React.FC = () => {
             <button
               onClick={handleAutoPay}
               disabled={paying || !autoPayForm.amount || !autoPayForm.name || !autoPayForm.phone}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-700 hover:to-yellow-700 disabled:from-gray-300 disabled:to-gray-400 text-white dark:text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+              className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}
               {paying ? 'Setting up...' : `Activate ₹${Number(autoPayForm.amount || 0).toLocaleString('en-IN')}/month AutoPay`}
