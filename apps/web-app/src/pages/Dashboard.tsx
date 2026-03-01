@@ -41,8 +41,9 @@ export const Dashboard: React.FC = () => {
   const fetchGoldRate = async () => {
     try {
       const rates = await fetchLiveMetalRates();
-      const gold22 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 22);
-      if (gold22) setGoldRate(gold22.ratePerGram);
+        const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
+        if (gold24) setGoldRate(gold24.ratePerGram);
+        if (gold24) setGoldRate(gold24.ratePerGram);
     } catch (error) {
       console.error('Failed to fetch gold rate:', error);
     } finally {

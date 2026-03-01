@@ -40,14 +40,45 @@ export const CustomerPortfolio: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const q = query(
+      // Try multiple keys because backend/orders may store different identifiers
+      const allResults: Record<string, GoldOrder> = {};
+
+      // 1) Query by userId
+      const q1 = query(
         collection(db, 'goldOnlineOrders'),
         where('userId', '==', currentUser.uid),
-        orderBy('createdAt', 'desc'),
       );
-      const snap = await getDocs(q);
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as GoldOrder));
-      setOrders(data);
+      const snap1 = await getDocs(q1);
+      snap1.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
+
+      // 2) Query by email (some orders may store customerEmail)
+      if (currentUser.email) {
+        const q2 = query(
+          collection(db, 'goldOnlineOrders'),
+          where('customerEmail', '==', currentUser.email),
+        );
+        const snap2 = await getDocs(q2);
+        snap2.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
+      }
+
+      // 3) Query by phone (if profile has phone)
+      const phone = userProfile?.phone ?? '';
+      if (phone) {
+        const q3 = query(
+          collection(db, 'goldOnlineOrders'),
+          where('customerPhone', '==', phone),
+        );
+        const snap3 = await getDocs(q3);
+        snap3.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
+      }
+
+      // Convert to array and sort by createdAt descending (serverTimestamp may be a Firestore Timestamp)
+      const combined = Object.values(allResults).sort((a, b) => {
+        const at = (a.createdAt && (a.createdAt.seconds ?? a.createdAt.toMillis?.())) || 0;
+        const bt = (b.createdAt && (b.createdAt.seconds ?? b.createdAt.toMillis?.())) || 0;
+        return bt - at;
+      });
+      setOrders(combined);
     } catch (e: any) {
       setError('Could not load orders. Please try again.');
     } finally {
@@ -93,7 +124,7 @@ export const CustomerPortfolio: React.FC = () => {
             {
               label: 'Gold Held',
               value: `${netGrams.toFixed(3)}g`,
-              sub: '22K Gold',
+                sub: '24K Gold',
               icon: <Coins size={22} className="text-amber-500 dark:text-yellow-400" />,
               bg: 'from-amber-50 to-yellow-50 dark:from-yellow-900/20 dark:to-amber-900/10',
               border: 'border-amber-200 dark:border-yellow-800/40',

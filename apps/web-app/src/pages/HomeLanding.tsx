@@ -60,9 +60,10 @@ export const HomeLanding: React.FC = () => {
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const gold22 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 22);
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 24);
+  // Only show 24K categories (backend uses custom categories). Filtered view for potential lists.
+  const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 24) || (r.metalType === 'SILVER' && r.purity === 24));
 
   const loadRates = useCallback(async () => {
     setLoading(true);
@@ -88,7 +89,7 @@ export const HomeLanding: React.FC = () => {
   // ── Buy Gold ──────────────────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
-    const effectiveRate = lockedRate ?? gold22?.ratePerGram;
+    const effectiveRate = lockedRate ?? gold24?.ratePerGram;
     if (!effectiveRate) return;
     const grams       = parseFloat(buyForm.grams);
     const ratePerGram = effectiveRate;
@@ -116,7 +117,7 @@ export const HomeLanding: React.FC = () => {
             userId:            currentUser?.uid ?? 'anonymous',
             type:              'BUY',
             metal:             'GOLD',
-            purity:            22,
+            purity:            24,
             grams,
             ratePerGram,
             totalAmountInr:    totalAmount,
@@ -230,7 +231,7 @@ export const HomeLanding: React.FC = () => {
     } catch { /* non-blocking */ }
   };
 
-  const activeRate = lockedRate ?? gold22?.ratePerGram ?? 0;
+  const activeRate = lockedRate ?? gold24?.ratePerGram ?? 0;
   const buyTotal = buyForm.grams && activeRate
     ? (parseFloat(buyForm.grams) * activeRate).toFixed(2)
     : null;
@@ -296,7 +297,7 @@ export const HomeLanding: React.FC = () => {
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => { if (gold22) setLockedRate(gold22.ratePerGram); setModal({ type: 'buy' }); }}
+                  onClick={() => { if (gold24) setLockedRate(gold24.ratePerGram); setModal({ type: 'buy' }); }}
                   className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
                 >
                   <ShoppingCart size={18} />
@@ -321,15 +322,15 @@ export const HomeLanding: React.FC = () => {
 
             {/* Right: live price cards */}
             <div className="space-y-4">
-              {/* Gold 22K */}
+                {/* Gold 24K */}
               <div className="relative bg-gradient-to-br from-amber-400 to-yellow-600 dark:from-yellow-600/90 dark:to-amber-800 rounded-2xl p-6 shadow-2xl shadow-amber-400/30 dark:shadow-yellow-500/20 overflow-hidden">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 pointer-events-none" />
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-yellow-100">
-                      <Coins size={20} />
-                      <span className="font-bold tracking-wide text-sm uppercase">Gold 22K</span>
-                    </div>
+                        <Coins size={20} />
+                        <span className="font-bold tracking-wide text-sm uppercase">Gold 24K</span>
+                      </div>
                     <span className="text-yellow-100 text-xs font-medium bg-white/20 px-2.5 py-1 rounded-full">per 10g</span>
                   </div>
                   {loading ? (
@@ -342,10 +343,10 @@ export const HomeLanding: React.FC = () => {
                   ) : (
                     <>
                       <div className="text-4xl sm:text-5xl font-black text-white mb-1">
-                        ₹{gold22 ? gold22.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+                        ₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
                       </div>
                       <div className="text-yellow-100 text-sm">
-                        ₹{gold22 ? gold22.ratePerGram.toFixed(2) : '—'} / gram
+                        ₹{gold24 ? gold24.ratePerGram.toFixed(2) : '—'} / gram
                       </div>
                     </>
                   )}
@@ -470,7 +471,7 @@ export const HomeLanding: React.FC = () => {
       </section>
 
       {/* ════════════════════════════════════════════════════════════════════
-          LIVE RATES TABLE
+          LIVE RATES TABLE (only 24K shown)
       ════════════════════════════════════════════════════════════════════ */}
       <section className="py-12 bg-white/70 dark:bg-gray-950 border-y border-amber-100/80 dark:border-yellow-900/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -515,45 +516,21 @@ export const HomeLanding: React.FC = () => {
                       <p className="text-amber-700/60 dark:text-gray-500 mt-2 text-sm">Fetching live rates...</p>
                     </td>
                   </tr>
-                ) : rates.length === 0 ? (
+                ) : filteredRates.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-10 text-center text-amber-700/60 dark:text-gray-500 text-sm">
-                      No rates available. Click Refresh.
+                      No 24K rates available. Click Refresh.
                     </td>
                   </tr>
                 ) : (
-                  rates.map((r) => (
-                    <tr
-                      key={`${r.metalType}-${r.purity}`}
-                      className="border-b border-amber-100 dark:border-gray-800 hover:bg-amber-50 dark:hover:bg-gray-900/60 transition-colors"
-                    >
-                      <td className="py-4 px-4">
-                        <span className={`inline-flex items-center gap-1.5 font-bold text-sm ${r.metalType === 'GOLD' ? 'text-amber-700 dark:text-yellow-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                          <Coins size={15} />
-                          {r.metalType.charAt(0) + r.metalType.slice(1).toLowerCase()}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-amber-800 dark:text-gray-200 font-semibold text-sm">{r.purity}K</td>
-                      <td className="py-4 px-4 text-right text-amber-900 dark:text-white font-black">
-                        ₹{r.ratePerGram.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-4 px-4 text-right">
-                        <span className="text-amber-900 dark:text-yellow-300 font-black">
-                          ₹{r.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </span>
-                        <span className="text-amber-600/60 dark:text-gray-500 text-xs ml-1">
-                          / {r.metalType === 'GOLD' ? '10g' : '1kg'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-right">
-                        {r.metalType === 'GOLD' && r.purity === 22 && (
-                          <button
-                            onClick={() => setModal({ type: 'buy' })}
-                            className="text-xs font-bold text-amber-600 dark:text-yellow-400 hover:text-amber-800 dark:hover:text-yellow-300 flex items-center gap-1 ml-auto"
-                          >
-                            Buy <ChevronRight size={13} />
-                          </button>
-                        )}
+                  filteredRates.map((r) => (
+                    <tr key={`${r.metalType}-${r.purity}`} className="border-b border-amber-50 dark:border-gray-800/60 hover:bg-amber-50/40 dark:hover:bg-gray-900/50 transition-colors">
+                      <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300">{r.metalType}</td>
+                      <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300">{r.purity}K</td>
+                      <td className="py-3.5 px-4 text-right text-sm font-medium text-stone-800 dark:text-white">₹{r.ratePerGram.toFixed(2)}</td>
+                      <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">₹{r.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                      <td className="py-3.5 px-4 text-right">
+                        <button onClick={() => { if (r.metalType === 'GOLD') setLockedRate(r.ratePerGram); setModal({ type: 'buy' }); }} className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">Buy</button>
                       </td>
                     </tr>
                   ))
@@ -561,9 +538,6 @@ export const HomeLanding: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <p className="mt-4 text-xs text-amber-600/60 dark:text-gray-500">
-            Prices include 9% Indian import duty. Source: Swissquote International Markets. Updated every 5 seconds.
-          </p>
         </div>
       </section>
 
@@ -777,9 +751,9 @@ export const HomeLanding: React.FC = () => {
                 onChange={(e) => setAutoPayForm((f) => ({ ...f, amount: e.target.value }))}
                 className="fieldInput"
               />
-              {autoPayForm.amount && gold22 && (
+              {autoPayForm.amount && gold24 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  ≈ {(parseFloat(autoPayForm.amount) / gold22.ratePerGram).toFixed(3)}g of 22K gold per month at today's rate
+                  ≈ {(parseFloat(autoPayForm.amount) / gold24.ratePerGram).toFixed(3)}g of 24K gold per month at today's rate
                 </p>
               )}
             </div>
