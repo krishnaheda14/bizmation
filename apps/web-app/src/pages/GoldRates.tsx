@@ -1,15 +1,16 @@
 /**
  * Gold Rates Page
- * 
- * Fetches live gold/silver rates DIRECTLY from free public APIs
- * NO BACKEND REQUIRED - Works standalone on Cloudflare Pages
- * 
+ *
+ * Fetches live gold/silver rates via CORS-proxied free public APIs.
+ * NO BACKEND REQUIRED - Works standalone on Cloudflare Pages.
+ *
  * Pricing: Gold per 10g, Silver per 1kg
  * Includes 9% import duty for Indian market
  */
 
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
+import { fetchLiveMetalRates } from '../lib/goldPrices';
 
 interface GoldRate {
   metalType: string;
@@ -19,13 +20,6 @@ interface GoldRate {
   effectiveDate: string;
   source: string;
 }
-
-// Free API endpoints (NO API KEYS NEEDED!)
-const GOLD_API = 'https://data-asg.goldprice.org/dbXRates/USD';
-const CURRENCY_API = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
-
-// Import duty for India
-const IMPORT_DUTY = 1.09; // 9% import duty
 
 export const GoldRates: React.FC = () => {
   const [rates, setRates] = useState<GoldRate[]>([]);
@@ -57,138 +51,19 @@ export const GoldRates: React.FC = () => {
 
   const fetchRates = async () => {
     setLoading(true);
-    addDebugLog('📡 Starting to fetch LIVE gold rates from free APIs...');
-    addDebugLog(`🔗 Gold API: ${GOLD_API}`);
-    addDebugLog(`🔗 Currency API: ${CURRENCY_API}`);
-    
+    addDebugLog('📡 Starting to fetch LIVE gold rates via CORS proxy...');
     try {
-      // Step 1: Fetch XAU (Gold) and XAG (Silver) prices in USD
-      addDebugLog('📞 Fetching precious metals prices (XAU/XAG in USD)...');
-      const goldResponse = await fetch(GOLD_API);
-      addDebugLog(`📥 Gold API Response Status: ${goldResponse.status} ${goldResponse.statusText}`);
-      
-      if (!goldResponse.ok) {
-        throw new Error(`Gold API returned ${goldResponse.status}: ${goldResponse.statusText}`);
-      }
-
-      const goldData = await goldResponse.json();
-      addDebugLog(`📦 Gold API Response: ${JSON.stringify(goldData, null, 2)}`);
-
-      // Extract prices (USD per troy ounce)
-      const xauPrice = goldData.items?.[0]?.xauPrice || 0; // Gold price in USD
-      const xagPrice = goldData.items?.[0]?.xagPrice || 0; // Silver price in USD
-      
-      addDebugLog(`💰 XAU (Gold): $${xauPrice} per troy ounce`);
-      addDebugLog(`💰 XAG (Silver): $${xagPrice} per troy ounce`);
-
-      if (!xauPrice || !xagPrice) {
-        throw new Error('Invalid gold/silver prices received from API');
-      }
-
-      // Step 2: Fetch USD to INR conversion rate
-      addDebugLog('📞 Fetching USD to INR exchange rate...');
-      const currencyResponse = await fetch(CURRENCY_API);
-      addDebugLog(`📥 Currency API Response Status: ${currencyResponse.status} ${currencyResponse.statusText}`);
-      
-      if (!currencyResponse.ok) {
-        throw new Error(`Currency API returned ${currencyResponse.status}: ${currencyResponse.statusText}`);
-      }
-
-      const currencyData = await currencyResponse.json();
-      addDebugLog(`📦 Currency API Response: ${JSON.stringify(currencyData, null, 2)}`);
-
-      const usdToInr = currencyData.usd?.inr || 0;
-      addDebugLog(`💱 USD to INR rate: ${usdToInr}`);
-
-      if (!usdToInr) {
-        throw new Error('Invalid USD to INR rate received from API');
-      }
-
-      // Step 3: Calculate rates per gram in INR with 9% import duty
-      // 1 troy ounce = 31.1035 grams
-      const GRAMS_PER_OUNCE = 31.1035;
-      
-      // Base rates (before import duty)
-      const baseGold24kPerGram = (xauPrice * usdToInr) / GRAMS_PER_OUNCE;
-      const baseSilver24kPerGram = (xagPrice * usdToInr) / GRAMS_PER_OUNCE;
-      
-      // Add 9% import duty for Indian market
-      const gold24kPerGram = baseGold24kPerGram * IMPORT_DUTY;
-      const silver24kPerGram = baseSilver24kPerGram * IMPORT_DUTY;
-
-      addDebugLog(`🧮 Calculation: (USD per ounce × INR per USD) ÷ 31.1035 grams × 1.09 (import duty)`);
-      addDebugLog(`🧮 Gold 24K: (${xauPrice} × ${usdToInr}) ÷ ${GRAMS_PER_OUNCE} × ${IMPORT_DUTY} = ₹${gold24kPerGram.toFixed(2)}/gram`);
-      addDebugLog(`🧮 Silver 24K: (${xagPrice} × ${usdToInr}) ÷ ${GRAMS_PER_OUNCE} × ${IMPORT_DUTY} = ₹${silver24kPerGram.toFixed(2)}/gram`);
-
-      // Calculate different purities with display rates
-      // Gold: per 10 grams, Silver: per 1 kg (1000 grams)
-      const allRates: GoldRate[] = [
-        // Gold rates (display per 10g)
-        {
-          metalType: 'GOLD',
-          purity: 24,
-          ratePerGram: gold24kPerGram,
-          displayRate: gold24kPerGram * 10, // Per 10 grams
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        },
-        {
-          metalType: 'GOLD',
-          purity: 22,
-          ratePerGram: (gold24kPerGram * 22) / 24,
-          displayRate: ((gold24kPerGram * 22) / 24) * 10, // Per 10 grams
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        },
-        {
-          metalType: 'GOLD',
-          purity: 18,
-          ratePerGram: (gold24kPerGram * 18) / 24,
-          displayRate: ((gold24kPerGram * 18) / 24) * 10, // Per 10 grams
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        },
-        // Silver rates (display per 1kg)
-        {
-          metalType: 'SILVER',
-          purity: 24,
-          ratePerGram: silver24kPerGram,
-          displayRate: silver24kPerGram * 1000, // Per 1 kg
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        },
-        {
-          metalType: 'SILVER',
-          purity: 22,
-          ratePerGram: (silver24kPerGram * 22) / 24,
-          displayRate: ((silver24kPerGram * 22) / 24) * 1000, // Per 1 kg
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        },
-        {
-          metalType: 'SILVER',
-          purity: 18,
-          ratePerGram: (silver24kPerGram * 18) / 24,
-          displayRate: ((silver24kPerGram * 18) / 24) * 1000, // Per 1 kg
-          effectiveDate: new Date().toISOString(),
-          source: 'Live International Market'
-        }
-      ];
-
-      addDebugLog(`📊 Successfully calculated ${allRates.length} rates (with 9% import duty)`);
-      allRates.forEach(rate => {
+      const allRates = await fetchLiveMetalRates();
+      setRates(allRates as GoldRate[]);
+      setLastUpdated(new Date().toLocaleString());
+      addDebugLog(`✅ Fetched ${allRates.length} rates successfully`);
+      allRates.forEach((rate) => {
         const unit = rate.metalType === 'GOLD' ? '10g' : '1kg';
         addDebugLog(`  ✅ ${rate.metalType}-${rate.purity}K: ₹${rate.displayRate.toFixed(2)}/${unit}`);
       });
-
-      setRates(allRates);
-      setLastUpdated(new Date().toLocaleString());
-      addDebugLog('✅ All rates updated successfully!');
-      
     } catch (error: any) {
       addErrorLog(`Failed to fetch rates: ${error.message}`);
       console.error('Failed to fetch rates:', error);
-      // Keep existing rates if we have them
       if (rates.length === 0) {
         addErrorLog('⚠️ No rates available. Check your internet connection.');
       }
@@ -422,7 +297,7 @@ export const GoldRates: React.FC = () => {
         {/* Footer Note */}
         <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
           <p>Prices include 9% import duty for Indian market • Updated in real-time from international markets</p>
-          <p className="mt-1">Data sources: data-asg.goldprice.org • cdn.jsdelivr.net</p>
+          <p className="mt-1">Data sources: Swissquote Public Quotes (XAU/USD, XAG/USD) • fawazahmed0 Currency API (USD→INR)</p>
         </div>
       </div>
     </div>

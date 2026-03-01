@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import { ThemeProvider } from './context/ThemeContext';
 import { Layout } from './components/Layout';
+import { HomeLanding } from './pages/HomeLanding';
 import { Dashboard } from './pages/Dashboard';
 import { Billing } from './pages/BillingEnhanced';
 import { Inventory } from './pages/Inventory';
@@ -36,6 +37,8 @@ function App() {
   const renderPage = () => {
     switch (currentRoute) {
       case '/':
+        return <HomeLanding />;
+      case '/dashboard':
         return <Dashboard />;
       case '/billing':
         return <Billing />;
@@ -66,10 +69,15 @@ function App() {
     }
   };
 
+  // Pages that manage their own full-width layout
+  const fullWidthRoutes = new Set(['/', '/rates']);
+
   return (
     <ThemeProvider>
       <Layout>
-        {renderPage()}
+        {fullWidthRoutes.has(currentRoute)
+          ? renderPage()
+          : <div className="p-4 lg:p-8">{renderPage()}</div>}
       </Layout>
     </ThemeProvider>
   );

@@ -13,6 +13,7 @@ import {
   Camera,
   Plus,
 } from 'lucide-react';
+import { fetchLiveMetalRates } from '../lib/goldPrices';
 
 interface MetricCard {
   title: string;
@@ -39,11 +40,9 @@ export const Dashboard: React.FC = () => {
 
   const fetchGoldRate = async () => {
     try {
-      const response = await fetch('/api/gold-rates/current?metalType=GOLD&purity=22');
-      const data = await response.json();
-      if (data.success) {
-        setGoldRate(data.data.ratePerGram);
-      }
+      const rates = await fetchLiveMetalRates();
+      const gold22 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 22);
+      if (gold22) setGoldRate(gold22.ratePerGram);
     } catch (error) {
       console.error('Failed to fetch gold rate:', error);
     } finally {

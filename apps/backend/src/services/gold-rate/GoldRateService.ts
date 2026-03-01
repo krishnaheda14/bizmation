@@ -47,60 +47,90 @@ export class GoldRateService {
   }
 
   /**
-   * Fetch rate from external API (GoldPrice.org + Currency API)
+   * Fetch rate from external API
+   *
+   * Gold/Silver spot price source: Swissquote public-quotes feed (XAU/USD, XAG/USD)
+   * Currency source:               fawazahmed0 currency-api (USD → INR)
+   *
+   * Calculation:
+   *   pricePerGramINR = (spotUSD × usdToInr) / 31.1035 (troy ounce → grams)
+   *   After that 9% Indian import duty is applied.
    */
   private async fetchFromAPI(metalType: MetalType): Promise<any> {
     try {
-      // Step 1: Fetch gold/silver prices in USD
-      console.log('[GoldRateService] Fetching gold/silver prices from data-asg.goldprice.org');
-      const goldPriceResponse = await axios.get('https://data-asg.goldprice.org/dbXRates/USD', {
+      // ── Step 1: Spot price in USD per troy ounce ──────────────────────────
+      const instrument = metalType === 'SILVER' ? 'XAG' : 'XAU'; // use XAU for GOLD/PLATINUM
+      const swissquoteUrl = `https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/${instrument}/USD`;
+      console.log(`[GoldRateService] Fetching ${instrument}/USD from Swissquote: ${swissquoteUrl}`);
+
+      const swissquoteResponse = await axios.get(swissquoteUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; gold-rate-fetcher/1.0)',
+          'User-Agent': 'Mozilla/5.0 (compatible; bizmation-gold-fetcher/1.0)',
           'Accept': 'application/json',
         },
         timeout: 10000,
       });
-      const goldData = goldPriceResponse?.data?.items && goldPriceResponse.data.items[0];
 
-      // Step 2: Fetch USD to INR conversion rate
-      console.log('[GoldRateService] Fetching currency conversion from jsDelivr currency-api');
-      const currencyResponse = await axios.get('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; gold-rate-fetcher/1.0)',
-          'Accept': 'application/json',
-        },
-        timeout: 10000,
-      });
-      
-      // The currency API returns `usd.inr` as INR per 1 USD (e.g. 83.33)
-      const usdData = currencyResponse.data && currencyResponse.data.usd;
-      const usdToInrRate = usdData && typeof usdData.inr === 'number' ? usdData.inr : undefined; // INR per USD
+      // The response is an array of platform objects.  Each has spreadProfilePrices[].
+      // Prefer the "standard" spread profile from the "AT" platform; fall back to first entry / first profile.
+      const platforms: any[] = swissquoteResponse.data;
+      if (!Array.isArray(platforms) || platforms.length === 0) {
+        throw new Error('Swissquote returned empty data');
+      }
 
-      console.log(`[Gold Rate API] XAU Price: $${goldData.xauPrice}, XAG Price: $${goldData.xagPrice}`);
-      console.log(`[Gold Rate API] USD to INR Rate (raw): ${usdToInrRate}`);
+      // Try to find AT→standard, else first platform→first profile
+      let chosenProfile: any = null;
+      for (const platform of platforms) {
+        const profiles: any[] = platform.spreadProfilePrices || [];
+        const standard = profiles.find((p: any) => p.spreadProfile === 'standard');
+        if (standard) { chosenProfile = standard; break; }
+      }
+      if (!chosenProfile) {
+        chosenProfile = platforms[0]?.spreadProfilePrices?.[0];
+      }
+      if (!chosenProfile || chosenProfile.bid == null || chosenProfile.ask == null) {
+        throw new Error('Could not parse bid/ask from Swissquote response');
+      }
+
+      // Use mid-price (average of bid and ask)
+      const pricePerOunceUSD = (chosenProfile.bid + chosenProfile.ask) / 2;
+      console.log(`[GoldRateService] ${instrument}/USD mid-price: $${pricePerOunceUSD.toFixed(3)} (bid:${chosenProfile.bid} ask:${chosenProfile.ask})`);
+
+      // ── Step 2: USD → INR ─────────────────────────────────────────────────
+      console.log('[GoldRateService] Fetching USD→INR rate from fawazahmed0 currency-api');
+      const currencyResponse = await axios.get(
+        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json',
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; bizmation-gold-fetcher/1.0)',
+            'Accept': 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
+
+      const usdToInrRate: number | undefined = currencyResponse.data?.usd?.inr;
       if (!usdToInrRate || isNaN(usdToInrRate)) {
-        throw new Error('Currency conversion (USD->INR) not available from currency API');
+        throw new Error('USD→INR rate not available from currency API');
       }
-      
-      // Get price per troy ounce in USD
-      let pricePerOunceUSD = 0;
-      if (metalType === 'GOLD') {
-        pricePerOunceUSD = goldData.xauPrice;
-      } else if (metalType === 'SILVER') {
-        pricePerOunceUSD = goldData.xagPrice;
-      } else {
-        // Fallback to gold for platinum/diamond
-        pricePerOunceUSD = goldData.xauPrice;
-      }
-      
-      // Convert to INR per gram (1 troy ounce = 31.1035 grams)
-      const pricePerGramINR = (pricePerOunceUSD * usdToInrRate) / 31.1035;
+      console.log(`[GoldRateService] USD→INR rate: ${usdToInrRate}`);
+
+      // ── Step 3: Calculate per-gram INR price ──────────────────────────────
+      // 1 troy ounce = 31.1035 grams
+      // Add 9% Indian import duty
+      const TROY_OZ_GRAMS = 31.1035;
+      const IMPORT_DUTY  = 1.09; // 9%
+
+      const pricePerGramINR = (pricePerOunceUSD * usdToInrRate / TROY_OZ_GRAMS) * IMPORT_DUTY;
 
       if (!isFinite(pricePerGramINR) || isNaN(pricePerGramINR)) {
         throw new Error('Computed price per gram is invalid');
       }
-      
-      console.log(`[Gold Rate API] ${metalType} price per gram: ₹${pricePerGramINR.toFixed(2)}`);
+
+      console.log(
+        `[GoldRateService] ${metalType} per gram (INR, after 9% duty): ₹${pricePerGramINR.toFixed(2)}` +
+        ` | per 10g: ₹${(pricePerGramINR * 10).toFixed(2)}`
+      );
       
       // Calculate rates for different purities (for gold)
       const calculatePurityRate = (purity: number) => {
@@ -115,7 +145,7 @@ export class GoldRateService {
         price_gram_18k: metalType === 'GOLD' ? calculatePurityRate(18) : pricePerGramINR,
         price_gram_16k: metalType === 'GOLD' ? calculatePurityRate(16) : pricePerGramINR,
         price_gram_14k: metalType === 'GOLD' ? calculatePurityRate(14) : pricePerGramINR,
-        timestamp: goldData.ts,
+        timestamp: Date.now(),
         metal: metalType,
         currency: 'INR',
         usdToInr: usdToInrRate,

@@ -2,12 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* ── Shared form field styles used across buy/sell/autopay modals ── */
+  .fieldLabel {
+    @apply block text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1.5;
+  }
+  .fieldInput {
+    @apply w-full px-4 py-2.5 bg-white dark:bg-gray-900 border border-amber-200 dark:border-gray-700
+           text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500
+           rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 dark:focus:ring-yellow-500
+           transition-all text-sm;
+  }
+}
+
 @layer base {
   /* Dark mode color scheme */
   .dark {
     color-scheme: dark;
   }
-  
+
   /* Smooth transitions for theme changes */
   * {
     @apply transition-colors duration-200;

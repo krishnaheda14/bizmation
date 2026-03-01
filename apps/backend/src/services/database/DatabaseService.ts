@@ -1,7 +1,10 @@
 /**
  * Database Service
- * 
- * Manages PostgreSQL database connections and queries
+ *
+ * Manages PostgreSQL database connections and queries.
+ * Uses Supabase as the database provider — Supabase is fully
+ * PostgreSQL-compatible so the standard `pg` Pool works unchanged.
+ * SSL is always enforced because Supabase requires it.
  */
 
 import { Pool, QueryResult } from 'pg';
@@ -10,11 +13,23 @@ export class DatabaseService {
   private pool: Pool;
 
   constructor() {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error(
+        'DATABASE_URL is not set. ' +
+        'Copy .env.example to .env and fill in your Supabase connection string.'
+      );
+    }
+
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 20,
+      connectionString,
+      // Supabase requires SSL — disable cert verification only for local dev
+      ssl: process.env.NODE_ENV === 'production'
+        ? { rejectUnauthorized: true }
+        : { rejectUnauthorized: false },
+      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 5000,
     });
 
     this.pool.on('error', (err) => {
