@@ -1,29 +1,28 @@
 ﻿/**
- * AuthPage â€“ Sign In | Create Account
+ * AuthPage - Sign In | Create Account
  *
- * Theme  : Cream / beige / golden â€” matches the rest of the app
- * Font   : Cormorant Garamond for all headings / display text
- * Extra  : Floating sparkle particles, shimmer button, gold-ring logo
+ * Theme  : Cream / beige / golden  - matches the rest of the app
+ * Font   : Cormorant Garamond for display headings
  *
  * Modes  :
- *   Sign In   â†’ Email + Password  OR  Magic Link (OTP / passwordless)
- *   Sign Up   â†’ 2-step form  (basic info â†’ identity / KYC)
+ *   Sign In  -> Email + Password  OR  Magic Link (passwordless)
+ *   Sign Up  -> 2-step form  (basic info -> identity / KYC)
  */
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { SignUpData } from '../context/AuthContext';
 
-// â”€â”€â”€ Sparkle positions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Sparkle positions ---------------------------------------------------
 const SPARKLES = [
-  { top: '8%',  left: '5%',  delay: '0s',    size: 18 },
-  { top: '15%', left: '88%', delay: '0.6s',  size: 12 },
-  { top: '35%', left: '92%', delay: '1.2s',  size: 20 },
-  { top: '60%', left: '4%',  delay: '0.3s',  size: 14 },
-  { top: '75%', left: '85%', delay: '1.8s',  size: 16 },
-  { top: '88%', left: '12%', delay: '0.9s',  size: 10 },
-  { top: '50%', left: '96%', delay: '2.1s',  size: 22 },
-  { top: '25%', left: '2%',  delay: '1.5s',  size: 12 },
+  { top: '8%',  left: '5%',  delay: '0s',   size: 18 },
+  { top: '15%', left: '88%', delay: '0.6s', size: 12 },
+  { top: '35%', left: '92%', delay: '1.2s', size: 20 },
+  { top: '60%', left: '4%',  delay: '0.3s', size: 14 },
+  { top: '75%', left: '85%', delay: '1.8s', size: 16 },
+  { top: '88%', left: '12%', delay: '0.9s', size: 10 },
+  { top: '50%', left: '96%', delay: '2.1s', size: 22 },
+  { top: '25%', left: '2%',  delay: '1.5s', size: 12 },
 ];
 
 const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size, style }) => (
@@ -40,12 +39,12 @@ const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size
   </svg>
 );
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Types ----------------------------------------------------------------
 type Tab       = 'login'    | 'signup';
 type LoginMode = 'password' | 'otp';
 type OtpStep   = 'input'    | 'sent';
 
-// â”€â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Main component -------------------------------------------------------
 const AuthPage: React.FC = () => {
   const { signIn, signUp, sendOtp, verifyOtp } = useAuth();
 
@@ -58,23 +57,25 @@ const AuthPage: React.FC = () => {
   const [showPass,  setShowPass]  = useState(false);
 
   useEffect(() => {
-    if (window.location.hash.includes('/auth/verify')) {
+    if (window.location.hash.includes('/auth/verify') || window.location.search.includes('mode=signIn')) {
       (async () => {
         setLoading(true);
         try {
           const res = await verifyOtp();
-          if (res.success) setInfo(`âœ… Signed in as ${res.email}. Redirectingâ€¦`);
+          if (res.success) setInfo('Signed in as ' + res.email + '. Redirecting...');
           else setError('Link is invalid or expired. Please request a new one.');
-        } catch (e: any) { setError(e?.message ?? 'Verification failed.'); }
-        finally { setLoading(false); }
+        } catch (e: any) {
+          setError(e?.message ?? 'Verification failed.');
+        } finally {
+          setLoading(false);
+        }
       })();
     }
   }, []);
 
   const clearMsgs = () => { setError(''); setInfo(''); };
 
-  // Password login
-  const [lpEmail, setLpEmail]       = useState('');
+  const [lpEmail,    setLpEmail]    = useState('');
   const [lpPassword, setLpPassword] = useState('');
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
@@ -84,18 +85,14 @@ const AuthPage: React.FC = () => {
     finally        { setLoading(false); }
   };
 
-  // Magic-link OTP
   const [otpEmail, setOtpEmail] = useState('');
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
-    try {
-      await sendOtp(otpEmail.trim());
-      setOtpStep('sent');
-    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally           { setLoading(false); }
+    try   { await sendOtp(otpEmail.trim()); setOtpStep('sent'); }
+    catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally        { setLoading(false); }
   };
 
-  // Sign Up
   const blankForm = (): SignUpData => ({
     name: '', email: '', password: '', phone: '',
     city: '', state: '', country: 'India',
@@ -115,7 +112,7 @@ const AuthPage: React.FC = () => {
     setLoading(true);
     try {
       await signUp(form);
-      setInfo('âœ… Account created! Check your email for a verification link, then sign in.');
+      setInfo('Account created! Check your email for a verification link, then sign in.');
       setTab('login'); setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
     finally           { setLoading(false); }
@@ -125,7 +122,7 @@ const AuthPage: React.FC = () => {
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-4 py-10"
       style={{ background: 'linear-gradient(135deg, #fef9ee 0%, #fdf3d8 40%, #fef5e0 70%, #fffbf0 100%)' }}>
 
-      {/* Background glow rings */}
+      {/* Background glow blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20"
           style={{ background: 'radial-gradient(circle, #fcd34d 0%, transparent 70%)' }} />
@@ -138,31 +135,30 @@ const AuthPage: React.FC = () => {
         <Sparkle key={i} size={s.size} style={{ top: s.top, left: s.left, animationDelay: s.delay }} />
       ))}
 
-      {/* Brand / logo */}
+      {/* Brand / logo - transparent logo, no ring or background */}
       <div className="relative z-10 mb-8 flex flex-col items-center animate-float">
-        <div className="relative w-20 h-20 mb-4">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center shadow-2xl animate-gold-pulse"
-            style={{
-              background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 50%, #d97706 100%)',
-              boxShadow: '0 8px 32px rgba(245,158,11,0.4), inset 0 1px 0 rgba(255,255,255,0.4)',
-            }}>
-            <img src="/logo.png" alt="Bizmation" className="w-10 h-10 object-contain" />
-          </div>
-        </div>
+        <img
+          src="/logo.png"
+          alt="Bizmation"
+          className="w-28 h-28 object-contain mb-4 drop-shadow-lg"
+        />
         <h1 className="font-display text-4xl font-semibold text-amber-900 tracking-wide leading-none">
           Bizmation Gold
         </h1>
-        <p className="font-display text-base italic text-amber-600 mt-1 tracking-widest">
-          Trusted Since 2024 · Jaipur
+        <p className="text-sm text-amber-600 mt-1 tracking-widest">
+          Trusted Since 2024 &middot; Jaipur
         </p>
       </div>
 
       {/* Auth card */}
-      <div className="relative z-10 w-full max-w-md rounded-3xl overflow-hidden">
-        {/* Use project logo (place your transparent logo at apps/web-app/public/logo.png) */}
-        <div className="p-6 flex justify-center">
-          <img src="/logo.png" alt="Bizmation" className="w-20 h-20 object-contain" />
-        </div>
+      <div className="relative z-10 w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: 'rgba(255,253,245,0.92)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          boxShadow: '0 20px 60px rgba(180,120,0,0.12), 0 4px 16px rgba(180,120,0,0.08)',
+          backdropFilter: 'blur(12px)',
+        }}>
+
         {/* Tab bar */}
         <div className="flex">
           {(['login', 'signup'] as Tab[]).map(t => (
@@ -173,7 +169,6 @@ const AuthPage: React.FC = () => {
                 background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 80%, #d97706 100%)',
                 color: '#451a03',
               } : { background: 'rgba(253,243,212,0.6)', color: '#92400e' }}>
-              <span className="font-display text-base italic mr-1">{t === 'login' ? 'âœ¦' : 'âœ§'}</span>
               {t === 'login' ? 'Sign In' : 'Create Account'}
             </button>
           ))}
@@ -183,23 +178,22 @@ const AuthPage: React.FC = () => {
           {error && (
             <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border"
               style={{ background: '#fff5f5', borderColor: '#fecaca', color: '#b91c1c' }}>
-              <span className="flex-shrink-0 mt-0.5">âš ï¸</span><p>{error}</p>
+              <span className="flex-shrink-0 mt-0.5">!</span><p>{error}</p>
             </div>
           )}
           {info && (
             <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border"
               style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
-              <span className="flex-shrink-0 mt-0.5">âœ…</span><p>{info}</p>
+              <span className="flex-shrink-0 mt-0.5">✓</span><p>{info}</p>
             </div>
           )}
 
-          {/* â”€â”€ SIGN IN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* SIGN IN */}
           {tab === 'login' && (
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">Welcome back</h2>
               <p className="text-xs text-amber-500 mb-5 tracking-wide">Sign in to your gold account</p>
 
-              {/* Mode pills */}
               <div className="flex gap-2 p-1 mb-6 rounded-2xl"
                 style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.25)' }}>
                 {(['password', 'otp'] as LoginMode[]).map(m => (
@@ -210,7 +204,7 @@ const AuthPage: React.FC = () => {
                       background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
                       color: '#451a03',
                     } : { color: '#92400e' }}>
-                      {m === 'password' ? 'Password' : 'Magic Link'}
+                    {m === 'password' ? 'Password' : 'Magic Link'}
                   </button>
                 ))}
               </div>
@@ -221,7 +215,7 @@ const AuthPage: React.FC = () => {
                     onChange={e => setLpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
                   <div className="relative">
                     <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={lpPassword}
-                      onChange={e => setLpPassword(e.target.value)} required placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
+                      onChange={e => setLpPassword(e.target.value)} required placeholder="Enter your password" />
                     <button type="button" tabIndex={-1} onClick={() => setShowPass(v => !v)}
                       className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium">
                       {showPass ? 'Hide' : 'Show'}
@@ -240,20 +234,20 @@ const AuthPage: React.FC = () => {
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
                     style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                    âœ¨ Enter your email â€” we'll send a secure magic link. Click it to sign in instantly, no password needed.
+                    Enter your email and we will send you a secure magic link. Click it to sign in instantly - no password needed.
                   </div>
                   <GoldInput label="Email Address" type="email" value={otpEmail}
                     onChange={e => setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
-                    <GoldButton loading={loading}>Send Magic Link</GoldButton>
+                  <GoldButton loading={loading}>Send Magic Link</GoldButton>
                 </form>
               ) : (
                 <div className="text-center py-6 space-y-4">
-                  <div className="text-6xl animate-float">📧</div>
+                  <div className="text-5xl animate-float">✉</div>
                   <h3 className="font-display text-xl font-semibold text-amber-900">Check your inbox</h3>
                   <p className="text-sm text-amber-600 leading-relaxed">
                     We sent a magic link to<br />
                     <strong className="text-amber-800">{otpEmail}</strong>.<br />
-                    Click it to sign in instantly â€” no password needed.
+                    Click it to sign in instantly - no password needed.
                   </p>
                   <button onClick={() => { setOtpStep('input'); clearMsgs(); }}
                     className="text-xs text-amber-500 underline underline-offset-2">
@@ -264,17 +258,16 @@ const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* â”€â”€ SIGN UP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* SIGN UP */}
           {tab === 'signup' && (
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">
-                {signupStep === 1 ? 'Create your account' : 'Identity & KYC'}
+                {signupStep === 1 ? 'Create your account' : 'Identity Details'}
               </h2>
               <p className="text-xs text-amber-500 mb-5 tracking-wide">
-                {signupStep === 1 ? 'Join thousands of gold investors' : 'For compliance & fast payouts'}
+                {signupStep === 1 ? 'Join thousands of gold investors' : 'For compliance and fast payouts'}
               </p>
 
-              {/* Step pills */}
               <div className="flex items-center gap-2 mb-6">
                 {[1, 2].map(s => (
                   <React.Fragment key={s}>
@@ -301,7 +294,7 @@ const AuthPage: React.FC = () => {
                 className="space-y-4">
                 {signupStep === 1 ? (
                   <>
-                    <GoldInput label="Full Name" value={form.name} onChange={setF('name')} required autoFocus placeholder="Rajesh Kumar" />
+                    <GoldInput label="Full Name" value={form.name} onChange={setF('name')} required autoFocus placeholder="Your full name" />
                     <GoldInput label="Email Address" type="email" value={form.email} onChange={setF('email')} required placeholder="you@example.com" />
                     <div className="relative">
                       <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={form.password}
@@ -315,7 +308,7 @@ const AuthPage: React.FC = () => {
                       value={confirmPass} onChange={e => setConfirmPass(e.target.value)} required placeholder="Repeat password" />
                     <GoldInput label="Mobile Number" type="tel" value={form.phone}
                       onChange={setF('phone')} required placeholder="+91 98765 43210" />
-                    <GoldButton loading={false}>Continue ›</GoldButton>
+                    <GoldButton loading={false}>Continue</GoldButton>
                   </>
                 ) : (
                   <>
@@ -330,13 +323,13 @@ const AuthPage: React.FC = () => {
                     <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4}
                       onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
                     <p className="text-xs text-stone-400 leading-relaxed px-1">
-                      By creating an account you agree to our Terms of Service. Data stored securely for KYC / tax compliance (India).
+                      By creating an account you agree to our Terms of Service. Data is stored securely for KYC and tax compliance (India).
                     </p>
                     <div className="flex gap-3">
                       <button type="button" onClick={() => setSignupStep(1)}
                         className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all"
                         style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.4)', color: '#92400e' }}>
-                        ‹ Back
+                        Back
                       </button>
                       <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>
                     </div>
@@ -355,7 +348,7 @@ const AuthPage: React.FC = () => {
   );
 };
 
-// â”€â”€â”€ Gold input field â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Gold input field -----------------------------------------------------
 interface GoldInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
 }
@@ -381,15 +374,14 @@ const GoldInput: React.FC<GoldInputProps> = ({ label, ...props }) => (
   </div>
 );
 
-// â”€â”€â”€ Shimmer gold button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Shimmer gold button --------------------------------------------------
 const GoldButton: React.FC<{
   loading: boolean;
   children: React.ReactNode;
   className?: string;
 }> = ({ loading, children, className = 'w-full' }) => (
   <button type="submit" disabled={loading}
-    className={`${className} py-3 rounded-2xl font-semibold text-sm transition-all
-      active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed animate-shimmer`}
+    className={`${className} py-3 rounded-2xl font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed animate-shimmer`}
     style={{
       background: 'linear-gradient(90deg, #fde68a 0%, #f59e0b 30%, #fbbf24 60%, #f59e0b 100%)',
       backgroundSize: '200% auto',
@@ -402,13 +394,13 @@ const GoldButton: React.FC<{
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
         </svg>
-        Please waitâ€¦
+        Please wait...
       </span>
     ) : children}
   </button>
 );
 
-// â”€â”€â”€ Firebase error map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Firebase error map --------------------------------------------------
 const friendlyError = (code: string): string =>
   ({
     'auth/user-not-found':         'No account found with this email. Please sign up.',
