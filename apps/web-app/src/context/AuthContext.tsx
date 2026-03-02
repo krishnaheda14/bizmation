@@ -5,12 +5,12 @@
  *  - currentUser    : Firebase User | null
  *  - userProfile    : Firestore profile document (name, phone, city, etc.)
  *  - loadingAuth    : true while Firebase resolves initial auth state
- *  - signUp()       : creates Auth user + Firestore profile
- *  - signIn()       : email + password login
+ *  - signUp()       : creates Auth user + Firestore profile (signs out immediately, user must verify email)
+ *  - signIn()       : email + password login (enforces email verification)
+ *  - signInWithPhonePassword() : look up email by phone in Firestore, then sign in
  *  - sendOtp()      : sends a magic-link / email-OTP to the address
  *  - verifyOtp()    : completes email-link sign-in from the URL
  *  - signOut()      : logs out
- *  - resendOtp()    : re-sends the email OTP link
  */
 
 import React, {
@@ -27,12 +27,10 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
-  signInWithPhoneNumber,
-  RecaptchaVerifier,
-  ConfirmationResult,
 } from 'firebase/auth';
 import {
   doc, setDoc, getDoc, serverTimestamp, updateDoc,
+  collection, query, where, getDocs, limit,
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
@@ -81,10 +79,9 @@ interface AuthContextType {
   loadingAuth: boolean;
   signUp: (data: SignUpData) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithPhonePassword: (phone: string, password: string) => Promise<void>;
   sendOtp: (email: string) => Promise<void>;
   verifyOtp: () => Promise<{ success: boolean; email: string | null }>;
-  sendPhoneOtp: (phone: string, containerId: string) => Promise<void>;
-  verifyPhoneOtp: (otp: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -105,8 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser]         = useState<User | null>(null);
   const [userProfile, setUserProfile]         = useState<UserProfile | null>(null);
   const [loadingAuth, setLoadingAuth]         = useState(true);
-  const [confirmResult, setConfirmResult]     = useState<ConfirmationResult | null>(null);
-  const recaptchaRef                          = React.useRef<RecaptchaVerifier | null>(null);
 
   // ── Load Firestore profile ───────────────────────────────────────────────
   const loadProfile = useCallback(async (user: User) => {
@@ -160,7 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       aadhaarLast4:               data.aadhaarLast4,
       kycStatus:                  'PENDING',
       role:                       data.role ?? 'CUSTOMER',
-      ...(data.shopName ? { shopName: data.shopName } : {}),
+      ...(data.shopName ? { shopName: data.shopName.trim() } : {}),
       phoneVerified:              false,
       totalGoldPurchasedGrams:    0,
       totalSilverPurchasedGrams:  0,
@@ -170,75 +165,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     await setDoc(doc(db, 'users', user.uid), profile);
-    setUserProfile(profile);
+
+    // Sign the user OUT immediately so they must verify their email before using the app
+    await firebaseSignOut(auth);
   };
 
   // ── Sign In (email + password) ───────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const user = cred.user;
-    try {
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      const profile = snap.exists() ? (snap.data() as any) : null;
-      if (profile && profile.phoneVerified !== true) {
-        // Force sign-out if phone not verified
-        await firebaseSignOut(auth);
-        throw new Error('Phone number not verified. Please verify your phone before signing in.');
-      }
-    } catch (e) {
-      // rethrow to be handled by UI
-      throw e;
+    // Enforce email verification
+    if (!user.emailVerified) {
+      await firebaseSignOut(auth);
+      const err = new Error('EMAIL_NOT_VERIFIED');
+      (err as any).code = 'auth/email-not-verified';
+      throw err;
     }
   };
 
-  // ── Phone OTP ─────────────────────────────────────────────────────────────
-  const sendPhoneOtp = async (phone: string, containerId: string) => {
-    // Destroy any previous verifier
-    if (recaptchaRef.current) {
-      recaptchaRef.current.clear();
-      recaptchaRef.current = null;
+  // ── Sign In with Phone + Password ────────────────────────────────────────
+  // Looks up the user's email from Firestore by phone number, then signs in.
+  const signInWithPhonePassword = async (phone: string, password: string) => {
+    const normalised = phone.trim();
+    const q = query(
+      collection(db, 'users'),
+      where('phone', '==', normalised),
+      limit(1),
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      throw new Error('No account found with this phone number.');
     }
-    const verifier = new RecaptchaVerifier(auth, containerId, { size: 'invisible' });
-    recaptchaRef.current = verifier;
-    const result = await signInWithPhoneNumber(auth, phone, verifier);
-    setConfirmResult(result);
-  };
-
-  const verifyPhoneOtp = async (otp: string) => {
-    if (!confirmResult) throw new Error('No OTP session found. Please request again.');
-    const cred = await confirmResult.confirm(otp);
-    const user = cred.user;
-    // Create a Firestore profile if this is a new user
-    const ref  = doc(db, 'users', user.uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      const profile: UserProfile = {
-        uid:                       user.uid,
-        name:                      user.displayName ?? '',
-        email:                     user.email ?? '',
-        phone:                     user.phoneNumber ?? '',
-        city: '', state: '', country: 'India', dateOfBirth: '',
-        panNumber: '', aadhaarLast4: '',
-        kycStatus:                 'PENDING',
-        role:                      'CUSTOMER',
-        phoneVerified:             true,
-        totalGoldPurchasedGrams:   0,
-        totalSilverPurchasedGrams: 0,
-        totalInvestedInr:          0,
-        createdAt:                 serverTimestamp(),
-        updatedAt:                 serverTimestamp(),
-      };
-      await setDoc(ref, profile);
+    const profileData = snap.docs[0].data() as UserProfile;
+    if (!profileData.email) {
+      throw new Error('Account has no email. Please sign in with your email instead.');
     }
-    else {
-      // mark existing profile as phoneVerified
-      try {
-        await updateDoc(ref, { phone: user.phoneNumber ?? '', phoneVerified: true, updatedAt: serverTimestamp() });
-      } catch (err) {
-        // ignore
-      }
-    }
-    setConfirmResult(null);
+    await signIn(profileData.email, password);
   };
 
   // ── Send Email OTP (magic link) ──────────────────────────────────────────
@@ -264,23 +226,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (!email) return { success: false, email: null };
 
-    const cred = await signInWithEmailLink(auth, email, window.location.href) as any;
+    await signInWithEmailLink(auth, email, window.location.href);
     localStorage.removeItem(OTP_EMAIL_KEY);
-    const user = cred.user ?? auth.currentUser;
-    // After sign-in, ensure phoneVerified is true on the user's profile
-    try {
-      if (user) {
-        const snap = await getDoc(doc(db, 'users', user.uid));
-        const profile = snap.exists() ? (snap.data() as any) : null;
-        if (profile && profile.phoneVerified !== true) {
-          // Sign out and signal failure so UI can prompt phone verification
-          await firebaseSignOut(auth);
-          throw new Error('Phone number not verified. Please verify your phone before signing in.');
-        }
-      }
-    } catch (e) {
-      throw e;
-    }
     return { success: true, email };
   };
 
@@ -303,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{
       currentUser, userProfile, loadingAuth,
-      signUp, signIn, sendOtp, verifyOtp, sendPhoneOtp, verifyPhoneOtp, signOut, refreshProfile,
+      signUp, signIn, signInWithPhonePassword, sendOtp, verifyOtp, signOut, refreshProfile,
     }}>
       {children}
     </AuthContext.Provider>

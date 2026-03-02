@@ -21,6 +21,7 @@ import { Suppliers } from './pages/Suppliers';
 import { PurchaseOrders } from './pages/PurchaseOrders';
 import { StockOnHand } from './pages/StockOnHand';
 import { StockMovement } from './pages/StockMovement';
+import { Profile } from './pages/Profile';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -70,8 +71,9 @@ function App() {
   const renderPage = () => {
     // Customer-only routes
     if (currentRoute === '/portfolio') return <CustomerPortfolio />;
+    if (currentRoute === '/profile')   return <Profile />;
 
-    // For customer accounts, only home is allowed; redirect others back to home
+    // For customer accounts, only home, portfolio and profile are allowed
     if (isCustomer) {
       return <HomeLanding />;
     }
@@ -114,7 +116,7 @@ function App() {
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio']);
+  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/profile']);
 
   return (
     <ThemeProvider>

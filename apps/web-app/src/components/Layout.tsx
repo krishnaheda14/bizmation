@@ -26,6 +26,7 @@ import {
   LogOut,
   UserCircle,
   Briefcase,
+  Settings,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -56,6 +57,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const allNavItems: NavItem[] = [
     { id: 'home',           label: 'Home',            icon: <Home size={20} />,           path: '/' },
     { id: 'portfolio',      label: 'My Portfolio',    icon: <Briefcase size={20} />,       path: '/portfolio' },
+    { id: 'profile',        label: 'My Profile',      icon: <Settings size={20} />,        path: '/profile' },
     { id: 'dashboard',      label: 'Dashboard',       icon: <TrendingUp size={20} />,      path: '/dashboard' },
     { id: 'billing',        label: 'Billing',         icon: <ShoppingCart size={20} />,    path: '/billing' },
     { id: 'inventory',      label: 'Inventory',       icon: <Package size={20} />,         path: '/inventory' },
@@ -71,8 +73,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'rates',          label: 'Gold Rates',      icon: <TrendingUp size={20} />,      path: '/rates' },
   ];
 
-  // Customers only see Home and Portfolio; shop users see everything
-  const customerIds = new Set(['home', 'portfolio']);
+  // Customers only see Home, Portfolio, and Profile; shop users see everything
+  const customerIds = new Set(['home', 'portfolio', 'profile']);
   const navItems = isCustomer
     ? allNavItems.filter(item => customerIds.has(item.id))
     : allNavItems.filter(item => item.id !== 'portfolio'); // portfolio is customer-only
@@ -107,8 +109,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <img
                 src="/logo.png"
                 alt="Bizmation"
-                className="w-9 h-9 object-contain rounded-xl"
-                style={{ mixBlendMode: 'multiply' }}
+                className={`w-9 h-9 object-contain rounded-xl ${isDarkMode ? 'brightness-200 contrast-75' : ''}`}
+                style={{ mixBlendMode: isDarkMode ? 'normal' : 'multiply' }}
               />
               <div>
                 <h1 className="text-base font-black text-amber-900 dark:text-white leading-tight">Bizmation Gold</h1>

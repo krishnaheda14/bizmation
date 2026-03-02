@@ -59,7 +59,7 @@ export const HomeLanding: React.FC = () => {
   });
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
-
+  const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 24);
   // Only show 24K categories (backend uses custom categories). Filtered view for potential lists.
@@ -86,13 +86,15 @@ export const HomeLanding: React.FC = () => {
     return () => clearInterval(interval);
   }, [loadRates]);
 
-  // ── Buy Gold ──────────────────────────────────────────────────────────────
+  // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
-    const effectiveRate = lockedRate ?? gold24?.ratePerGram;
-    if (!effectiveRate) return;
+    const metalRate = buyMetal === 'GOLD'
+      ? (lockedRate ?? gold24?.ratePerGram)
+      : silver24?.ratePerGram;
+    if (!metalRate) return;
     const grams       = parseFloat(buyForm.grams);
-    const ratePerGram = effectiveRate;
+    const ratePerGram = metalRate;
     const totalAmount = grams * ratePerGram;
     const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custEmail   = userProfile?.email ?? currentUser?.email ?? '';
@@ -107,7 +109,7 @@ export const HomeLanding: React.FC = () => {
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
-        setSuccessMsg(`✅ Gold purchased! Payment ID: ${id}`);
+        setSuccessMsg(`✅ ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
 
@@ -116,7 +118,7 @@ export const HomeLanding: React.FC = () => {
           await addDoc(collection(db, 'goldOnlineOrders'), {
             userId:            currentUser?.uid ?? 'anonymous',
             type:              'BUY',
-            metal:             'GOLD',
+            metal:             buyMetal,
             purity:            24,
             grams,
             ratePerGram,
@@ -131,11 +133,13 @@ export const HomeLanding: React.FC = () => {
           });
           // Update aggregate counters on the user document
           if (currentUser) {
-            await updateDoc(doc(db, 'users', currentUser.uid), {
-              totalGoldPurchasedGrams: increment(grams),
-              totalInvestedInr:        increment(totalAmount),
-              updatedAt:               serverTimestamp(),
-            });
+            const updateData: any = {
+              totalInvestedInr: increment(totalAmount),
+              updatedAt:        serverTimestamp(),
+            };
+            if (buyMetal === 'GOLD') updateData.totalGoldPurchasedGrams   = increment(grams);
+            else                     updateData.totalSilverPurchasedGrams = increment(grams);
+            await updateDoc(doc(db, 'users', currentUser.uid), updateData);
           }
         } catch { /* non-blocking */ }
       },
@@ -231,7 +235,9 @@ export const HomeLanding: React.FC = () => {
     } catch { /* non-blocking */ }
   };
 
-  const activeRate = lockedRate ?? gold24?.ratePerGram ?? 0;
+  const activeRate = buyMetal === 'GOLD'
+    ? (lockedRate ?? gold24?.ratePerGram ?? 0)
+    : (silver24?.ratePerGram ?? 0);
   const buyTotal = buyForm.grams && activeRate
     ? (parseFloat(buyForm.grams) * activeRate).toFixed(2)
     : null;
@@ -297,11 +303,18 @@ export const HomeLanding: React.FC = () => {
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => { if (gold24) setLockedRate(gold24.ratePerGram); setModal({ type: 'buy' }); }}
+                  onClick={() => { setBuyMetal('GOLD'); if (gold24) setLockedRate(gold24.ratePerGram); setModal({ type: 'buy' }); }}
                   className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
                 >
                   <ShoppingCart size={18} />
                   Buy Gold Now
+                </button>
+                <button
+                  onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
+                >
+                  <ShoppingCart size={18} />
+                  Buy Silver Now
                 </button>
                 <button
                   onClick={() => setModal({ type: 'sell' })}
@@ -355,7 +368,16 @@ export const HomeLanding: React.FC = () => {
 
               {/* Silver */}
               <div className="bg-white/70 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
-                <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-2">Silver 24K / 1kg</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide">Silver 24K / 1kg</p>
+                  <button
+                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    className="flex items-center gap-1 px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-full text-xs font-bold transition-colors"
+                  >
+                    <ShoppingCart size={12} />
+                    Buy Silver
+                  </button>
+                </div>
                 {loading ? (
                   <Loader2 size={16} className="animate-spin text-gray-400" />
                 ) : (
@@ -530,7 +552,16 @@ export const HomeLanding: React.FC = () => {
                       <td className="py-3.5 px-4 text-right text-sm font-medium text-stone-800 dark:text-white">₹{r.ratePerGram.toFixed(2)}</td>
                       <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">₹{r.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                       <td className="py-3.5 px-4 text-right">
-                        <button onClick={() => { if (r.metalType === 'GOLD') setLockedRate(r.ratePerGram); setModal({ type: 'buy' }); }} className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">Buy</button>
+                        <button
+                          onClick={() => {
+                            setBuyMetal(r.metalType);
+                            if (r.metalType === 'GOLD') setLockedRate(r.ratePerGram);
+                            else setLockedRate(null);
+                            setModal({ type: 'buy' });
+                          }}
+                          className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">
+                          Buy
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -613,16 +644,29 @@ export const HomeLanding: React.FC = () => {
           MODALS
       ════════════════════════════════════════════════════════════════════ */}
 
-      {/* Buy Gold Modal */}
+      {/* Buy Metal Modal */}
       {modal.type === 'buy' && (
-        <ModalWrapper title="Buy Gold" onClose={() => setModal({ type: null })}>
+        <ModalWrapper title={`Buy ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'}`} onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
             {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg border border-amber-200 dark:border-amber-700">
               ⚠️ Razorpay key not set. Add <code>VITE_RAZORPAY_KEY_ID</code> to <code>apps/web-app/.env</code> to enable real payments.
             </div>}
 
+            {/* Metal toggle */}
+            <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
+              {(['GOLD', 'SILVER'] as const).map(m => (
+                <button key={m} type="button"
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); if (m === 'GOLD' && gold24) setLockedRate(gold24.ratePerGram); else setLockedRate(null); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${buyMetal === m
+                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow'
+                    : 'text-amber-700 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-700'}`}>
+                  {m === 'GOLD' ? '🥇 Gold' : '🥈 Silver'}
+                </button>
+              ))}
+            </div>
+
             <div>
-              <label className="fieldLabel">Grams (22K Gold)</label>
+              <label className="fieldLabel">Grams of {buyMetal === 'GOLD' ? '24K Gold' : '24K Silver'}</label>
               <input type="number" min="0.1" step="0.1" placeholder="e.g. 2.5"
                 value={buyForm.grams}
                 onChange={(e) => setBuyForm((f) => ({ ...f, grams: e.target.value }))}
@@ -633,7 +677,7 @@ export const HomeLanding: React.FC = () => {
             {buyTotal && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm">
                 <div className="flex justify-between text-amber-800 dark:text-amber-300">
-                  <span>{buyForm.grams}g × ₹{activeRate.toFixed(2)}/g {lockedRate ? <span className="text-xs text-green-600 dark:text-green-400 ml-1">(price locked)</span> : null}</span>
+                  <span>{buyForm.grams}g × ₹{activeRate.toFixed(2)}/g {lockedRate && buyMetal === 'GOLD' ? <span className="text-xs text-green-600 dark:text-green-400 ml-1">(price locked)</span> : null}</span>
                   <span className="font-black text-lg text-amber-900 dark:text-yellow-300">₹{Number(buyTotal).toLocaleString('en-IN')}</span>
                 </div>
               </div>

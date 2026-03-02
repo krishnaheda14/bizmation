@@ -46,7 +46,7 @@ type OtpStep   = 'input'    | 'sent';
 
 // --- Main component -------------------------------------------------------
 const AuthPage: React.FC = () => {
-  const { signIn, signUp, sendOtp, verifyOtp, sendPhoneOtp, verifyPhoneOtp } = useAuth();
+  const { signIn, signUp, sendOtp, verifyOtp, signInWithPhonePassword } = useAuth();
 
   const [tab,       setTab]       = useState<Tab>('login');
   const [loginMode, setLoginMode] = useState<LoginMode>('password');
@@ -55,9 +55,8 @@ const AuthPage: React.FC = () => {
   const [info,      setInfo]      = useState('');
   const [loading,   setLoading]   = useState(false);
   const [showPass,  setShowPass]  = useState(false);
-  const [phoneNum,   setPhoneNum]  = useState('');
-  const [phoneCode,  setPhoneCode] = useState('');
-  const [phoneSent,  setPhoneSent] = useState(false);
+  const [phoneNum,   setPhoneNum]  = useState('+91');
+  const [phonePass,  setPhonePass] = useState('');
 
   useEffect(() => {
     if (window.location.hash.includes('/auth/verify') || window.location.search.includes('mode=signIn')) {
@@ -88,19 +87,10 @@ const AuthPage: React.FC = () => {
     finally        { setLoading(false); }
   };
 
-  const handleSendPhoneOtp = async (e: React.FormEvent) => {
+  const handlePhonePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
     try {
-      await sendPhoneOtp(phoneNum.trim(), 'recaptcha-container');
-      setPhoneSent(true);
-    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally           { setLoading(false); }
-  };
-
-  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
-    e.preventDefault(); clearMsgs(); setLoading(true);
-    try {
-      await verifyPhoneOtp(phoneCode.trim());
+      await signInWithPhonePassword(phoneNum.trim(), phonePass);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
     finally           { setLoading(false); }
   };
@@ -114,7 +104,7 @@ const AuthPage: React.FC = () => {
   };
 
   const blankForm = (): SignUpData => ({
-    name: '', email: '', password: '', phone: '',
+    name: '', email: '', password: '', phone: '+91',
     city: '', state: '', country: 'India',
     dateOfBirth: '', panNumber: '', aadhaarLast4: '',
     role: 'CUSTOMER', shopName: '',
@@ -133,25 +123,14 @@ const AuthPage: React.FC = () => {
     setLoading(true);
     try {
       await signUp(form);
-      // After signup, require phone verification. Show post-signup verification UI.
-      setPostSignup({ phone: form.phone, email: form.email });
+      setTab('login');
+      setInfo(`✅ Account created! A verification email has been sent to ${form.email}. Please verify your email before signing in.`);
       setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
     finally           { setLoading(false); }
   };
 
-  // Post-signup verification state
-  const [postSignup, setPostSignup] = useState<{ phone: string; email: string } | null>(null);
-  const handleSendPostSignupOtp = async () => {
-    clearMsgs(); setLoading(true);
-    try {
-      if (!postSignup) throw new Error('No phone to verify');
-      await sendPhoneOtp(postSignup.phone, 'recaptcha-container-postsignup');
-      setPhoneSent(true);
-      setInfo('OTP sent to ' + postSignup.phone);
-    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally { setLoading(false); }
-  };
+  // Post-signup: simple state removed — signup now signs out and shows email verification info
 
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-4 py-10"
@@ -233,7 +212,7 @@ const AuthPage: React.FC = () => {
                 style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.25)' }}>
                 {(['password', 'otp', 'phone'] as LoginMode[]).map(m => (
                   <button key={m}
-                    onClick={() => { setLoginMode(m); setOtpStep('input'); setPhoneSent(false); clearMsgs(); }}
+                    onClick={() => { setLoginMode(m); setOtpStep('input'); clearMsgs(); }}
                     className="flex-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all"
                     style={loginMode === m ? {
                       background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
@@ -266,33 +245,23 @@ const AuthPage: React.FC = () => {
                   </p>
                 </form>
               ) : loginMode === 'phone' ? (
-                phoneSent ? (
-                  <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
-                    <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
-                      style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                      Enter the 6-digit OTP sent to <strong>{phoneNum}</strong>
-                    </div>
-                    <GoldInput label="OTP Code" type="text" inputMode="numeric" maxLength={6}
-                      value={phoneCode} onChange={e => setPhoneCode(e.target.value)}
-                      required autoFocus placeholder="6-digit OTP" />
-                    <GoldButton loading={loading}>Verify OTP</GoldButton>
-                    <button type="button" onClick={() => { setPhoneSent(false); clearMsgs(); }}
-                      className="text-xs text-amber-500 underline underline-offset-2 w-full text-center">
-                      Wrong number? Try again
+                <form onSubmit={handlePhonePasswordLogin} className="space-y-4">
+                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
+                    style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
+                    Enter your registered mobile number (with country code) and your account password.
+                  </div>
+                  <GoldInput label="Mobile Number" type="tel" value={phoneNum}
+                    onChange={e => setPhoneNum(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
+                  <div className="relative">
+                    <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={phonePass}
+                      onChange={e => setPhonePass(e.target.value)} required placeholder="Enter your password" />
+                    <button type="button" tabIndex={-1} onClick={() => setShowPass(v => !v)}
+                      className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium">
+                      {showPass ? 'Hide' : 'Show'}
                     </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleSendPhoneOtp} className="space-y-4">
-                    <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
-                      style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                      Enter your mobile number with country code. We will send a one-time password (OTP).
-                    </div>
-                    <GoldInput label="Mobile Number" type="tel" value={phoneNum}
-                      onChange={e => setPhoneNum(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
-                    <div id="recaptcha-container" />
-                    <GoldButton loading={loading}>Send OTP</GoldButton>
-                  </form>
-                )
+                  </div>
+                  <GoldButton loading={loading}>Sign In</GoldButton>
+                </form>
               ) : otpStep === 'input' ? (
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
@@ -322,7 +291,7 @@ const AuthPage: React.FC = () => {
           )}
 
           {/* SIGN UP */}
-          {tab === 'signup' && !postSignup && (
+          {tab === 'signup' && (
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">
                 {signupStep === 1 ? 'Create your account' : 'Identity Details'}
@@ -396,8 +365,8 @@ const AuthPage: React.FC = () => {
                     </div>
 
                     {(form.role === 'OWNER' || form.role === 'CUSTOMER') && (
-                      <GoldInput label="Shop / Business Name" value={form.shopName ?? ''}
-                        onChange={setF('shopName')} required placeholder="e.g. Lakshmi Gold Palace" />
+                      <GoldInput label={form.role === 'OWNER' ? 'Shop / Business Name *' : 'Shop / Business Name *'} value={form.shopName ?? ''}
+                        onChange={setF('shopName')} required placeholder={form.role === 'OWNER' ? 'e.g. Lakshmi Gold Palace' : 'e.g. Lakshmi Gold Palace'} />
                     )}
 
                     <GoldButton loading={false}>Continue</GoldButton>
@@ -431,27 +400,6 @@ const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* Post-signup: prompt phone verification */}
-          {postSignup && (
-            <div>
-              <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">Verify your phone</h2>
-              <p className="text-sm text-amber-600 mb-4">We sent an email verification. Before you can sign in, verify your phone to activate your account.</p>
-              <div className="mb-4 text-sm text-amber-700">Phone: <strong>{postSignup.phone}</strong></div>
-              <div id="recaptcha-container-postsignup" />
-              <div className="flex gap-3">
-                <button type="button" onClick={handleSendPostSignupOtp}
-                  className="flex-1 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-semibold">Send OTP</button>
-                <button type="button" onClick={() => setPostSignup(null)}
-                  className="flex-1 py-3 rounded-2xl bg-white border border-amber-200 text-amber-700">Cancel</button>
-              </div>
-              {phoneSent && (
-                <form onSubmit={handleVerifyPhoneOtp} className="mt-4 space-y-3">
-                  <GoldInput label="Enter OTP" type="text" value={phoneCode} onChange={e => setPhoneCode(e.target.value)} required placeholder="6-digit OTP" />
-                  <GoldButton loading={loading}>Verify</GoldButton>
-                </form>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -519,18 +467,17 @@ const friendlyError = (code: string): string =>
   ({
     'auth/user-not-found':             'No account found with this email. Please sign up.',
     'auth/wrong-password':             'Incorrect password. Please try again.',
-    'auth/invalid-credential':         'Incorrect email or password. Try signing in with Magic Link if you registered without a password.',
+    'auth/invalid-credential':         'Incorrect email or password. Please check and try again.',
     'auth/email-already-in-use':       'This email is already registered. Please sign in.',
     'auth/invalid-email':              'Please enter a valid email address.',
     'auth/weak-password':              'Password must be at least 6 characters.',
     'auth/too-many-requests':          'Too many attempts. Please wait a few minutes.',
     'auth/network-request-failed':     'Network error. Please check your connection.',
     'auth/invalid-action-code':        'Magic link is invalid or expired. Request a new one.',
-    'auth/invalid-phone-number':       'Invalid phone number. Include country code (e.g. +91 98765 43210).',
-    'auth/code-expired':               'OTP has expired. Please request a new code.',
-    'auth/invalid-verification-code':  'Invalid OTP. Please check and try again.',
-    'auth/missing-phone-number':       'Please enter your phone number.',
-    'auth/quota-exceeded':             'SMS quota exceeded. Please try again later.',
+    'auth/email-not-verified':         '📧 Email not verified. Please check your inbox and click the verification link before signing in.',
+    'No account found with this phone number.': 'No account found with this phone number.',
+    'Account has no email. Please sign in with your email instead.': 'Account has no email. Please sign in with your email instead.',
+    'EMAIL_NOT_VERIFIED':              '📧 Email not verified. Please check your inbox and click the verification link before signing in.',
   } as Record<string, string>)[code] ?? code;
 
 export default AuthPage;
