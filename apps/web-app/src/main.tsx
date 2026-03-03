@@ -14,14 +14,12 @@ import { Inventory } from './pages/Inventory';
 import { Catalog } from './pages/Catalog';
 import { GoldRates } from './pages/GoldRates';
 import { Parties } from './pages/Parties';
-import { AIInsights } from './pages/AIInsights';
 import { Repairs } from './pages/Repairs';
 import { Schemes } from './pages/Schemes';
 import { Suppliers } from './pages/Suppliers';
 import { Orders } from './pages/Orders';
 import { PurchaseOrders } from './pages/PurchaseOrders';
 import { StockOnHand } from './pages/StockOnHand';
-import { StockMovement } from './pages/StockMovement';
 import { Profile } from './pages/Profile';
 
 function App() {
@@ -107,10 +105,6 @@ function App() {
         return <PurchaseOrders />;
       case '/stock-on-hand':
         return <StockOnHand />;
-      case '/stock-movement':
-        return <StockMovement />;
-      case '/insights':
-        return <AIInsights />;
       case '/rates':
         return <GoldRates />;
       default:

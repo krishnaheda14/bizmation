@@ -31,6 +31,17 @@ interface GoldOrder {
 
 export const CustomerPortfolio: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
+  const [shopFrozen, setShopFrozen] = useState<boolean>(false);
+  useEffect(() => {
+    if (!userProfile?.shopName) return;
+    import('firebase/firestore').then(({ collection, query, where, getDocs }) => {
+      const q = query(collection(db, 'shops'), where('name', '==', userProfile.shopName));
+      getDocs(q).then(snap => {
+        const shopDoc = snap.docs[0]?.data();
+        setShopFrozen(!!shopDoc?.transactionsFrozen);
+      });
+    });
+  }, [userProfile?.shopName]);
   const [orders, setOrders]   = useState<GoldOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -40,36 +51,19 @@ export const CustomerPortfolio: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      // Try multiple keys because backend/orders may store different identifiers
+      // Query orders by email (primary key — all orders store customerEmail)
       const allResults: Record<string, GoldOrder> = {};
 
-      // 1) Query by userId
-      const q1 = query(
-        collection(db, 'goldOnlineOrders'),
-        where('userId', '==', currentUser.uid),
-      );
-      const snap1 = await getDocs(q1);
-      snap1.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
-
-      // 2) Query by email (some orders may store customerEmail)
       if (currentUser.email) {
-        const q2 = query(
+        const q = query(
           collection(db, 'goldOnlineOrders'),
           where('customerEmail', '==', currentUser.email),
         );
-        const snap2 = await getDocs(q2);
-        snap2.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
-      }
-
-      // 3) Query by phone (if profile has phone)
-      const phone = userProfile?.phone ?? '';
-      if (phone) {
-        const q3 = query(
-          collection(db, 'goldOnlineOrders'),
-          where('customerPhone', '==', phone),
-        );
-        const snap3 = await getDocs(q3);
-        snap3.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
+        const snap = await getDocs(q);
+        snap.docs.forEach(d => { allResults[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
+        console.log('[Portfolio] Orders fetched by email:', snap.size, 'for', currentUser.email);
+      } else {
+        console.warn('[Portfolio] No email on currentUser — cannot fetch orders');
       }
 
       // Convert to array and sort by createdAt descending (serverTimestamp may be a Firestore Timestamp)
@@ -104,6 +98,17 @@ export const CustomerPortfolio: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
+      {shopFrozen && (
+        <div className="max-w-5xl mx-auto mb-6">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-4 flex items-center gap-3">
+            <AlertCircle className="text-red-500 flex-shrink-0" size={22} />
+            <div>
+              <p className="text-red-700 dark:text-red-300 font-bold text-base">Buy/Sell is currently paused by your shop owner.</p>
+              <p className="text-red-700/70 dark:text-red-400 text-xs mt-1">You cannot place new buy or sell orders until your shop owner allows transactions again.</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 border-b border-amber-200 dark:border-yellow-900/30 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-5xl mx-auto">

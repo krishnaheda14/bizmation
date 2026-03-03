@@ -68,8 +68,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'parties',        label: 'Parties',         icon: <Users size={20} />,           path: '/parties' },
     { id: 'purchase-orders',label: 'Purchase Orders', icon: <ClipboardList size={20} />,   path: '/purchase-orders' },
     { id: 'stock-on-hand',  label: 'Stock on Hand',   icon: <PackageCheck size={20} />,   path: '/stock-on-hand' },
-    { id: 'stock-movement', label: 'Stock Movement',  icon: <ArrowRightLeft size={20} />, path: '/stock-movement' },
-    { id: 'insights',       label: 'AI Insights',     icon: <Brain size={20} />,           path: '/insights' },
     { id: 'rates',          label: 'Gold Rates',      icon: <TrendingUp size={20} />,      path: '/rates' },
   ];
 

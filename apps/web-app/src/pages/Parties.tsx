@@ -70,6 +70,71 @@ interface Order {
 
 export const Parties: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
+  const [debugRates, setDebugRates] = useState<any>(null);
+  const [debugLoading, setDebugLoading] = useState(false);
+  const [debugError, setDebugError] = useState('');
+  const [shopFreeze, setShopFreeze] = useState<boolean>(false);
+  const [freezeLoading, setFreezeLoading] = useState(false);
+  // Fetch shop freeze status
+  useEffect(() => {
+    if (!userProfile?.role || userProfile.role !== 'OWNER' || !currentUser) return;
+    const shopId = currentUser.uid;
+    import('firebase/firestore').then(({ doc, getDoc }) => {
+      getDoc(doc(db, 'shops', shopId)).then(snap => {
+        setShopFreeze(!!snap.data()?.transactionsFrozen);
+      });
+    });
+  }, [userProfile?.role, currentUser]);
+  // Toggle freeze
+  const handleFreezeToggle = async () => {
+    if (!currentUser) return;
+    setFreezeLoading(true);
+    const shopId = currentUser.uid;
+    const newVal = !shopFreeze;
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'shops', shopId), { transactionsFrozen: newVal });
+      setShopFreeze(newVal);
+    } catch (e: any) {
+      alert('Failed to update freeze status: ' + (e?.message ?? ''));
+    } finally {
+      setFreezeLoading(false);
+    }
+  };
+  // Price debug fetch
+  const fetchDebugRates = async () => {
+    setDebugLoading(true); setDebugError('');
+    try {
+      const { fetchLiveMetalRates } = await import('../lib/goldPrices');
+      // Also fetch XAU/USD, XAG/USD, USD/INR
+      const [xauCdn, xagCdn, usdCdn] = await Promise.all([
+        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json').then(r => r.json()),
+        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json').then(r => r.json()),
+        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json()),
+      ]);
+      const rates = await fetchLiveMetalRates();
+      setDebugRates({
+        xauUsd: xauCdn.xau.usd,
+        xagUsd: xagCdn.xag.usd,
+        usdInr: usdCdn.usd.inr,
+        xauInr: xauCdn.xau.inr,
+        xagInr: xagCdn.xag.inr,
+        rates,
+        fetchedAt: new Date().toLocaleTimeString(),
+      });
+    } catch (e: any) {
+      setDebugError('Failed to fetch rates: ' + (e?.message ?? ''));
+    } finally {
+      setDebugLoading(false);
+    }
+  };
+  useEffect(() => {
+    if (userProfile?.role === 'OWNER') {
+      fetchDebugRates();
+      const timer = setInterval(fetchDebugRates, 10000);
+      return () => clearInterval(timer);
+    }
+  }, [userProfile?.role]);
 
   const [customers, setCustomers]   = useState<CustomerParty[]>([]);
   const [shops, setShops]           = useState<ShopParty[]>([]);
@@ -137,22 +202,15 @@ export const Parties: React.FC = () => {
     setOrdersLoading(customer.uid);
     console.log('[Parties] Loading orders for customer:', customer.name, customer.uid);
     try {
+      // Query orders by email only (consistent with how HomeLanding stores orders)
       const all: Record<string, Order> = {};
-      const q1 = query(collection(db, 'goldOnlineOrders'), where('userId', '==', customer.uid));
-      const s1 = await getDocs(q1);
-      s1.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
-      console.log('[Parties] Orders by userId:', s1.size);
       if (customer.email) {
-        const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
-        const s2 = await getDocs(q2);
-        s2.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
-        console.log('[Parties] Orders by email:', s2.size);
-      }
-      if (customer.phone) {
-        const q3 = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', customer.phone));
-        const s3 = await getDocs(q3);
-        s3.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
-        console.log('[Parties] Orders by phone:', s3.size);
+        const q = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
+        const s = await getDocs(q);
+        s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
+        console.log('[Parties] Orders by email for', customer.name, ':', s.size);
+      } else {
+        console.warn('[Parties] Customer has no email — cannot load orders:', customer.name);
       }
       const sorted = Object.values(all).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
       console.log('[Parties] Total unique orders for', customer.name, ':', sorted.length);
@@ -198,6 +256,66 @@ export const Parties: React.FC = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-5">
+                {/* Owner Price Debug Panel */}
+                {userProfile?.role === 'OWNER' && (
+                  <div className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-2xl p-6 mb-6 shadow-sm">
+                    <h2 className="text-lg font-black text-amber-900 dark:text-amber-400 mb-2 flex items-center gap-2">
+                      <Shield size={20} className="text-amber-500" /> Price Debug Panel
+                    </h2>
+                    <div className="flex flex-wrap gap-6 items-center mb-3">
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/USD:</span>
+                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauUsd?.toFixed?.(2) ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/USD:</span>
+                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagUsd?.toFixed?.(2) ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">USD/INR:</span>
+                        <span className="ml-2 font-mono text-base text-green-700 dark:text-green-400">{debugRates?.usdInr?.toFixed?.(2) ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/INR:</span>
+                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/INR:</span>
+                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Fetched:</span>
+                        <span className="ml-2 font-mono text-xs text-stone-500">{debugRates?.fetchedAt ?? ''}</span>
+                      </div>
+                    </div>
+                    <div className="mb-2">
+                      <button onClick={fetchDebugRates} disabled={debugLoading} className="px-3 py-1.5 rounded bg-amber-500 text-white font-bold text-xs mr-2">
+                        {debugLoading ? 'Refreshing…' : 'Manual Refresh'}
+                      </button>
+                      <span className="text-xs text-stone-400">Auto-refreshes every 10s</span>
+                    </div>
+                    {debugError && <div className="text-xs text-red-500 mb-2">{debugError}</div>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                      {debugRates?.rates?.map?.((r: any) => (
+                        <div key={r.metalType + r.purity} className="bg-amber-50 dark:bg-gray-800 rounded-xl p-3 border border-amber-100 dark:border-gray-700">
+                          <div className="font-bold text-amber-700 dark:text-yellow-400 mb-1">{r.metalType} {r.purity}K</div>
+                          <div className="text-xs text-stone-500 dark:text-gray-400">Per gram: <span className="font-mono text-base text-amber-900 dark:text-yellow-300">{r.ratePerGram?.toFixed?.(2)}</span></div>
+                          <div className="text-xs text-stone-500 dark:text-gray-400">Display rate: <span className="font-mono">{r.displayRate?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                          <div className="text-xs text-stone-400 mt-1">Source: {r.source}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex items-center gap-4">
+                      <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Freeze Transactions:</span>
+                      <button onClick={handleFreezeToggle} disabled={freezeLoading} className={shopFreeze ? 'px-4 py-2 rounded bg-red-500 text-white font-bold text-xs' : 'px-4 py-2 rounded bg-green-500 text-white font-bold text-xs'}>
+                        {freezeLoading ? 'Saving…' : shopFreeze ? 'Unfreeze (Allow Buy/Sell)' : 'Freeze (Pause Buy/Sell)'}
+                      </button>
+                      <span className={shopFreeze ? 'text-xs text-red-500 font-bold' : 'text-xs text-green-500 font-bold'}>
+                        {shopFreeze ? 'Currently Paused' : 'Transactions Allowed'}
+                      </span>
+                    </div>
+                  </div>
+                )}
         {error && (
           <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-3">
             <AlertCircle className="text-red-500 flex-shrink-0" size={18} />

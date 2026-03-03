@@ -71,64 +71,6 @@ export const Profile: React.FC = () => {
     <div className="min-h-screen bg-stone-50 dark:bg-gray-950 py-10 px-4 sm:px-6">
       <div className="max-w-2xl mx-auto space-y-6">
 
-        {/* â”€â”€ Hero Header â”€â”€ */}
-        <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
-          style={{
-            background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 60%, #d97706 100%)',
-            boxShadow: '0 8px 32px rgba(245,158,11,0.3)',
-          }}>
-          {/* decorative circle */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
-          <div className="flex items-center gap-5">
-            <div className="w-16 h-16 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg flex-shrink-0">
-              <span className="text-3xl font-black text-amber-900 select-none">
-                {userProfile.name?.[0]?.toUpperCase() ?? '?'}
-              </span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-amber-950">{userProfile.name || 'My Profile'}</h1>
-              <p className="text-sm text-amber-800/80">{currentUser?.email}</p>
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/40 text-amber-950">
-                  {isOwner ? 'ðŸª' : 'ðŸ‘¤'} {userProfile.role}
-                </span>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  userProfile.kycStatus === 'VERIFIED'
-                    ? 'bg-green-500/20 text-green-900'
-                    : 'bg-orange-300/40 text-amber-950'
-                }`}>
-                  {userProfile.kycStatus === 'VERIFIED'
-                    ? <CheckCircle size={10} />
-                    : <AlertCircle size={10} />}
-                  KYC {userProfile.kycStatus}
-                </span>
-                {userProfile.shopName && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/30 text-amber-950">
-                    ðŸ·ï¸ {userProfile.shopName}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* â”€â”€ Stats Row â”€â”€ */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Gold Held', value: `${(userProfile.totalGoldPurchasedGrams ?? 0).toFixed(3)}g`, icon: 'ðŸ¥‡', color: 'amber' },
-            { label: 'Silver', value: `${(userProfile.totalSilverPurchasedGrams ?? 0).toFixed(3)}g`, icon: 'ðŸ¥ˆ', color: 'slate' },
-            { label: 'Invested', value: `â‚¹${(userProfile.totalInvestedInr ?? 0).toLocaleString('en-IN')}`, icon: 'ðŸ’°', color: 'green' },
-          ].map(s => (
-            <div key={s.label}
-              className="rounded-2xl bg-white dark:bg-gray-900 border border-amber-100 dark:border-gray-800 p-4 text-center shadow-sm">
-              <div className="text-2xl mb-1">{s.icon}</div>
-              <p className="text-base font-black text-stone-800 dark:text-white leading-tight">{s.value}</p>
-              <p className="text-xs text-stone-400 dark:text-gray-500 mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
-
         {/* â”€â”€ Alerts â”€â”€ */}
         {success && (
           <div className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300">

@@ -121,6 +121,9 @@ export const HomeLanding: React.FC = () => {
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 24);
+  // Buy prices: 24K rate minus 1.75% — displayed as the effective buy price (not shown in UI)
+  const goldBuyPrice = gold24 ? Math.round(gold24.ratePerGram * 0.9825 * 100) / 100 : 0;
+  const silverBuyPrice = silver24 ? Math.round(silver24.ratePerGram * 0.9825 * 100) / 100 : 0;
   // Only show 24K categories (backend uses custom categories). Filtered view for potential lists.
   const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 24) || (r.metalType === 'SILVER' && r.purity === 24));
 
@@ -300,8 +303,8 @@ export const HomeLanding: React.FC = () => {
   };
 
   const activeRate = buyMetal === 'GOLD'
-    ? (lockedRate ?? gold24?.ratePerGram ?? 0)
-    : (silver24?.ratePerGram ?? 0);
+    ? (lockedRate ?? goldBuyPrice)
+    : silverBuyPrice;
   const buyTotal = buyForm.grams && activeRate
     ? (parseFloat(buyForm.grams) * activeRate).toFixed(2)
     : null;
@@ -368,7 +371,7 @@ export const HomeLanding: React.FC = () => {
 
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => { setBuyMetal('GOLD'); if (gold24) setLockedRate(gold24.ratePerGram); setModal({ type: 'buy' }); }}
+                  onClick={() => { setBuyMetal('GOLD'); if (goldBuyPrice) setLockedRate(goldBuyPrice); setModal({ type: 'buy' }); }}
                   className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
                 >
                   <ShoppingCart size={18} />
@@ -480,6 +483,44 @@ export const HomeLanding: React.FC = () => {
             {['✓ 100% Pure Gold', '✓ Live Market Prices', '✓ Secure Payments via Razorpay', '✓ AutoPay / Monthly SIP', '✓ Sell Anytime'].map((f) => (
               <span key={f}>{f}</span>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          LIVE CHARTS (TradingView)
+      ════════════════════════════════════════════════════════════════════ */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl sm:text-3xl font-black text-stone-800 dark:text-white mb-1">
+            Live <span className="text-amber-500 dark:text-yellow-400">Market Charts</span>
+          </h2>
+          <p className="text-amber-700/70 dark:text-gray-400 text-sm">Real-time XAU/USD and XAG/USD from TradingView</p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-5">
+          <div className="rounded-2xl overflow-hidden border border-amber-200 dark:border-gray-700 shadow-md bg-white dark:bg-gray-900">
+            <div className="px-4 py-2.5 bg-amber-50 dark:bg-gray-800 border-b border-amber-100 dark:border-gray-700 flex items-center gap-2">
+              <span className="text-base">🥇</span>
+              <span className="font-bold text-amber-800 dark:text-yellow-400 text-sm">Gold (XAU/USD)</span>
+              {gold24 && !loading && (
+                <span className="ml-auto font-mono text-amber-700 dark:text-yellow-300 text-sm font-bold">
+                  ₹{gold24.ratePerGram.toFixed(2)}/g
+                </span>
+              )}
+            </div>
+            <TradingViewMini symbol="OANDA:XAUUSD" theme="light" />
+          </div>
+          <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-md bg-white dark:bg-gray-900">
+            <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <span className="text-base">🥈</span>
+              <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">Silver (XAG/USD)</span>
+              {silver24 && !loading && (
+                <span className="ml-auto font-mono text-gray-600 dark:text-gray-300 text-sm font-bold">
+                  ₹{silver24.ratePerGram.toFixed(2)}/g
+                </span>
+              )}
+            </div>
+            <TradingViewMini symbol="OANDA:XAGUSD" theme="light" />
           </div>
         </div>
       </section>
@@ -721,7 +762,7 @@ export const HomeLanding: React.FC = () => {
             <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); if (m === 'GOLD' && gold24) setLockedRate(gold24.ratePerGram); else setLockedRate(null); }}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); if (m === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice); else setLockedRate(null); }}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${buyMetal === m
                     ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow'
                     : 'text-amber-700 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-700'}`}>
@@ -937,6 +978,48 @@ export const HomeLanding: React.FC = () => {
           </div>
         </ModalWrapper>
       )}
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// TradingView Mini Chart Widget
+// ────────────────────────────────────────────────────────────────────────────
+const TradingViewMini: React.FC<{ symbol: string; theme?: string }> = ({ symbol, theme = 'light' }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.innerHTML = '';
+
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';
+    script.async = true;
+    script.type = 'text/javascript';
+    script.innerHTML = JSON.stringify({
+      symbol,
+      width: '100%',
+      height: 220,
+      locale: 'en',
+      dateRange: '1D',
+      colorTheme: theme,
+      trendLineColor: 'rgba(245, 158, 11, 1)',
+      underLineColor: 'rgba(245, 158, 11, 0.15)',
+      underLineBottomColor: 'rgba(245, 158, 11, 0)',
+      isTransparent: false,
+      autosize: true,
+      largeChartUrl: '',
+      noTimeScale: false,
+    });
+    container.appendChild(script);
+
+    return () => { if (container) container.innerHTML = ''; };
+  }, [symbol, theme]);
+
+  return (
+    <div className="tradingview-widget-container" ref={containerRef} style={{ minHeight: 220 }}>
+      <div className="tradingview-widget-container__widget" />
     </div>
   );
 };
