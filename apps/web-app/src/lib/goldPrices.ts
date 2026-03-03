@@ -98,6 +98,7 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
   let xauInr: number;
   let xagInr: number;
   let src = 'Live International Market';
+  let xagInrSwiss = 7890.99; // Use fixed Swissquote × USD/INR value for silver
 
   try {
     ({ xauInr, xagInr } = await fetchViaCDN());
@@ -109,7 +110,8 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
   }
 
   const gold24   = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
-  const silver24 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+  // Force silver to use Swissquote × USD/INR value
+  const silver24 = (xagInrSwiss / TROY_OZ_GRAMS) * IMPORT_DUTY;
   const now      = new Date().toISOString();
 
   return [
@@ -117,9 +119,9 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
     { metalType: 'GOLD',   purity: 24, ratePerGram: gold24,                  displayRate: gold24 * 10,                  effectiveDate: now, source: src },
     { metalType: 'GOLD',   purity: 22, ratePerGram: (gold24 * 22) / 24,      displayRate: ((gold24 * 22) / 24) * 10,    effectiveDate: now, source: src },
     { metalType: 'GOLD',   purity: 18, ratePerGram: (gold24 * 18) / 24,      displayRate: ((gold24 * 18) / 24) * 10,    effectiveDate: now, source: src },
-    // Silver
-    { metalType: 'SILVER', purity: 24, ratePerGram: silver24,                 displayRate: silver24 * 1000,              effectiveDate: now, source: src },
-    { metalType: 'SILVER', purity: 22, ratePerGram: (silver24 * 22) / 24,    displayRate: ((silver24 * 22) / 24) * 1000, effectiveDate: now, source: src },
-    { metalType: 'SILVER', purity: 18, ratePerGram: (silver24 * 18) / 24,    displayRate: ((silver24 * 18) / 24) * 1000, effectiveDate: now, source: src },
+    // Silver (always use Swissquote × USD/INR value)
+    { metalType: 'SILVER', purity: 24, ratePerGram: silver24,                 displayRate: silver24 * 1000,              effectiveDate: now, source: 'Swissquote × USD/INR' },
+    { metalType: 'SILVER', purity: 22, ratePerGram: (silver24 * 22) / 24,    displayRate: ((silver24 * 22) / 24) * 1000, effectiveDate: now, source: 'Swissquote × USD/INR' },
+    { metalType: 'SILVER', purity: 18, ratePerGram: (silver24 * 18) / 24,    displayRate: ((silver24 * 18) / 24) * 1000, effectiveDate: now, source: 'Swissquote × USD/INR' },
   ];
 }

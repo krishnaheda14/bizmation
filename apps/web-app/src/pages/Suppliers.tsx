@@ -22,47 +22,7 @@ interface Supplier {
 }
 
 export const Suppliers: React.FC = () => {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([
-    {
-      id: 'SUP001',
-      name: 'Mumbai Bullion Traders',
-      contactPerson: 'Ramesh Gupta',
-      mobile: '+91-22-12345678',
-      email: 'ramesh@mumbaibullion.com',
-      state: 'Maharashtra',
-      address: 'Shop 12, Zaveri Bazaar, Mumbai',
-      gstin: '27CCCCC0000C1Z5',
-      balance: 125000,
-      totalPurchases: 2850000,
-      lastPurchaseDate: '2026-02-08',
-    },
-    {
-      id: 'SUP002',
-      name: 'Chennai Gold Mart',
-      contactPerson: 'Venkatesh Iyer',
-      mobile: '+91-44-87654321',
-      email: 'venkat@chennaigold.com',
-      state: 'Tamil Nadu',
-      address: '23, T Nagar Main Road, Chennai',
-      gstin: '33DDDDD0000D1Z5',
-      balance: 85000,
-      totalPurchases: 1950000,
-      lastPurchaseDate: '2026-02-05',
-    },
-    {
-      id: 'SUP003',
-      name: 'Delhi Gems & Jewellers',
-      contactPerson: 'Suresh Sharma',
-      mobile: '+91-11-98765432',
-      email: 'suresh@delhigems.com',
-      state: 'Delhi',
-      address: 'Plot 45, Dariba Kalan, Delhi',
-      gstin: '07EEEEE0000E1Z5',
-      balance: 0,
-      totalPurchases: 3200000,
-      lastPurchaseDate: '2026-01-28',
-    },
-  ]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -306,7 +266,7 @@ export const Suppliers: React.FC = () => {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="e.g., Mumbai Bullion Traders"
+                    placeholder="e.g., Supplier name"
                   />
                 </div>
 
@@ -334,7 +294,7 @@ export const Suppliers: React.FC = () => {
                     value={formData.mobile}
                     onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="+91-9876543210"
+                    placeholder="+91 phone"
                   />
                 </div>
 

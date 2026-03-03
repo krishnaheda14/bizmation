@@ -57,58 +57,8 @@ interface Warranty {
 
 export const WarrantyManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'lookup' | 'reminders'>('list');
-  const [warranties, setWarranties] = useState<Warranty[]>([
-    {
-      id: '1',
-      warrantyNo: 'WRT-2026-001',
-      invoiceNo: 'INV-2026-001',
-      itemName: '22K Gold Necklace Set',
-      itemSKU: 'GN-001',
-      itemCategory: 'Necklace',
-      metalType: 'GOLD',
-      purity: 22,
-      netWeight: 44.2,
-      grossWeight: 45.5,
-      customerName: 'Priya Sharma',
-      customerPhone: '+91-9876543210',
-      customerEmail: 'priya.sharma@email.com',
-      purchaseDate: new Date('2025-11-15'),
-      warrantyPeriod: 12,
-      expiryDate: new Date('2026-11-15'),
-      coverageDetails: 'Manufacturing defects, polishing, cleaning',
-      termsConditions: 'Valid only with original invoice. Does not cover physical damage or misuse.',
-      status: 'Active',
-      whatsappSent: true,
-      emailSent: true,
-      reminderSent: false,
-      notes: '',
-    },
-    {
-      id: '2',
-      warrantyNo: 'WRT-2026-002',
-      invoiceNo: 'INV-2026-002',
-      itemName: '18K Diamond Ring 0.5ct',
-      itemSKU: 'DR-001',
-      itemCategory: 'Ring',
-      metalType: 'GOLD',
-      purity: 18,
-      netWeight: 3.5,
-      grossWeight: 4.2,
-      customerName: 'Rajesh Patel',
-      customerPhone: '+91-9876543211',
-      customerEmail: 'rajesh.patel@email.com',
-      purchaseDate: new Date('2025-12-20'),
-      warrantyPeriod: 24,
-      expiryDate: new Date('2027-12-20'),
-      coverageDetails: 'Diamond setting security, metal polishing, sizing (one-time free)',
-      termsConditions: 'Diamond warranty subject to GIA certificate verification.',
-      status: 'Active',
-      whatsappSent: true,
-      emailSent: false,
-      reminderSent: false,
-      notes: '',
-    },
-  ]);
+  // Start empty — data should be fetched from the database
+  const [warranties, setWarranties] = useState<Warranty[]>([]);
 
   const getStatusStats = () => {
     const active = warranties.filter((w) => w.status === 'Active').length;

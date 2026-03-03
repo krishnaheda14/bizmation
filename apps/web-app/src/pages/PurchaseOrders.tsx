@@ -26,57 +26,8 @@ interface PurchaseOrder {
 }
 
 export const PurchaseOrders: React.FC = () => {
-  const [orders, setOrders] = useState<PurchaseOrder[]>([
-    {
-      id: '1',
-      orderNo: 'PO-2026-001',
-      invoiceNo: 'INV-MB-1234',
-      supplier: 'Mumbai Bullion Traders',
-      date: new Date('2026-02-08'),
-      receivedDate: new Date('2026-02-09'),
-      createdOn: new Date('2026-02-07'),
-      billDiscount: 5000,
-      roundingOff: -12,
-      grandAmount: 285000,
-      receivedAmount: 285000,
-      store: 'Main Store',
-      status: 'Received',
-      notes: 'Urgent order for wedding season',
-      updatedAt: new Date('2026-02-09'),
-    },
-    {
-      id: '2',
-      orderNo: 'PO-2026-002',
-      invoiceNo: 'INV-CG-5678',
-      supplier: 'Chennai Gold Mart',
-      date: new Date('2026-02-10'),
-      createdOn: new Date('2026-02-09'),
-      billDiscount: 2000,
-      roundingOff: 8,
-      grandAmount: 150000,
-      receivedAmount: 75000,
-      store: 'Main Store',
-      status: 'Partially Received',
-      notes: 'Payment terms: 50% advance, 50% on delivery',
-      updatedAt: new Date('2026-02-10'),
-    },
-    {
-      id: '3',
-      orderNo: 'PO-2026-003',
-      invoiceNo: 'INV-DG-9012',
-      supplier: 'Delhi Gems & Jewellers',
-      date: new Date('2026-02-10'),
-      createdOn: new Date('2026-02-10'),
-      billDiscount: 0,
-      roundingOff: 0,
-      grandAmount: 425000,
-      receivedAmount: 0,
-      store: 'Branch Store',
-      status: 'Pending',
-      notes: '',
-      updatedAt: new Date('2026-02-10'),
-    },
-  ]);
+  // Start with no purchase orders; load from DB
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');

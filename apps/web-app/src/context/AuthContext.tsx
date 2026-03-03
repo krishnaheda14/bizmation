@@ -27,6 +27,8 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import {
   doc, setDoc, getDoc, serverTimestamp, updateDoc,
@@ -50,6 +52,7 @@ export interface UserProfile {
   kycStatus: 'PENDING' | 'VERIFIED';
   role: 'CUSTOMER' | 'STAFF' | 'OWNER';
   shopName?: string;             // for OWNER/STAFF accounts
+  gstNumber?: string;            // GST registration number (OWNER)
   phoneVerified?: boolean;
   totalGoldPurchasedGrams: number;
   totalSilverPurchasedGrams: number;
@@ -71,6 +74,7 @@ export interface SignUpData {
   aadhaarLast4: string;
   role?: 'CUSTOMER' | 'OWNER';
   shopName?: string;
+  gstNumber?: string;  // GST registration number (required for OWNER)
 }
 
 interface AuthContextType {
@@ -84,6 +88,7 @@ interface AuthContextType {
   verifyOtp: () => Promise<{ success: boolean; email: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -124,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await loadProfile(user);
       } else {
         setUserProfile(null);
+        console.log('[AuthContext] User signed out, profile cleared');
       }
       setLoadingAuth(false);
     });
@@ -133,17 +139,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Sign Up ──────────────────────────────────────────────────────────────
   const signUp = async (data: SignUpData) => {
     const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
-    const user = cred.user;
+    const createdUser = cred.user;
 
     // Set display name in Firebase Auth
-    await updateProfile(user, { displayName: data.name });
+    await updateProfile(createdUser, { displayName: data.name });
 
     // Send verification email
-    await sendEmailVerification(user);
+    await sendEmailVerification(createdUser);
 
     // Write full profile to Firestore
     const profile: UserProfile = {
-      uid:                        user.uid,
+      uid:                        createdUser.uid,
       name:                       data.name,
       email:                      data.email,
       phone:                      data.phone,
@@ -156,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       kycStatus:                  'PENDING',
       role:                       data.role ?? 'CUSTOMER',
       ...(data.shopName ? { shopName: data.shopName.trim() } : {}),
+      ...(data.gstNumber ? { gstNumber: data.gstNumber.trim().toUpperCase() } : {}),
       phoneVerified:              false,
       totalGoldPurchasedGrams:    0,
       totalSilverPurchasedGrams:  0,
@@ -164,7 +171,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt:                  serverTimestamp(),
     };
 
-    await setDoc(doc(db, 'users', user.uid), profile);
+    await setDoc(doc(db, 'users', createdUser.uid), profile);
+
+    // Attempt to create/sync record in backend DB
+    (async () => {
+      try {
+        if (profile.role === 'OWNER') {
+          // Create a shop/wholesaler row for owners
+          await fetch('/api/parties', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'wholesaler',
+              businessName: profile.shopName || profile.name,
+              ownerName: profile.name,
+              phone: profile.phone || null,
+              email: profile.email || null,
+              city: profile.city || null,
+              state: profile.state || null,
+              address: null,
+            }),
+          });
+        } else {
+          await fetch('/api/parties', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'customer',
+              name: profile.name,
+              phone: profile.phone,
+              email: profile.email,
+              shopName: profile.shopName || null,
+              totalPurchases: 0,
+              lastPurchaseDate: null,
+            }),
+          });
+        }
+      } catch (err) {
+        console.warn('[AuthContext] Failed to sync to backend', err);
+      }
+    })();
+
+    // Also ensure Firestore has a shops document for owners and register customer under shop
+    try {
+      if (profile.role === 'OWNER') {
+        const shopRef = doc(db, 'shops', createdUser.uid);
+        await setDoc(shopRef, {
+          id: createdUser.uid,
+          name: profile.shopName || profile.name,
+          ownerUid: createdUser.uid,
+          ownerName: profile.name,
+          email: profile.email || null,
+          phone: profile.phone || null,
+          city: profile.city || null,
+          state: profile.state || null,
+          country: profile.country || null,
+          panNumber: profile.panNumber || null,
+          gstNumber: (profile as any).gstNumber || null,
+          aadhaarLast4: profile.aadhaarLast4 || null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else if (profile.role === 'CUSTOMER' && profile.shopName) {
+        // Find shop by name and add customer under its customers subcollection
+        const shopQuery = query(collection(db, 'shops'), where('name', '==', profile.shopName), limit(1));
+        const shopSnap = await getDocs(shopQuery);
+        if (!shopSnap.empty) {
+          const shopDoc = shopSnap.docs[0];
+          const custRef = doc(db, `shops/${shopDoc.id}/customers`, createdUser.uid);
+          await setDoc(custRef, {
+            uid: createdUser.uid,
+            name: profile.name,
+            email: profile.email || null,
+            phone: profile.phone || null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Failed to create shop/customer in Firestore', err);
+    }
 
     // Sign the user OUT immediately so they must verify their email before using the app
     await firebaseSignOut(auth);
@@ -173,14 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Sign In (email + password) ───────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    const user = cred.user;
-    // Enforce email verification
-    if (!user.emailVerified) {
-      await firebaseSignOut(auth);
-      const err = new Error('EMAIL_NOT_VERIFIED');
-      (err as any).code = 'auth/email-not-verified';
-      throw err;
-    }
+    // No forced sign-out for unverified users. Email verification will be checked before transactions.
   };
 
   // ── Sign In with Phone + Password ────────────────────────────────────────
@@ -213,6 +293,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Save email locally so we can complete sign-in on the same device
     localStorage.setItem(OTP_EMAIL_KEY, email);
   };
+    // ── Google Sign In ───────────────────────────────────────────────────────
+    const signInWithGoogle = async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const googleUser = result.user;
+        console.log('[AuthContext] signInWithGoogle', googleUser);
+        // If new user, create Firestore profile
+        const ref = doc(db, 'users', googleUser.uid);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          const profile: UserProfile = {
+            uid: googleUser.uid,
+            name: googleUser.displayName || '',
+            email: googleUser.email || '',
+            phone: googleUser.phoneNumber || '',
+            city: '', state: '', country: '', dateOfBirth: '', panNumber: '', aadhaarLast4: '',
+            kycStatus: 'PENDING', role: 'CUSTOMER', totalGoldPurchasedGrams: 0, totalSilverPurchasedGrams: 0, totalInvestedInr: 0,
+            createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+          };
+          await setDoc(ref, profile);
+          console.log('[AuthContext] Google user profile created', googleUser.uid);
+          // Sync to backend customers table
+          (async () => {
+            try {
+              await fetch('/api/parties', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'customer',
+                  name: profile.name,
+                  phone: profile.phone,
+                  email: profile.email,
+                  shopName: profile.shopName || null,
+                  totalPurchases: 0,
+                  lastPurchaseDate: null,
+                }),
+              });
+            } catch (err) {
+              console.warn('[AuthContext] Failed to sync Google user to backend', err);
+            }
+          })();
+          // Also create shop doc for owners or register customer under shop in Firestore
+          try {
+            if (profile.role === 'OWNER') {
+              const shopRef = doc(db, 'shops', googleUser.uid);
+              await setDoc(shopRef, {
+                id: googleUser.uid,
+                name: profile.shopName || profile.name,
+                ownerUid: googleUser.uid,
+                ownerName: profile.name,
+                email: profile.email || null,
+                phone: profile.phone || null,
+                city: profile.city || null,
+                state: profile.state || null,
+                country: profile.country || null,
+                gstNumber: profile.panNumber || null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            } else if (profile.role === 'CUSTOMER' && profile.shopName) {
+              const shopQuery = query(collection(db, 'shops'), where('name', '==', profile.shopName), limit(1));
+              const shopSnap = await getDocs(shopQuery);
+              if (!shopSnap.empty) {
+                const shopDoc = shopSnap.docs[0];
+                const custRef = doc(db, `shops/${shopDoc.id}/customers`, googleUser.uid);
+                await setDoc(custRef, {
+                  uid: googleUser.uid,
+                  name: profile.name,
+                  email: profile.email || null,
+                  phone: profile.phone || null,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('[AuthContext] Failed to create shop/customer in Firestore for Google user', err);
+          }
+        }
+      } catch (err) {
+        console.error('[AuthContext] Google sign-in error', err);
+        throw err;
+      }
+    };
 
   // ── Verify email OTP (called on /auth/verify page) ──────────────────────
   const verifyOtp = async (): Promise<{ success: boolean; email: string | null }> => {
@@ -235,6 +400,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     await firebaseSignOut(auth);
     setUserProfile(null);
+    console.log('[AuthContext] signOut called');
   };
 
   // ── Update last login timestamp ──────────────────────────────────────────
@@ -244,21 +410,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLoginAt: serverTimestamp(),
         updatedAt:   serverTimestamp(),
       }).catch(() => {}); // silently ignore if doc doesn't exist yet
+      console.log('[AuthContext] Updated lastLoginAt for', currentUser.uid);
     }
   }, [currentUser]);
 
   return (
     <AuthContext.Provider value={{
-      currentUser, userProfile, loadingAuth,
-      signUp, signIn, signInWithPhonePassword, sendOtp, verifyOtp, signOut, refreshProfile,
+      currentUser,
+      userProfile,
+      loadingAuth,
+      signUp,
+      signIn,
+      signInWithPhonePassword,
+      sendOtp,
+      verifyOtp,
+      signOut,
+      refreshProfile,
+      signInWithGoogle,
     }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export const useAuth = (): AuthContextType => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');

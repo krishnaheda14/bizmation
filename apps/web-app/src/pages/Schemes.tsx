@@ -10,38 +10,8 @@ import { Coins, Plus, Search, TrendingUp, Calendar, Users } from 'lucide-react';
 import NewSchemeModal from '../components/NewSchemeModal';
 
 export const Schemes: React.FC = () => {
-  const [schemes, setSchemes] = useState([
-    {
-      id: '1',
-      schemeNo: 'SCH001',
-      customerName: 'Priya Sharma',
-      customerPhone: '+91-9876543210',
-      schemeType: 'Gold Savings',
-      monthlyInstallment: 5000,
-      totalMonths: 11,
-      paidMonths: 8,
-      startDate: new Date('2025-06-01'),
-      maturityDate: new Date('2026-05-01'),
-      totalPaid: 40000,
-      bonusPercentage: 10,
-      status: 'Active',
-    },
-    {
-      id: '2',
-      schemeNo: 'SCH002',
-      customerName: 'Rajesh Patel',
-      customerPhone: '+91-9876543211',
-      schemeType: 'Gold Savings',
-      monthlyInstallment: 10000,
-      totalMonths: 11,
-      paidMonths: 11,
-      startDate: new Date('2025-03-01'),
-      maturityDate: new Date('2026-02-01'),
-      totalPaid: 110000,
-      bonusPercentage: 10,
-      status: 'Matured',
-    },
-  ]);
+  // No default schemes — fetch from database instead
+  const [schemes, setSchemes] = useState<any[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');

@@ -24,23 +24,8 @@ interface RepairJob {
 }
 
 export const Repairs: React.FC = () => {
-  const [jobs, setJobs] = useState<RepairJob[]>([
-    {
-      id: '1',
-      jobNo: 'REP001',
-      customerName: 'Ramesh Kumar',
-      customerPhone: '+91-9876543210',
-      itemDescription: 'Gold chain - broken link repair',
-      repairType: 'Repair',
-      estimatedCost: 800,
-      advancePayment: 300,
-      receivedDate: new Date('2026-02-08'),
-      promisedDate: new Date('2026-02-12'),
-      status: 'In Progress',
-      notes: 'Handle with care - antique piece',
-      images: [],
-    },
-  ]);
+  // No default repair jobs — load from database
+  const [jobs, setJobs] = useState<RepairJob[]>([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -314,7 +299,7 @@ const NewJobModal: React.FC<NewJobModalProps> = ({ onClose, onSuccess }) => {
                 value={formData.customerPhone}
                 onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                placeholder="+91-9876543210"
+                placeholder="+91 phone"
               />
             </div>
 

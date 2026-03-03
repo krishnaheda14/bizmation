@@ -16,7 +16,8 @@ import {
   MetalType,
 } from '@jewelry-platform/shared-types';
 import { formatCurrency } from '@/utils/format';
-import { Plus, Trash2, Search } from 'lucide-react';
+import { Plus, Trash2, Search, AlertCircle, RefreshCw } from 'lucide-react';
+import { fetchLiveMetalRates } from '../../../lib/goldPrices';
 
 interface CustomerDetails {
   id?: string;
@@ -58,6 +59,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const [searchingProduct, setSearchingProduct] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
+  const [rateError, setRateError] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
@@ -101,121 +103,42 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const fetchGoldRates = async () => {
     try {
       setFetchingRate(true);
-      
-      // Fetch directly from free public APIs (same as GoldRates page)
-      const GOLD_API = 'https://data-asg.goldprice.org/dbXRates/USD';
-      const CURRENCY_API = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
-      const IMPORT_DUTY = 1.09; // 9% import duty for India
-      
-      // Step 1: Fetch precious metal prices
-      const goldResponse = await fetch(GOLD_API);
-      if (!goldResponse.ok) throw new Error('Failed to fetch gold prices');
-      const goldData = await goldResponse.json();
-      
-      const xauPrice = goldData.items?.[0]?.xauPrice || 0; // Gold in USD per troy ounce
-      const xagPrice = goldData.items?.[0]?.xagPrice || 0; // Silver in USD per troy ounce
-      
-      if (!xauPrice || !xagPrice) throw new Error('Invalid gold/silver prices');
-      
-      // Step 2: Fetch USD to INR rate
-      const currencyResponse = await fetch(CURRENCY_API);
-      if (!currencyResponse.ok) throw new Error('Failed to fetch currency rates');
-      const currencyData = await currencyResponse.json();
-      
-      const usdToInr = currencyData.usd?.inr || 0;
-      if (!usdToInr) throw new Error('Invalid USD to INR rate');
-      
-      // Step 3: Calculate rates per gram with import duty
-      const GRAMS_PER_OUNCE = 31.1035;
-      const gold24kPerGram = ((xauPrice * usdToInr) / GRAMS_PER_OUNCE) * IMPORT_DUTY;
-      const silver24kPerGram = ((xagPrice * usdToInr) / GRAMS_PER_OUNCE) * IMPORT_DUTY;
-      
-      // Build rates object
+      setRateError('');
+      console.log('[InvoiceForm] Fetching live metal rates via goldPrices.ts util...');
+
+      const metalRates = await fetchLiveMetalRates();
+      console.log('[InvoiceForm] Metal rates fetched:', metalRates);
+
       const now = new Date();
-      
-      const rates: Record<string, GoldRate> = {
-        'GOLD-24': {
-          id: 'gold-24',
-          metalType: MetalType.GOLD,
-          purity: 24,
-          ratePerGram: gold24kPerGram,
+      const rates: Record<string, GoldRate> = {};
+
+      metalRates.forEach(mr => {
+        const key = `${mr.metalType}-${mr.purity}`;
+        rates[key] = {
+          id: key.toLowerCase(),
+          metalType: mr.metalType as MetalType,
+          purity: mr.purity,
+          ratePerGram: mr.ratePerGram,
           effectiveDate: now,
-          source: 'Live Market',
+          source: mr.source,
           isActive: true,
           createdAt: now,
-          updatedAt: now
-        },
-        'GOLD-22': {
-          id: 'gold-22',
-          metalType: MetalType.GOLD,
-          purity: 22,
-          ratePerGram: (gold24kPerGram * 22) / 24,
-          effectiveDate: now,
-          source: 'Live Market',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        },
-        'GOLD-18': {
-          id: 'gold-18',
-          metalType: MetalType.GOLD,
-          purity: 18,
-          ratePerGram: (gold24kPerGram * 18) / 24,
-          effectiveDate: now,
-          source: 'Live Market',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        },
-        'SILVER-24': {
-          id: 'silver-24',
-          metalType: MetalType.SILVER,
-          purity: 24,
-          ratePerGram: silver24kPerGram,
-          effectiveDate: now,
-          source: 'Live Market',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        },
-        'SILVER-22': {
-          id: 'silver-22',
-          metalType: MetalType.SILVER,
-          purity: 22,
-          ratePerGram: (silver24kPerGram * 22) / 24,
-          effectiveDate: now,
-          source: 'Live Market',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        },
-        'SILVER-18': {
-          id: 'silver-18',
-          metalType: MetalType.SILVER,
-          purity: 18,
-          ratePerGram: (silver24kPerGram * 18) / 24,
-          effectiveDate: now,
-          source: 'Live Market',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        }
-      };
+          updatedAt: now,
+        } as unknown as GoldRate;
+      });
 
       setGoldRates(rates);
-      console.log('Gold rates fetched successfully (includes 9% import duty):', rates);
-    } catch (error) {
-      console.error('Failed to fetch gold rates:', error);
-      alert('Failed to fetch gold rates from free APIs. Please check your internet connection.');
+      console.log('[InvoiceForm] Gold rates set successfully:', rates);
+    } catch (error: any) {
+      console.error('[InvoiceForm] Failed to fetch gold rates:', error);
+      setRateError('Could not load live gold rates. Rates may be stale — please refresh or enter manually.');
     } finally {
       setFetchingRate(false);
     }
   };
 
   const fetchLiveGoldRate = async () => {
-    // Same as fetchGoldRates - always live
     await fetchGoldRates();
-    alert('✅ Live gold rates updated! (includes 9% import duty for Indian market)');
   };
 
   const fetchCustomers = async () => {
@@ -418,22 +341,28 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <div className="flex gap-2">
               <div className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg shadow-sm">
                 <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
-                  {fetchingRate ? 'Loading...' : `₹${getGoldRate(MetalType.GOLD, 22).toFixed(2)}/gram`}
+                  {fetchingRate ? 'Loading live rates…' : `₹${getGoldRate(MetalType.GOLD, 22).toFixed(2)}/gram`}
                 </p>
                 <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                  Live international market • Includes import duty
+                  Live international market • Includes 9% import duty
                 </p>
               </div>
               <button
                 type="button"
                 onClick={fetchLiveGoldRate}
                 disabled={fetchingRate}
-                className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-sm font-semibold shadow-lg transition-all"
-                title="Fetch live gold rate from free public APIs (includes 9% import duty)"
+                className="px-4 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed text-sm font-semibold shadow transition-all flex items-center gap-2"
+                title="Fetch live gold rate"
               >
-                {fetchingRate ? '⏳' : '🔄 Update Rate'}
+                <RefreshCw size={14} className={fetchingRate ? 'animate-spin' : ''} />
+                {fetchingRate ? 'Loading…' : 'Refresh'}
               </button>
             </div>
+            {rateError && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                <AlertCircle size={14} />{rateError}
+              </div>
+            )}
           </div>
         </div>
 

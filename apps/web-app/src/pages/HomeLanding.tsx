@@ -45,7 +45,66 @@ interface SellFormData {
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
+    // Detailed live price breakdown state
+    const [priceFeed, setPriceFeed] = useState<any>(null);
+    const fetchDetailedFeed = useCallback(async () => {
+      try {
+        // Fetch CDN rates
+        const [xauData, xagData, usdData] = await Promise.all([
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json').then(r => r.json()),
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json').then(r => r.json()),
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json()),
+        ]);
+        const xauInr = xauData?.xau?.inr;
+        const xagInr = xagData?.xag?.inr;
+        const usdInr = usdData?.usd?.inr;
+        // Fallback: fetch Swissquote XAU/USD, XAG/USD
+        let xauUsd = null, xagUsd = null;
+        const parseSQ = (data: any) => {
+          for (const platform of data as any[]) {
+            const profiles: any[] = platform.spreadProfilePrices || [];
+            const standard = profiles.find((p: any) => p.spreadProfile === 'standard');
+            if (standard?.bid != null && standard?.ask != null) return (standard.bid + standard.ask) / 2;
+          }
+          const first = (data as any[])[0]?.spreadProfilePrices?.[0];
+          if (first?.bid != null && first?.ask != null) return (first.bid + first.ask) / 2;
+          return null;
+        };
+        try {
+          const sqXau = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD')).then(r => r.json());
+          const sqXag = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD')).then(r => r.json());
+          xauUsd = parseSQ(sqXau);
+          xagUsd = parseSQ(sqXag);
+        } catch (e) {}
+        setPriceFeed({ xauInr, xagInr, usdInr, xauUsd, xagUsd, fetchedAt: new Date().toLocaleTimeString('en-IN') });
+      } catch (e) {
+        setPriceFeed(null);
+      }
+    }, []);
+
+    useEffect(() => {
+      fetchDetailedFeed();
+      const interval = setInterval(fetchDetailedFeed, 5000);
+      return () => clearInterval(interval);
+    }, [fetchDetailedFeed]);
   const { currentUser, userProfile } = useAuth();
+  // Email verification resend state
+  const [resending, setResending] = useState(false);
+  const [resentMsg, setResentMsg] = useState('');
+  const handleResendVerification = async () => {
+    if (!currentUser) return;
+    setResending(true);
+    try {
+      // Use Firebase's sendEmailVerification
+      // @ts-ignore
+      await import('firebase/auth').then(({ sendEmailVerification }) => sendEmailVerification(currentUser));
+      setResentMsg('Verification email sent!');
+      setTimeout(() => setResentMsg(''), 6000);
+    } catch {
+      setResentMsg('Failed to send verification email.');
+    }
+    setResending(false);
+  };
   const [rates, setRates] = useState<MetalRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
@@ -201,6 +260,11 @@ export const HomeLanding: React.FC = () => {
   // ── Sell Gold (form submit, no direct payout from frontend) ──────────────
   const handleSell = async () => {
     if (!sellForm.grams) return;
+    if (!currentUser?.emailVerified) {
+      setSuccessMsg('Please verify your email before you can sell gold or silver.');
+      setTimeout(() => setSuccessMsg(''), 8000);
+      return;
+    }
     const grams       = parseFloat(sellForm.grams);
     const purityNum   = Number(sellForm.purity);
     const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
@@ -266,6 +330,7 @@ export const HomeLanding: React.FC = () => {
       )}
 
       {/* ── Razorpay Key Warning ─────────────────────────────────────────── */}
+            {/* ── Detailed Price Calculation ───────────────────────────────────── */}
       {noKey && (
         <div className="bg-amber-400 dark:bg-amber-600 text-black dark:text-black px-4 py-2 text-center text-sm font-medium">
           <AlertCircle className="inline mr-1" size={16} />
@@ -693,9 +758,26 @@ export const HomeLanding: React.FC = () => {
               </div>
             )}
 
+            {/* Email verification gating */}
+            {currentUser && !currentUser.emailVerified && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
+                <span>
+                  Please verify your email to buy gold or silver. Check your inbox for a verification link.
+                </span>
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
+                >
+                  {resending ? 'Sending...' : 'Resend verification email'}
+                </button>
+                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
+              </div>
+            )}
+
             <button
               onClick={handleBuy}
-              disabled={paying || !buyForm.grams}
+              disabled={Boolean(paying || !buyForm.grams || (currentUser && currentUser.emailVerified === false))}
               className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
@@ -742,6 +824,22 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* Email verification gating */}
+            {currentUser && !currentUser.emailVerified && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
+                <span>
+                  Please verify your email to sell gold or silver. Check your inbox for a verification link.
+                </span>
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
+                >
+                  {resending ? 'Sending...' : 'Resend verification email'}
+                </button>
+                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
+              </div>
+            )}
             <div>
               <label className="fieldLabel">Bank Name</label>
               <input type="text" placeholder="e.g. State Bank of India" value={sellForm.bank}
@@ -759,7 +857,7 @@ export const HomeLanding: React.FC = () => {
             </div>
             <button
               onClick={handleSell}
-              disabled={!sellForm.grams}
+              disabled={Boolean(!sellForm.grams || (currentUser && currentUser.emailVerified === false))}
               className="w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               <ArrowUpRight size={18} />
@@ -811,10 +909,26 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
+            {/* Email verification gating */}
+            {currentUser && !currentUser.emailVerified && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
+                <span>
+                  Please verify your email to setup AutoPay. Check your inbox for a verification link.
+                </span>
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
+                >
+                  {resending ? 'Sending...' : 'Resend verification email'}
+                </button>
+                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
+              </div>
+            )}
 
             <button
               onClick={handleAutoPay}
-              disabled={paying || !autoPayForm.amount}
+              disabled={Boolean(paying || !autoPayForm.amount || (currentUser && currentUser.emailVerified === false))}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}

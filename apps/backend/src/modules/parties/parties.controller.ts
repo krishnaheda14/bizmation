@@ -5,149 +5,117 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { DatabaseService } from '../../services/database/DatabaseService';
 
-// Sample data for demonstration
-const sampleParties = [
-  // Customers
-  {
-    id: 'CUST001',
-    type: 'customer',
-    name: 'Priya Sharma',
-    phone: '+91-9876543210',
-    email: 'priya.sharma@example.com',
-    address: '123, MG Road, Jayanagar',
-    city: 'Bangalore',
-    state: 'Karnataka',
-    pincode: '560041',
-    gstin: '29AAAAA0000A1Z5',
-    trn: 'TRN-CUST001',
-    loyaltyNumber: 'LOY-001',
-    loyaltyPoints: 2850,
-    balance: 0,
-    totalPurchases: 285000,
-    lastPurchaseDate: '2024-01-15',
-  },
-  {
-    id: 'CUST002',
-    type: 'customer',
-    name: 'Rajesh Kumar',
-    phone: '+91-9876543211',
-    email: 'rajesh.kumar@example.com',
-    address: '45, Brigade Road',
-    city: 'Bangalore',
-    state: 'Karnataka',
-    pincode: '560025',
-    gstin: '29BBBBB0000B1Z5',
-    trn: 'TRN-CUST002',
-    loyaltyNumber: 'LOY-002',
-    loyaltyPoints: 1560,
-    balance: 15000,
-    totalPurchases: 156000,
-    lastPurchaseDate: '2024-01-10',
-  },
-  {
-    id: 'CUST003',
-    type: 'customer',
-    name: 'Sunita Patel',
-    phone: '+91-9876543212',
-    email: 'sunita.patel@example.com',
-    address: '78, Residency Road',
-    city: 'Bangalore',
-    state: 'Karnataka',
-    pincode: '560025',
-    trn: 'TRN-CUST003',
-    loyaltyNumber: 'LOY-003',
-    loyaltyPoints: 4200,
-    balance: 0,
-    totalPurchases: 420000,
-    lastPurchaseDate: '2024-01-18',
-  },
-  
-  // Wholesalers
-  {
-    id: 'WHOLE001',
-    type: 'wholesaler',
-    name: 'Ramesh Gupta',
-    businessName: 'Mumbai Bullion Traders',
-    phone: '+91-22-12345678',
-    email: 'ramesh@mumbaibullion.com',
-    address: 'Shop 12, Zaveri Bazaar',
-    city: 'Mumbai',
-    state: 'Maharashtra',
-    pincode: '400003',
-    gstin: '27CCCCC0000C1Z5',
-    balance: 125000,
-    totalPurchases: 2850000,
-    lastPurchaseDate: '2024-01-20',
-  },
-  {
-    id: 'WHOLE002',
-    type: 'wholesaler',
-    name: 'Venkatesh Iyer',
-    businessName: 'Chennai Gold Mart',
-    phone: '+91-44-87654321',
-    email: 'venkat@chennaigold.com',
-    address: '23, T Nagar Main Road',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    pincode: '600017',
-    gstin: '33DDDDD0000D1Z5',
-    balance: 85000,
-    totalPurchases: 1950000,
-    lastPurchaseDate: '2024-01-12',
-  },
-];
-
-export function partiesRouter(): Router {
+// Parties router now uses the application's DatabaseService instance
+export function partiesRouter(db: DatabaseService): Router {
   const router = Router();
 
   /**
    * GET /api/parties
-   * Get all parties (customers and wholesalers)
+   * Query parties from the database.
+   * Optional query params:
+   *  - type=customer|wholesaler
+   *  - shopName=<shop name>  (returns customers belonging to that shop)
+   *  - q=<search term>
    */
   router.get('/', async (req: Request, res: Response) => {
     try {
-      res.json({
-        success: true,
-        data: sampleParties,
-        count: sampleParties.length,
-      });
+      const { type, shopName, q } = req.query as Record<string, string>;
+
+      // Base queries
+      if (type === 'wholesaler') {
+        // Wholesalers are represented in the shops table in this schema
+        // If a shopName is provided, filter by name; otherwise list all shops
+        if (shopName) {
+          const sql = `SELECT id, name AS businessName, phone, email, address, city, state, pincode, gst_number AS gstin, balance, NULL::integer AS totalPurchases, NULL::timestamp AS lastPurchaseDate FROM shops WHERE name ILIKE $1`;
+          const result = await db.query(sql, [`%${shopName}%`]);
+          return res.json({ success: true, data: result.rows, count: result.rowCount });
+        }
+        const sqlAll = `SELECT id, name AS businessName, phone, email, address, city, state, pincode, gst_number AS gstin, balance, NULL::integer AS totalPurchases, NULL::timestamp AS lastPurchaseDate FROM shops ORDER BY name LIMIT 100`;
+        const resultAll = await db.query(sqlAll);
+        return res.json({ success: true, data: resultAll.rows, count: resultAll.rowCount });
+      }
+
+      // Default: customers
+      // If shopName provided, join shops -> customers
+      let sql: string;
+      let params: any[] = [];
+      if (shopName) {
+        sql = `SELECT c.id, c.name, c.phone, c.email, c.address, c.gst_number AS gstin, c.total_purchases AS totalPurchases, c.last_purchase_date AS lastPurchaseDate, s.name AS shopName FROM customers c LEFT JOIN shops s ON c.shop_id = s.id WHERE s.name ILIKE $1`;
+        params = [`%${shopName}%`];
+      } else if (q) {
+        sql = `SELECT id, name, phone, email, address, gst_number AS gstin, total_purchases AS totalPurchases, last_purchase_date AS lastPurchaseDate FROM customers WHERE name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1 ORDER BY name LIMIT 200`;
+        params = [`%${q}%`];
+      } else {
+        sql = `SELECT id, name, phone, email, address, gst_number AS gstin, total_purchases AS totalPurchases, last_purchase_date AS lastPurchaseDate FROM customers ORDER BY name LIMIT 200`;
+      }
+
+      const result = await db.query(sql, params);
+      return res.json({ success: true, data: result.rows, count: result.rowCount });
     } catch (error: any) {
       console.error('[Parties API] Error fetching parties:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message,
-      });
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
   /**
    * POST /api/parties
-   * Add a new party
+   * Create a new party (customer or wholesaler).
+   * For customers, if `shopName` is provided it will attempt to resolve to a `shop_id`.
    */
   router.post('/', async (req: Request, res: Response) => {
     try {
-      const newParty = {
-        id: `${req.body.type === 'customer' ? 'CUST' : 'WHOLE'}${String(sampleParties.length + 1).padStart(3, '0')}`,
-        ...req.body,
-        balance: 0,
-        totalPurchases: 0,
-        loyaltyPoints: req.body.type === 'customer' ? 0 : undefined,
-        loyaltyNumber: req.body.type === 'customer' ? `LOY-${String(sampleParties.length + 1).padStart(3, '0')}` : undefined,
-      };
-      
-      sampleParties.push(newParty);
+      const payload = req.body || {};
+      const type = (payload.type || 'customer').toLowerCase();
 
-      res.status(201).json({
-        success: true,
-        data: newParty,
-      });
+      if (type === 'wholesaler') {
+        // Insert into shops - align columns with migrations (owner_name required)
+        const id = payload.id || `WHOLE_${Date.now()}`;
+        const insertSql = `INSERT INTO shops (id, name, owner_name, email, phone, gst_number, address, city, state, pincode, balance, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW()) RETURNING *`;
+        const addr = payload.address ? payload.address : null;
+        const params = [
+          id,
+          payload.businessName || payload.shopName || payload.name || null,
+          payload.ownerName || payload.name || null,
+          payload.email || null,
+          payload.phone || null,
+          payload.gstin || null,
+          addr,
+          payload.city || null,
+          payload.state || null,
+          payload.pincode || null,
+          payload.balance || 0,
+        ];
+        const result = await db.query(insertSql, params);
+        return res.status(201).json({ success: true, data: result.rows[0] });
+      }
+
+      // Customer
+      const id = payload.id || `CUST_${Date.now()}`;
+      let shopId: string | null = null;
+      if (payload.shopName) {
+        const shopRes = await db.query('SELECT id FROM shops WHERE name ILIKE $1 LIMIT 1', [`%${payload.shopName}%`]);
+        if (shopRes.rowCount > 0) shopId = shopRes.rows[0].id;
+      }
+
+      // Deduplicate by email or phone if available
+      if (payload.email || payload.phone) {
+        const dupSql = `SELECT * FROM customers WHERE (email = $1 AND email IS NOT NULL) OR (phone = $2 AND phone IS NOT NULL) LIMIT 1`;
+        const dupRes = await db.query(dupSql, [payload.email || null, payload.phone || null]);
+        if (dupRes.rowCount > 0) {
+          // Return existing row to make the operation idempotent
+          return res.status(200).json({ success: true, data: dupRes.rows[0], message: 'already_exists' });
+        }
+      }
+
+      const insertCustomer = `INSERT INTO customers (id, shop_id, name, phone, email, address, gst_number, total_purchases, last_purchase_date, loyalty_points, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW()) RETURNING *`;
+      const params = [id, shopId, payload.name || payload.customerName || null, payload.phone || null, payload.email || null, payload.address || null, payload.gstin || null, payload.totalPurchases || 0, payload.lastPurchaseDate || null, payload.loyaltyPoints || 0];
+      const created = await db.query(insertCustomer, params);
+      return res.status(201).json({ success: true, data: created.rows[0] });
     } catch (error: any) {
       console.error('[Parties API] Error adding party:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message,
-      });
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

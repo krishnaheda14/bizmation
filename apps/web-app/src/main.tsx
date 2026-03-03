@@ -18,6 +18,7 @@ import { AIInsights } from './pages/AIInsights';
 import { Repairs } from './pages/Repairs';
 import { Schemes } from './pages/Schemes';
 import { Suppliers } from './pages/Suppliers';
+import { Orders } from './pages/Orders';
 import { PurchaseOrders } from './pages/PurchaseOrders';
 import { StockOnHand } from './pages/StockOnHand';
 import { StockMovement } from './pages/StockMovement';
@@ -71,6 +72,7 @@ function App() {
   const renderPage = () => {
     // Customer-only routes
     if (currentRoute === '/portfolio') return <CustomerPortfolio />;
+    if (currentRoute === '/orders')    return <Orders />;
     if (currentRoute === '/profile')   return <Profile />;
 
     // For customer accounts, only home, portfolio and profile are allowed
@@ -98,6 +100,7 @@ function App() {
         return <Parties />;
       case '/shop-customers':
         return <ShopCustomers />;
+      // /suppliers kept for backward compat but hidden from nav
       case '/suppliers':
         return <Suppliers />;
       case '/purchase-orders':
@@ -116,7 +119,7 @@ function App() {
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/profile']);
+  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/profile']);
 
   return (
     <ThemeProvider>

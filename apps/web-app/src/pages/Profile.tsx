@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Profile Page
  * Allows the signed-in user to view and update their personal details.
  */
@@ -9,20 +9,20 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   User, Phone, Mail, MapPin, Calendar, Building2,
-  Save, CheckCircle, AlertCircle, Loader2,
+  Save, CheckCircle, AlertCircle, Loader2, Shield, CreditCard, Fingerprint, Globe,
 } from 'lucide-react';
 
 export const Profile: React.FC = () => {
   const { currentUser, userProfile, refreshProfile } = useAuth();
 
   const [form, setForm] = useState({
-    name:         userProfile?.name         ?? '',
-    phone:        userProfile?.phone        ?? '',
-    city:         userProfile?.city         ?? '',
-    state:        userProfile?.state        ?? '',
-    country:      userProfile?.country      ?? 'India',
-    dateOfBirth:  userProfile?.dateOfBirth  ?? '',
-    shopName:     userProfile?.shopName     ?? '',
+    name:        userProfile?.name        ?? '',
+    phone:       userProfile?.phone       ?? '',
+    city:        userProfile?.city        ?? '',
+    state:       userProfile?.state       ?? '',
+    country:     userProfile?.country     ?? 'India',
+    dateOfBirth: userProfile?.dateOfBirth ?? '',
+    shopName:    userProfile?.shopName    ?? '',
   });
 
   const [saving,  setSaving]  = useState(false);
@@ -65,120 +65,126 @@ export const Profile: React.FC = () => {
     );
   }
 
+  const isOwner = userProfile.role === 'OWNER';
+
   return (
-    <div className="min-h-screen bg-stone-50 dark:bg-gray-900 py-10 px-4">
-      <div className="max-w-xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center shadow-lg">
-            <User size={32} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-black text-amber-900 dark:text-white">My Profile</h1>
-            <p className="text-sm text-amber-600 dark:text-gray-400">{currentUser?.email}</p>
+    <div className="min-h-screen bg-stone-50 dark:bg-gray-950 py-10 px-4 sm:px-6">
+      <div className="max-w-2xl mx-auto space-y-6">
+
+        {/* â”€â”€ Hero Header â”€â”€ */}
+        <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8"
+          style={{
+            background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 60%, #d97706 100%)',
+            boxShadow: '0 8px 32px rgba(245,158,11,0.3)',
+          }}>
+          {/* decorative circle */}
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)' }} />
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg flex-shrink-0">
+              <span className="text-3xl font-black text-amber-900 select-none">
+                {userProfile.name?.[0]?.toUpperCase() ?? '?'}
+              </span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-amber-950">{userProfile.name || 'My Profile'}</h1>
+              <p className="text-sm text-amber-800/80">{currentUser?.email}</p>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/40 text-amber-950">
+                  {isOwner ? 'ðŸª' : 'ðŸ‘¤'} {userProfile.role}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  userProfile.kycStatus === 'VERIFIED'
+                    ? 'bg-green-500/20 text-green-900'
+                    : 'bg-orange-300/40 text-amber-950'
+                }`}>
+                  {userProfile.kycStatus === 'VERIFIED'
+                    ? <CheckCircle size={10} />
+                    : <AlertCircle size={10} />}
+                  KYC {userProfile.kycStatus}
+                </span>
+                {userProfile.shopName && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/30 text-amber-950">
+                    ðŸ·ï¸ {userProfile.shopName}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* KYC badge */}
-        <div className="mb-6 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold w-fit"
-          style={userProfile.kycStatus === 'VERIFIED'
-            ? { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }
-            : { background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
-          {userProfile.kycStatus === 'VERIFIED' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          KYC: {userProfile.kycStatus} &nbsp;·&nbsp; Role: {userProfile.role}
+        {/* â”€â”€ Stats Row â”€â”€ */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Gold Held', value: `${(userProfile.totalGoldPurchasedGrams ?? 0).toFixed(3)}g`, icon: 'ðŸ¥‡', color: 'amber' },
+            { label: 'Silver', value: `${(userProfile.totalSilverPurchasedGrams ?? 0).toFixed(3)}g`, icon: 'ðŸ¥ˆ', color: 'slate' },
+            { label: 'Invested', value: `â‚¹${(userProfile.totalInvestedInr ?? 0).toLocaleString('en-IN')}`, icon: 'ðŸ’°', color: 'green' },
+          ].map(s => (
+            <div key={s.label}
+              className="rounded-2xl bg-white dark:bg-gray-900 border border-amber-100 dark:border-gray-800 p-4 text-center shadow-sm">
+              <div className="text-2xl mb-1">{s.icon}</div>
+              <p className="text-base font-black text-stone-800 dark:text-white leading-tight">{s.value}</p>
+              <p className="text-xs text-stone-400 dark:text-gray-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Alerts */}
+        {/* â”€â”€ Alerts â”€â”€ */}
         {success && (
-          <div className="mb-5 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm border"
-            style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
+          <div className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm border bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300">
             <CheckCircle size={16} />{success}
           </div>
         )}
         {error && (
-          <div className="mb-5 flex items-center gap-3 rounded-2xl px-4 py-3 text-sm border"
-            style={{ background: '#fff5f5', borderColor: '#fecaca', color: '#b91c1c' }}>
+          <div className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm border bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
             <AlertCircle size={16} />{error}
           </div>
         )}
 
-        {/* Form */}
+        {/* â”€â”€ Edit Form â”€â”€ */}
         <form onSubmit={handleSave}
-          className="bg-white dark:bg-gray-800 rounded-3xl shadow-md border border-amber-100 dark:border-gray-700 p-7 space-y-5">
+          className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-amber-100 dark:border-gray-800 p-6 sm:p-8 space-y-5">
 
-          <ProfileField label="Full Name" icon={<User size={16} />}
+          <h2 className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-widest mb-1">Personal Details</h2>
+
+          <DarkField label="Full Name" icon={<User size={15} />}
             type="text" value={form.name} onChange={setF('name')} required placeholder="Your full name" />
 
-          <ProfileField label="Mobile Number" icon={<Phone size={16} />}
+          <DarkField label="Mobile Number" icon={<Phone size={15} />}
             type="tel" value={form.phone} onChange={setF('phone')} required placeholder="+91 98765 43210" />
 
           <div>
-            <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1.5 tracking-wide">
-              <Mail size={16} className="text-amber-500" /> Email Address
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5 tracking-wide">
+              <Mail size={15} className="text-amber-500" /> Email Address
             </label>
-            <p className="px-4 py-2.5 rounded-2xl text-sm text-stone-500 dark:text-gray-400 bg-stone-100 dark:bg-gray-700 border border-stone-200 dark:border-gray-600 select-none">
-              {currentUser?.email ?? '—'}
+            <p className="px-4 py-2.5 rounded-2xl text-sm text-stone-500 dark:text-gray-400 bg-stone-100 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 select-none">
+              {currentUser?.email ?? 'â€”'}
               <span className="ml-2 text-xs text-amber-500">(contact support to change)</span>
             </p>
           </div>
 
-          <ProfileField label="Shop / Business Name" icon={<Building2 size={16} />}
-            type="text" value={form.shopName} onChange={setF('shopName')} placeholder="e.g. Lakshmi Gold Palace" />
+          {(isOwner) && (
+            <DarkField label="Shop / Business Name" icon={<Building2 size={15} />}
+              type="text" value={form.shopName} onChange={setF('shopName')} placeholder="e.g. Lakshmi Gold Palace" />
+          )}
 
           <div className="grid grid-cols-2 gap-4">
-            <ProfileField label="City" icon={<MapPin size={16} />}
+            <DarkField label="City" icon={<MapPin size={15} />}
               type="text" value={form.city} onChange={setF('city')} placeholder="Mumbai" />
-            <ProfileField label="State" icon={<MapPin size={16} />}
+            <DarkField label="State" icon={<MapPin size={15} />}
               type="text" value={form.state} onChange={setF('state')} placeholder="Maharashtra" />
           </div>
 
-          <ProfileField label="Country" icon={<MapPin size={16} />}
+          <DarkField label="Country" icon={<Globe size={15} />}
             type="text" value={form.country} onChange={setF('country')} placeholder="India" />
 
-          <ProfileField label="Date of Birth" icon={<Calendar size={16} />}
+          <DarkField label="Date of Birth" icon={<Calendar size={15} />}
             type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} />
-
-          {/* Read-only KYC fields */}
-          {(userProfile.panNumber || userProfile.aadhaarLast4) && (
-            <div className="grid grid-cols-2 gap-4 pt-1">
-              {userProfile.panNumber && (
-                <div>
-                  <label className="block text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1.5 tracking-wide">PAN Number</label>
-                  <p className="px-4 py-2.5 rounded-2xl text-sm text-stone-500 dark:text-gray-400 bg-stone-100 dark:bg-gray-700 border border-stone-200 dark:border-gray-600">
-                    {userProfile.panNumber}
-                  </p>
-                </div>
-              )}
-              {userProfile.aadhaarLast4 && (
-                <div>
-                  <label className="block text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1.5 tracking-wide">Aadhaar (last 4)</label>
-                  <p className="px-4 py-2.5 rounded-2xl text-sm text-stone-500 dark:text-gray-400 bg-stone-100 dark:bg-gray-700 border border-stone-200 dark:border-gray-600">
-                    ••••&nbsp;{userProfile.aadhaarLast4}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-3 pt-2">
-            {[
-              { label: 'Gold (g)', value: userProfile.totalGoldPurchasedGrams?.toFixed(3) ?? '0' },
-              { label: 'Silver (g)', value: userProfile.totalSilverPurchasedGrams?.toFixed(3) ?? '0' },
-              { label: 'Invested ₹', value: `₹${(userProfile.totalInvestedInr ?? 0).toLocaleString('en-IN')}` },
-            ].map(s => (
-              <div key={s.label}
-                className="rounded-xl bg-amber-50 dark:bg-gray-700 border border-amber-100 dark:border-gray-600 p-3 text-center">
-                <p className="text-lg font-black text-amber-900 dark:text-white">{s.value}</p>
-                <p className="text-xs text-amber-600 dark:text-gray-400 mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
 
           <button
             type="submit"
             disabled={saving}
-            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+            className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-60 active:scale-[0.98]"
             style={{
               background: 'linear-gradient(90deg, #fde68a 0%, #f59e0b 50%, #fbbf24 100%)',
               backgroundSize: '200% auto',
@@ -187,40 +193,59 @@ export const Profile: React.FC = () => {
             }}
           >
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? 'Savingâ€¦' : 'Save Changes'}
           </button>
         </form>
+
+        {/* â”€â”€ KYC & Identity â”€â”€ */}
+        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-amber-100 dark:border-gray-800 p-6 sm:p-8 space-y-4">
+          <h2 className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-widest">KYC & Identity</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ReadField label="PAN Number" icon={<CreditCard size={15} />}
+              value={userProfile.panNumber || 'â€”'} />
+            <ReadField label="Aadhaar (last 4)" icon={<Fingerprint size={15} />}
+              value={userProfile.aadhaarLast4 ? `â€¢â€¢â€¢â€¢ ${userProfile.aadhaarLast4}` : 'â€”'} />
+            {isOwner && (
+              <ReadField label="GST Number" icon={<Shield size={15} />}
+                value={(userProfile as any).gstNumber || 'â€”'} />
+            )}
+          </div>
+          <p className="text-xs text-stone-400 dark:text-gray-600 leading-relaxed">
+            KYC fields cannot be changed here. Contact support to update identity documents.
+          </p>
+        </div>
+
       </div>
     </div>
   );
 };
 
-// ─── Field Component ──────────────────────────────────────────────────────────
-interface ProfileFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+// â”€â”€â”€ Dark-aware Field Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+interface DarkFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
   icon: React.ReactNode;
 }
-const ProfileField: React.FC<ProfileFieldProps> = ({ label, icon, ...props }) => (
+const DarkField: React.FC<DarkFieldProps> = ({ label, icon, ...props }) => (
   <div>
-    <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1.5 tracking-wide">
-      <span className="text-amber-500">{icon}</span> {label}
+    <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5 tracking-wide">
+      <span className="text-amber-500 dark:text-amber-400">{icon}</span>{label}
     </label>
     <input
       {...props}
-      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 dark:text-white dark:bg-gray-700 transition-all focus:outline-none"
-      style={{
-        background: 'rgba(255,251,240,0.9)',
-        border: '1.5px solid rgba(251,191,36,0.35)',
-        boxShadow: 'inset 0 1px 3px rgba(180,120,0,0.06)',
-      }}
-      onFocus={e => {
-        e.currentTarget.style.border = '1.5px solid rgba(245,158,11,0.7)';
-        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251,191,36,0.15)';
-      }}
-      onBlur={e => {
-        e.currentTarget.style.border = '1.5px solid rgba(251,191,36,0.35)';
-        e.currentTarget.style.boxShadow = 'inset 0 1px 3px rgba(180,120,0,0.06)';
-      }}
+      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 dark:text-white bg-amber-50/80 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 transition-all focus:outline-none focus:ring-2 focus:ring-amber-400/50 dark:focus:ring-amber-500/40 focus:border-amber-400 dark:focus:border-amber-500"
     />
   </div>
 );
+
+// â”€â”€â”€ Read-only Field â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const ReadField: React.FC<{ label: string; icon: React.ReactNode; value: string }> = ({ label, icon, value }) => (
+  <div>
+    <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5 tracking-wide">
+      <span className="text-amber-500 dark:text-amber-400">{icon}</span>{label}
+    </label>
+    <p className="px-4 py-2.5 rounded-2xl text-sm text-stone-600 dark:text-gray-300 bg-stone-100 dark:bg-gray-800 border border-stone-200 dark:border-gray-700 font-mono tracking-wider">
+      {value}
+    </p>
+  </div>
+);
+

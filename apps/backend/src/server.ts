@@ -50,7 +50,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/inventory', inventoryRouter(inventoryService));
 app.use('/api/gold-rates', goldRateRouter(goldRateService));
 app.use('/api/catalog', catalogRouter(db));
-app.use('/api/parties', partiesRouter());
+app.use('/api/parties', partiesRouter(db));
 
 // 404 handler
 app.use((req, res) => {

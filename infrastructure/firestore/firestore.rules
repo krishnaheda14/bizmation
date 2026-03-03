@@ -1,46 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users: owners may read customers from their shop; users may read/write their own doc
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isOwnerOrStaff() {
+      return isAuth() && myProfile().role in ['OWNER', 'STAFF'];
+    }
+
+    function sameShop(shopName) {
+      return isAuth() && myProfile().shopName == shopName;
+    }
+
+    // ── /users/{uid} ─────────────────────────────────────────────────────────
+    // Users can read/write their own doc.
+    // Owners/staff can read any customer whose shopName matches theirs.
     match /users/{uid} {
-      allow read: if request.auth != null && (
-        // owner/staff can read customers in same shop
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
-          && resource.data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName)
-        // or the user reads their own doc
-        || request.auth.uid == uid
+      allow read: if isAuth() && (
+        request.auth.uid == uid
+        || (isOwnerOrStaff() && resource.data.shopName == myProfile().shopName)
       );
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow create: if isAuth() && request.auth.uid == uid;
+      allow update: if isAuth() && request.auth.uid == uid;
+      allow delete: if false; // no self-deletion via client
     }
 
-    // Orders and subscriptions: creators can create; owners can read orders for customers in their shop
+    // ── /shops/{shopId} ──────────────────────────────────────────────────────
+    // Any authenticated user can read shops (to find their shop by name).
+    // Only the ownerUid matching this doc can create/update/delete it.
+    match /shops/{shopId} {
+      allow read: if isAuth();
+      allow create: if isAuth() && (
+        request.auth.uid == request.resource.data.ownerUid
+        || request.auth.uid == shopId
+      );
+      allow update: if isAuth() && (
+        request.auth.uid == resource.data.ownerUid
+        || request.auth.uid == shopId
+      );
+      allow delete: if false;
+
+      // ── /shops/{shopId}/customers/{customerId} ────────────────────────────
+      // Shop owners/staff can read all customers under their shop.
+      // A customer can read their own sub-doc.
+      // Customers/owners can create sub-docs (during sign-up sync).
+      match /customers/{customerId} {
+        allow read: if isAuth() && (
+          request.auth.uid == customerId
+          || (isOwnerOrStaff() && get(/databases/$(database)/documents/shops/$(shopId)).data.ownerUid == request.auth.uid)
+          || (isOwnerOrStaff() && myProfile().shopName == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
+        );
+        allow create: if isAuth();
+        allow update: if isAuth() && (
+          request.auth.uid == customerId
+          || (isOwnerOrStaff() && myProfile().shopName == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
+        );
+        allow delete: if false;
+      }
+    }
+
+    // ── /goldOnlineOrders/{id} ───────────────────────────────────────────────
+    // Customers can create orders and read their own orders.
+    // Owners/staff can read orders where the customer belongs to their shop.
     match /goldOnlineOrders/{id} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && (
-        resource.data.userId == request.auth.uid // owner of order
-        || (
-          // allow shop owner/staff to read orders for users in their shop
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
-          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName
-        )
-      );
-    }
-
-    match /autoPaySubscriptions/{id} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null && (
+      allow create: if isAuth();
+      allow read: if isAuth() && (
         resource.data.userId == request.auth.uid
         || (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['OWNER','STAFF']
+          isOwnerOrStaff()
           && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.shopName
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == myProfile().shopName
         )
       );
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
     }
 
+    // ── /autoPaySubscriptions/{id} ───────────────────────────────────────────
+    match /autoPaySubscriptions/{id} {
+      allow create: if isAuth();
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid
+        || (
+          isOwnerOrStaff()
+          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == myProfile().shopName
+        )
+      );
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ── /razorpayOrders/{id} ─────────────────────────────────────────────────
+    match /razorpayOrders/{id} {
+      allow create: if isAuth();
+      allow read:   if isAuth() && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ── Catch-all: deny everything else ─────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

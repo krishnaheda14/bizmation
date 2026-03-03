@@ -11,7 +11,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import type { SignUpData } from '../context/AuthContext';
 
 // --- Sparkle positions ---------------------------------------------------
 const SPARKLES = [
@@ -44,9 +43,25 @@ type Tab       = 'login'    | 'signup';
 type LoginMode = 'password' | 'otp' | 'phone';
 type OtpStep   = 'input'    | 'sent';
 
+interface ExtSignUpData {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  city: string;
+  state: string;
+  country: string;
+  dateOfBirth: string;
+  panNumber: string;
+  aadhaarLast4: string;
+  gstNumber: string;
+  role?: 'CUSTOMER' | 'OWNER';
+  shopName?: string;
+}
+
 // --- Main component -------------------------------------------------------
 const AuthPage: React.FC = () => {
-  const { signIn, signUp, sendOtp, verifyOtp, signInWithPhonePassword } = useAuth();
+  const { signIn, signUp, sendOtp, verifyOtp, signInWithPhonePassword, signInWithGoogle } = useAuth();
 
   const [tab,       setTab]       = useState<Tab>('login');
   const [loginMode, setLoginMode] = useState<LoginMode>('password');
@@ -57,6 +72,7 @@ const AuthPage: React.FC = () => {
   const [showPass,  setShowPass]  = useState(false);
   const [phoneNum,   setPhoneNum]  = useState('+91');
   const [phonePass,  setPhonePass] = useState('');
+  const [accountCreated, setAccountCreated] = useState<string>(''); // email shown in overlay
 
   useEffect(() => {
     if (window.location.hash.includes('/auth/verify') || window.location.search.includes('mode=signIn')) {
@@ -82,8 +98,14 @@ const AuthPage: React.FC = () => {
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
-    try   { await signIn(lpEmail.trim(), lpPassword); }
-    catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    try   {
+      await signIn(lpEmail.trim(), lpPassword);
+      console.log('[AuthPage] Password login success', lpEmail);
+    }
+    catch (e: any) {
+      setError(friendlyError(e?.code ?? e?.message));
+      console.error('[AuthPage] Password login error', e);
+    }
     finally        { setLoading(false); }
   };
 
@@ -91,8 +113,27 @@ const AuthPage: React.FC = () => {
     e.preventDefault(); clearMsgs(); setLoading(true);
     try {
       await signInWithPhonePassword(phoneNum.trim(), phonePass);
-    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+      console.log('[AuthPage] Phone login success', phoneNum);
+    } catch (e: any) {
+      setError(friendlyError(e?.code ?? e?.message));
+      console.error('[AuthPage] Phone login error', e);
+    }
     finally           { setLoading(false); }
+  };
+
+  // Google sign-in handler
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    clearMsgs();
+    try {
+      await signInWithGoogle();
+      console.log('[AuthPage] Google login success');
+    } catch (e: any) {
+      setError(friendlyError(e?.code ?? e?.message));
+      console.error('[AuthPage] Google login error', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const [otpEmail, setOtpEmail] = useState('');
@@ -103,16 +144,16 @@ const AuthPage: React.FC = () => {
     finally        { setLoading(false); }
   };
 
-  const blankForm = (): SignUpData => ({
+  const blankForm = (): ExtSignUpData => ({
     name: '', email: '', password: '', phone: '+91',
     city: '', state: '', country: 'India',
-    dateOfBirth: '', panNumber: '', aadhaarLast4: '',
+    dateOfBirth: '', panNumber: '', aadhaarLast4: '', gstNumber: '',
     role: 'CUSTOMER', shopName: '',
   });
-  const [form,        setForm]        = useState<SignUpData>(blankForm);
+  const [form,        setForm]        = useState<ExtSignUpData>(blankForm());
   const [confirmPass, setConfirmPass] = useState('');
   const [signupStep,  setSignupStep]  = useState<1 | 2>(1);
-  const setF = (key: keyof SignUpData) =>
+  const setF = (key: keyof ExtSignUpData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(f => ({ ...f, [key]: e.target.value }));
 
@@ -120,11 +161,17 @@ const AuthPage: React.FC = () => {
     e.preventDefault(); clearMsgs();
     if (form.password !== confirmPass) { setError('Passwords do not match.'); return; }
     if (form.password.length < 6)     { setError('Password must be at least 6 characters.'); return; }
+    // For OWNER: require PAN, GST, Aadhaar
+    if (form.role === 'OWNER') {
+      if (!form.panNumber.trim())   { setError('PAN number is required for shop owners.'); return; }
+      if (!form.gstNumber.trim())   { setError('GST number is required for shop owners.'); return; }
+      if (!form.aadhaarLast4.trim()){ setError('Aadhaar last 4 digits are required for shop owners.'); return; }
+      if (!form.shopName?.trim())   { setError('Shop name is required for shop owners.'); return; }
+    }
     setLoading(true);
     try {
-      await signUp(form);
-      setTab('login');
-      setInfo(`✅ Account created! A verification email has been sent to ${form.email}. Please verify your email before signing in.`);
+      await signUp({ ...form, gstNumber: form.gstNumber } as any);
+      setAccountCreated(form.email);
       setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
     finally           { setLoading(false); }
@@ -135,6 +182,50 @@ const AuthPage: React.FC = () => {
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-4 py-10"
       style={{ background: 'linear-gradient(135deg, #fef9ee 0%, #fdf3d8 40%, #fef5e0 70%, #fffbf0 100%)' }}>
+
+      {/* ── Account Created Success Overlay ── */}
+      {accountCreated && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(10px)' }}>
+          <div className="relative w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center"
+            style={{
+              background: 'linear-gradient(145deg, #fffdf5 0%, #fef9e0 100%)',
+              boxShadow: '0 32px 80px rgba(180,120,0,0.25), 0 0 0 1px rgba(251,191,36,0.4)',
+            }}>
+            {/* animated checkmark ring */}
+            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5 animate-float"
+              style={{ background: 'linear-gradient(135deg,#fde68a,#f59e0b)', boxShadow: '0 8px 32px rgba(245,158,11,0.4)' }}>
+              <svg viewBox="0 0 36 36" className="w-10 h-10">
+                <path d="M6 18 l8 8 l16 -16" fill="none" stroke="#451a03" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ strokeDasharray: 40, strokeDashoffset: 0, animation: 'dash 0.6s ease forwards' }} />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-amber-900 mb-2">Account Created!</h2>
+            <p className="text-sm text-amber-700 leading-relaxed mb-2">
+              A verification email has been sent to
+            </p>
+            <p className="font-bold text-amber-800 text-sm mb-4 break-all">{accountCreated}</p>
+            <p className="text-xs text-amber-600 leading-relaxed mb-6">
+              Please click the link in your email to verify your account before signing in.
+            </p>
+            {/* sparkle row */}
+            <div className="flex gap-3 mb-6">
+              {['✨','🥇','💛','🥇','✨'].map((s,i)=><span key={i} className="text-xl">{s}</span>)}
+            </div>
+            <button
+              onClick={() => { setAccountCreated(''); setTab('login'); }}
+              className="w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.97] animate-shimmer"
+              style={{
+                background: 'linear-gradient(90deg,#fde68a 0%,#f59e0b 50%,#fbbf24 100%)',
+                backgroundSize: '200% auto',
+                color: '#451a03',
+                boxShadow: '0 4px 16px rgba(245,158,11,0.35)',
+              }}>
+              Go to Sign In
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Background glow blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -207,6 +298,20 @@ const AuthPage: React.FC = () => {
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">Welcome back</h2>
               <p className="text-xs text-amber-500 mb-5 tracking-wide">Sign in to your gold account</p>
+
+              {/* Google Sign-In Button */}
+              <div className="mb-4 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-white border border-amber-300 shadow-sm hover:bg-amber-50 text-amber-700 font-semibold text-sm transition-all"
+                  disabled={loading}
+                  style={{ marginBottom: '8px' }}
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
+                  Sign in with Google
+                </button>
+              </div>
 
               <div className="flex gap-2 p-1 mb-6 rounded-2xl"
                 style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.25)' }}>
@@ -379,12 +484,22 @@ const AuthPage: React.FC = () => {
                     </div>
                     <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
                     <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
-                    <GoldInput label="PAN Number (optional)" value={form.panNumber} onChange={setF('panNumber')}
-                      placeholder="ABCDE1234F" maxLength={10} />
-                    <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4}
-                      onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
+                    <GoldInput label={form.role === 'OWNER' ? 'PAN Number *' : 'PAN Number (optional)'}
+                      value={form.panNumber} onChange={setF('panNumber')}
+                      placeholder="ABCDE1234F" maxLength={10}
+                      required={form.role === 'OWNER'} />
+                    <GoldInput label="Aadhaar Last 4 Digits" value={form.aadhaarLast4}
+                      onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4}
+                      required={form.role === 'OWNER'} />
+                    {form.role === 'OWNER' && (
+                      <GoldInput label="GST Number *" value={form.gstNumber}
+                        onChange={setF('gstNumber')} placeholder="e.g. 27AABCU9603R1ZM" maxLength={15}
+                        required />
+                    )}
                     <p className="text-xs text-stone-400 leading-relaxed px-1">
-                      By creating an account you agree to our Terms of Service. Data is stored securely for KYC and tax compliance (India).
+                      {form.role === 'OWNER'
+                        ? 'PAN, Aadhaar & GST are mandatory for shop owners for compliance and authentication.'
+                        : 'By creating an account you agree to our Terms of Service. Data is stored securely for KYC and tax compliance (India).'}
                     </p>
                     <div className="flex gap-3">
                       <button type="button" onClick={() => setSignupStep(1)}

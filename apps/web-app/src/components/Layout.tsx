@@ -57,6 +57,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const allNavItems: NavItem[] = [
     { id: 'home',           label: 'Home',            icon: <Home size={20} />,           path: '/' },
     { id: 'portfolio',      label: 'My Portfolio',    icon: <Briefcase size={20} />,       path: '/portfolio' },
+    { id: 'orders',         label: 'My Orders',       icon: <ClipboardList size={20} />,   path: '/orders' },
     { id: 'profile',        label: 'My Profile',      icon: <Settings size={20} />,        path: '/profile' },
     { id: 'dashboard',      label: 'Dashboard',       icon: <TrendingUp size={20} />,      path: '/dashboard' },
     { id: 'billing',        label: 'Billing',         icon: <ShoppingCart size={20} />,    path: '/billing' },
@@ -64,8 +65,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'catalog',        label: 'Catalog',         icon: <Camera size={20} />,          path: '/catalog' },
     { id: 'repairs',        label: 'Repairs',         icon: <Wrench size={20} />,          path: '/repairs' },
     { id: 'schemes',        label: 'Schemes',         icon: <Coins size={20} />,           path: '/schemes' },
-    { id: 'parties',        label: 'Customers',       icon: <Users size={20} />,           path: '/parties' },
-    { id: 'suppliers',      label: 'Suppliers',       icon: <Building2 size={20} />,       path: '/suppliers' },
+    { id: 'parties',        label: 'Parties',         icon: <Users size={20} />,           path: '/parties' },
     { id: 'purchase-orders',label: 'Purchase Orders', icon: <ClipboardList size={20} />,   path: '/purchase-orders' },
     { id: 'stock-on-hand',  label: 'Stock on Hand',   icon: <PackageCheck size={20} />,   path: '/stock-on-hand' },
     { id: 'stock-movement', label: 'Stock Movement',  icon: <ArrowRightLeft size={20} />, path: '/stock-movement' },
@@ -73,11 +73,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'rates',          label: 'Gold Rates',      icon: <TrendingUp size={20} />,      path: '/rates' },
   ];
 
-  // Customers only see Home, Portfolio, and Profile; shop users see everything
-  const customerIds = new Set(['home', 'portfolio', 'profile']);
+  // Customers only see Home, Portfolio, Orders and Profile; shop users see everything
+  const customerIds = new Set(['home', 'portfolio', 'orders', 'profile']);
   const navItems = isCustomer
     ? allNavItems.filter(item => customerIds.has(item.id))
-    : allNavItems.filter(item => item.id !== 'portfolio'); // portfolio is customer-only
+    : allNavItems.filter(item => !['portfolio', 'orders'].includes(item.id)); // portfolio/orders are customer-only
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-gray-900">
