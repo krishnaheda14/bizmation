@@ -380,13 +380,13 @@ const AuthPage: React.FC = () => {
                       {([
                         { role:'CUSTOMER' as const, Icon: User,  title:'Customer',   desc:'Buy & invest in digital gold/silver' },
                         { role:'OWNER'    as const, Icon: Store, title:'Shop Owner', desc:'Manage your jewellery shop & customers' },
-                      ]).map(({ role, icon, title, desc }) => (
+                      ]).map(({ role, Icon, title, desc }) => (
                         <button key={role} type="button" onClick={()=>setForm(f=>({...f,role}))}
                           className="flex flex-col items-center p-4 rounded-2xl border-2 text-center transition-all hover:scale-[1.02] active:scale-[0.98]"
                           style={form.role===role
                             ? { background:'linear-gradient(135deg,#fffbeb,#fef3c7)',borderColor:'#f59e0b',boxShadow:'0 4px 16px rgba(245,158,11,0.2)' }
                             : { background:'rgba(253,243,212,0.5)',borderColor:'rgba(251,191,36,0.25)',color:'#92400e' }}>
-                          <span className="text-3xl mb-1.5">{icon}</span>
+                          <Icon size={28} className="text-amber-600 mb-1.5" />
                           <span className="font-bold text-sm text-amber-900">{title}</span>
                           <span className="text-[10px] text-amber-600 mt-0.5 leading-tight">{desc}</span>
                           {form.role===role && <span className="mt-2 text-[10px] font-bold text-amber-700 bg-amber-200 rounded-full px-2 py-0.5">Selected ✓</span>}

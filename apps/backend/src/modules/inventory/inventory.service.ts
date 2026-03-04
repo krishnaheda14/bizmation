@@ -14,8 +14,8 @@ import {
   ProductValuation,
   StockReport,
 } from '@jewelry-platform/shared-types';
-import { GoldRateService } from '../services/gold-rate/GoldRateService';
-import { DatabaseService } from '../services/database/DatabaseService';
+import { GoldRateService } from '../../services/gold-rate/GoldRateService';
+import { DatabaseService } from '../../services/database/DatabaseService';
 
 export class InventoryService {
   private db: DatabaseService;
@@ -34,8 +34,8 @@ export class InventoryService {
   async createMetalLot(shopId: string, data: Omit<MetalLot, 'id' | 'createdAt' | 'updatedAt' | 'syncStatus' | 'version'>): Promise<MetalLot> {
     const metalLot: MetalLot = {
       id: this.generateId(),
-      shopId,
       ...data,
+      shopId,
       remainingWeightGrams: data.weightGrams, // Initially all weight is available
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -164,8 +164,8 @@ export class InventoryService {
 
     const product: Product = {
       id: this.generateId(),
-      shopId,
       ...data,
+      shopId,
       costPrice: valuation.totalValue,
       sellingPrice: data.sellingPrice || valuation.totalValue * 1.15, // 15% markup if not specified
       createdAt: new Date(),
