@@ -69,8 +69,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Cron job: Update gold rates daily at 9 AM
-const goldRateUpdateJob = new CronJob('0 9 * * *', async () => {
+// Cron job: Update gold rates every 5 minutes for near-real-time accuracy
+const goldRateUpdateJob = new CronJob('*/5 * * * *', async () => {
   console.log('Running daily gold rate update...');
   try {
     await goldRateService.autoUpdateRates();

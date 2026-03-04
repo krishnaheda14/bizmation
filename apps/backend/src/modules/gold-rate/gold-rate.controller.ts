@@ -45,8 +45,8 @@ export function goldRateRouter(goldRateService: GoldRateService): Router {
     try {
       const { metalType = 'GOLD', purity = 24 } = req.query;
       
-      // Force a fresh fetch from API and save to database
-      const rate = await goldRateService.getCurrentRate(
+      // Force a fresh fetch from upstream and save to database
+      const rate = await goldRateService.fetchLiveRate(
         metalType as MetalType,
         Number(purity)
       );
@@ -62,6 +62,35 @@ export function goldRateRouter(goldRateService: GoldRateService): Router {
         success: false,
         error: error.message || 'Failed to fetch live gold rate from upstream source',
       });
+    }
+  });
+
+  /**
+   * GET /api/gold-rates/fetch-live-all
+   * Force fetch and save for common metals/purities
+   */
+  router.get('/fetch-live-all', async (req: Request, res: Response) => {
+    try {
+      await goldRateService.autoUpdateRates();
+      res.json({ success: true, message: 'Live gold rates fetched for all common purities' });
+    } catch (error: any) {
+      console.error('[Gold Rate API] Error fetching live rates for all:', error);
+      res.status(500).json({ success: false, error: error?.message || 'Failed to fetch live rates' });
+    }
+  });
+
+  /**
+   * POST /api/gold-rates/reconcile
+   * Compare upstream API values with DB and update when diff >= thresholdPercent (body or query)
+   */
+  router.post('/reconcile', async (req: Request, res: Response) => {
+    try {
+      const threshold = Number(req.body.thresholdPercent ?? req.query.thresholdPercent ?? 0.5);
+      const result = await goldRateService.reconcileAndUpdateAll(threshold);
+      res.json({ success: true, data: result, message: 'Reconcile complete' });
+    } catch (error: any) {
+      console.error('[Gold Rate API] Error reconciling rates:', error);
+      res.status(500).json({ success: false, error: error?.message || 'Failed to reconcile rates' });
     }
   });
 

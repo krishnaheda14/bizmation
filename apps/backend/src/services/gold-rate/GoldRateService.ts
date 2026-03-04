@@ -38,12 +38,34 @@ export class GoldRateService {
         return this.fetchAndSaveRate(metalType, purity);
       }
 
-      return this.mapToGoldRate(result.rows[0]);
+      // If the stored rate is stale (older than TTL), fetch a fresh value.
+      const ttlSeconds = Number(process.env.GOLD_RATE_TTL_SECONDS || 60);
+      const row = result.rows[0];
+      const effective = row.effective_date ? new Date(row.effective_date).getTime() : 0;
+      const ageSeconds = (Date.now() - effective) / 1000;
+      if (ageSeconds > ttlSeconds) {
+        try {
+          return await this.fetchAndSaveRate(metalType, purity);
+        } catch (err: any) {
+          // If live fetch fails, fall back to DB value
+          console.warn('[GoldRateService] Live fetch failed, returning cached DB rate:', (err as any)?.message || err);
+          return this.mapToGoldRate(row);
+        }
+      }
+
+      return this.mapToGoldRate(row);
     } catch (err: any) {
       // If database is unreachable, fall back to fetching from external API
-      console.warn('[GoldRateService] Database unavailable, falling back to external API:', err?.message || err);
+      console.warn('[GoldRateService] Database unavailable, falling back to external API:', (err as any)?.message || err);
       return this.fetchAndSaveRate(metalType, purity);
     }
+  }
+
+  /**
+   * Force a fresh fetch from upstream and save to DB. Public wrapper.
+   */
+  async fetchLiveRate(metalType: MetalType, purity: number): Promise<GoldRate> {
+    return this.fetchAndSaveRate(metalType, purity);
   }
 
   /**
@@ -97,23 +119,34 @@ export class GoldRateService {
       console.log(`[GoldRateService] ${instrument}/USD mid-price: $${pricePerOunceUSD.toFixed(3)} (bid:${chosenProfile.bid} ask:${chosenProfile.ask})`);
 
       // ── Step 2: USD → INR ─────────────────────────────────────────────────
-      console.log('[GoldRateService] Fetching USD→INR rate from fawazahmed0 currency-api');
-      const currencyResponse = await axios.get(
-        'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json',
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; bizmation-gold-fetcher/1.0)',
-            'Accept': 'application/json',
-          },
-          timeout: 10000,
+      // Primary: exchangerate.fun (real-time, more accurate than daily CDN)
+      // Fallback: fawazahmed0 CDN (daily rate)
+      let usdToInrRate = 0;
+      console.log('[GoldRateService] Fetching USD→INR rate from exchangerate.fun');
+      try {
+        const erResponse = await axios.get(
+          'https://api.exchangerate.fun/latest?base=USD',
+          { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bizmation-gold-fetcher/1.0)', 'Accept': 'application/json' }, timeout: 8000 }
+        );
+        const rate = Number(erResponse.data?.rates?.INR);
+        if (isFinite(rate) && rate > 0) {
+          usdToInrRate = rate;
+          console.log(`[GoldRateService] USD→INR (exchangerate.fun): ${usdToInrRate}`);
+        } else {
+          throw new Error('Invalid INR rate from exchangerate.fun');
         }
-      );
-
-      const usdToInrRate: number | undefined = currencyResponse.data?.usd?.inr;
-      if (!usdToInrRate || isNaN(usdToInrRate)) {
-        throw new Error('USD→INR rate not available from currency API');
+      } catch (erErr: any) {
+        console.warn('[GoldRateService] exchangerate.fun failed, falling back to fawazahmed0 CDN:', erErr.message);
+        const currencyResponse = await axios.get(
+          'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json',
+          { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bizmation-gold-fetcher/1.0)', 'Accept': 'application/json' }, timeout: 10000 }
+        );
+        usdToInrRate = Number(currencyResponse.data?.usd?.inr);
+        if (!isFinite(usdToInrRate) || usdToInrRate <= 0) {
+          throw new Error('USD→INR rate not available from any source');
+        }
+        console.log(`[GoldRateService] USD→INR (fawazahmed0 CDN fallback): ${usdToInrRate}`);
       }
-      console.log(`[GoldRateService] USD→INR rate: ${usdToInrRate}`);
 
       // ── Step 3: Calculate per-gram INR price ──────────────────────────────
       // 1 troy ounce = 31.1035 grams
@@ -131,20 +164,18 @@ export class GoldRateService {
         `[GoldRateService] ${metalType} per gram (INR, after 9% duty): ₹${pricePerGramINR.toFixed(2)}` +
         ` | per 10g: ₹${(pricePerGramINR * 10).toFixed(2)}`
       );
-      
-      // Calculate rates for different purities (for gold)
-      const calculatePurityRate = (purity: number) => {
-        return (pricePerGramINR * purity) / 24;
-      };
-      
+
+      // Purity-proportional rates — applies to BOTH gold and silver
+      const calculatePurityRate = (purity: number) => (pricePerGramINR * purity) / 24;
+
       return {
-        price_gram_24k: pricePerGramINR,
-        price_gram_22k: metalType === 'GOLD' ? calculatePurityRate(22) : pricePerGramINR,
-        price_gram_21k: metalType === 'GOLD' ? calculatePurityRate(21) : pricePerGramINR,
-        price_gram_20k: metalType === 'GOLD' ? calculatePurityRate(20) : pricePerGramINR,
-        price_gram_18k: metalType === 'GOLD' ? calculatePurityRate(18) : pricePerGramINR,
-        price_gram_16k: metalType === 'GOLD' ? calculatePurityRate(16) : pricePerGramINR,
-        price_gram_14k: metalType === 'GOLD' ? calculatePurityRate(14) : pricePerGramINR,
+        price_gram_24k: pricePerGramINR,         // 24÷24 = full price
+        price_gram_22k: calculatePurityRate(22), // 22÷24
+        price_gram_21k: calculatePurityRate(21),
+        price_gram_20k: calculatePurityRate(20),
+        price_gram_18k: calculatePurityRate(18), // 18÷24
+        price_gram_16k: calculatePurityRate(16),
+        price_gram_14k: calculatePurityRate(14),
         timestamp: Date.now(),
         metal: metalType,
         currency: 'INR',
@@ -175,10 +206,9 @@ export class GoldRateService {
     };
     
     const rateField = purityMap[purity] || 'price_gram_24k';
-    const ratePerGram = apiData[rateField];
-    
-    if (!ratePerGram) {
-      throw new Error(`Rate not available for ${metalType} ${purity}K`);
+    let ratePerGram = Number(apiData[rateField]);
+    if (!isFinite(ratePerGram) || ratePerGram <= 0) {
+      throw new Error(`Rate not available or invalid for ${metalType} ${purity}K`);
     }
     
     const goldRate: GoldRate = {
@@ -232,11 +262,16 @@ export class GoldRateService {
       [metalType, purity]
     );
     
+    const numericRate = Number(ratePerGram);
+    if (!isFinite(numericRate) || numericRate <= 0) {
+      throw new Error('Invalid ratePerGram for manual update');
+    }
+
     const goldRate: GoldRate = {
       id: this.generateId(),
       metalType,
       purity,
-      ratePerGram,
+      ratePerGram: numericRate,
       source: 'MANUAL',
       effectiveDate: new Date(),
       isActive: true,
@@ -292,7 +327,7 @@ export class GoldRateService {
   async autoUpdateRates(): Promise<void> {
     console.log('[GoldRateService] Auto-updating gold rates...');
     
-    const metalTypes: MetalType[] = ['GOLD', 'SILVER', 'PLATINUM'];
+    const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER, MetalType.PLATINUM];
     const purities = [24, 22, 18]; // Common purities
     
     for (const metalType of metalTypes) {
@@ -305,6 +340,76 @@ export class GoldRateService {
         }
       }
     }
+  }
+
+  /**
+   * Reconcile backend DB rates with upstream API and update if discrepancy
+   * exceeds `thresholdPercent`.
+   */
+  async reconcileAndUpdateAll(thresholdPercent = 0.5): Promise<{updated: Array<{metalType: MetalType; purity: number; old?: number; newest: number}>}> {
+    const metals: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
+    const purities = [24, 22, 18];
+    const updated: Array<{metalType: MetalType; purity: number; old?: number; newest: number}> = [];
+
+    for (const metal of metals) {
+      // Fetch upstream once per metal
+      let apiData: any;
+      try {
+        apiData = await this.fetchFromAPI(metal);
+      } catch (err: any) {
+        console.warn('[GoldRateService] reconcile: failed to fetch upstream for', metal, (err as any)?.message || err);
+        continue;
+      }
+
+      for (const purity of purities) {
+        const purityMap: Record<number, string> = {
+          24: 'price_gram_24k',
+          22: 'price_gram_22k',
+          21: 'price_gram_21k',
+          20: 'price_gram_20k',
+          18: 'price_gram_18k',
+          16: 'price_gram_16k',
+          14: 'price_gram_14k',
+        };
+        const field = purityMap[purity] || 'price_gram_24k';
+        const newest = Number(apiData[field]);
+        if (!isFinite(newest) || newest <= 0) continue;
+
+        // Get current DB value
+        const q = `SELECT * FROM gold_rates WHERE metal_type = $1 AND purity = $2 AND is_active = true ORDER BY effective_date DESC LIMIT 1`;
+        let currentRow: any = null;
+        try {
+          const res = await this.db.query(q, [metal, purity]);
+          currentRow = res.rows[0];
+        } catch (e) {
+          // ignore
+        }
+
+        const old = currentRow ? parseFloat(currentRow.rate_per_gram) : undefined;
+        let shouldUpdate = false;
+        if (old == null) shouldUpdate = true;
+        else {
+          const diffPercent = Math.abs(newest - old) / old * 100;
+          shouldUpdate = diffPercent >= thresholdPercent;
+        }
+
+        if (shouldUpdate) {
+          // Deactivate old rates and insert new
+          try {
+            await this.db.query('UPDATE gold_rates SET is_active = false WHERE metal_type = $1 AND purity = $2', [metal, purity]);
+            const id = this.generateId();
+            const now = new Date();
+            const insertQ = `INSERT INTO gold_rates (id, metal_type, purity, rate_per_gram, source, effective_date, is_active, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
+            await this.db.query(insertQ, [id, metal, purity, newest, 'API', now, true, now, now]);
+            updated.push({ metalType: metal, purity, old, newest });
+          } catch (e: any) {
+            console.error('[GoldRateService] reconcile: failed to persist updated rate', (e as any)?.message || e);
+          }
+        }
+      }
+    }
+
+    return { updated };
   }
 
   private generateId(): string {

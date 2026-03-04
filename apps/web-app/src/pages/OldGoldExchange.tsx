@@ -75,34 +75,32 @@ export const OldGoldExchange: React.FC = () => {
 
   const fetchGoldRates = async () => {
     try {
-      const response = await fetch('/api/gold-rates/current');
-      const data = await response.json();
-      
-      if (data.success) {
-        setGoldRates({
-          purity24k: data.data.price_gram_24k,
-          purity22k: data.data.price_gram_22k,
-          purity21k: data.data.price_gram_21k,
-          purity20k: data.data.price_gram_20k,
-          purity18k: data.data.price_gram_18k,
-          purity16k: data.data.price_gram_16k,
-          purity14k: data.data.price_gram_14k,
-          lastUpdated: new Date(),
-        });
-      }
+      // Fetch from CDN (fawazahmed0) with cache-bust to avoid stale CDN/browser cache
+      const bust = `?_=${Date.now()}`;
+      const xauRes = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' });
+      const xauData = await xauRes.json();
+      const xauInr = xauData?.xau?.inr;
+      if (!xauInr || isNaN(xauInr)) throw new Error('Invalid XAU→INR from CDN');
+
+      // Conversion constants
+      const TROY_OZ_GRAMS = 31.1035;
+      const IMPORT_DUTY = 1.09;
+      const gold24 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+
+      setGoldRates({
+        purity24k: gold24,
+        purity22k: (gold24 * 22) / 24,
+        purity21k: (gold24 * 21) / 24,
+        purity20k: (gold24 * 20) / 24,
+        purity18k: (gold24 * 18) / 24,
+        purity16k: (gold24 * 16) / 24,
+        purity14k: (gold24 * 14) / 24,
+        lastUpdated: new Date(),
+      });
     } catch (error) {
       console.error('Failed to fetch gold rates:', error);
       // Use fallback rates
-      setGoldRates({
-        purity24k: 6500,
-        purity22k: 5958,
-        purity21k: 5687,
-        purity20k: 5417,
-        purity18k: 4875,
-        purity16k: 4333,
-        purity14k: 3792,
-        lastUpdated: new Date(),
-      });
+      
     }
   };
 

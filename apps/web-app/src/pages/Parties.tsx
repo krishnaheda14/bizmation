@@ -101,24 +101,63 @@ export const Parties: React.FC = () => {
       setFreezeLoading(false);
     }
   };
-  // Price debug fetch
+  // Price debug fetch — uses real-time sources:
+  //   XAU/USD, XAG/USD  → Swissquote via corsproxy (real-time)
+  //   USD/INR            → exchangerate.fun (real-time, fallback: fawazahmed0 CDN)
+  //   XAU/INR, XAG/INR  → fawazahmed0 CDN (direct INR values used in UI calculations)
   const fetchDebugRates = async () => {
     setDebugLoading(true); setDebugError('');
     try {
       const { fetchLiveMetalRates } = await import('../lib/goldPrices');
-      // Also fetch XAU/USD, XAG/USD, USD/INR
-      const [xauCdn, xagCdn, usdCdn] = await Promise.all([
-        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json').then(r => r.json()),
-        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json').then(r => r.json()),
-        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json()),
+      const bust = `?_=${Date.now()}`;
+
+      // Helper: parse Swissquote mid-price from proxied response
+      const parseSQMid = (data: any[]): number | null => {
+        if (!Array.isArray(data) || data.length === 0) return null;
+        for (const platform of data) {
+          const profiles: any[] = platform.spreadProfilePrices || [];
+          for (const name of ['standard', 'premium', 'prime']) {
+            const p = profiles.find((x: any) => x.spreadProfile === name);
+            if (p?.bid != null && p?.ask != null) return (p.bid + p.ask) / 2;
+          }
+        }
+        const first = data[0]?.spreadProfilePrices?.[0];
+        return (first?.bid != null && first?.ask != null) ? (first.bid + first.ask) / 2 : null;
+      };
+
+      // Fetch all sources in parallel
+      const PROXY = 'https://corsproxy.io/?url=';
+      const [xauCdn, xagCdn, sqXauRaw, sqXagRaw, erFun] = await Promise.all([
+        // CDN direct INR values (used in main calculations)
+        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+        // Swissquote real-time USD prices
+        fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+        fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+        // exchangerate.fun for accurate real-time USD/INR
+        fetch('https://api.exchangerate.fun/latest?base=USD' + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
       ]);
+
+      // USD/INR: prefer exchangerate.fun, fallback to CDN
+      const usdInrEr = erFun?.rates?.INR;
+      const usdInrCdn = (await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null))?.usd?.inr;
+      const usdInr = (usdInrEr && isFinite(usdInrEr)) ? usdInrEr : usdInrCdn;
+
+      // Real-time XAU/USD and XAG/USD from Swissquote
+      const xauUsdSQ = sqXauRaw ? parseSQMid(sqXauRaw) : null;
+      const xagUsdSQ = sqXagRaw ? parseSQMid(sqXagRaw) : null;
+
+      // Fallback USD values from CDN if Swissquote unavailable
+      const xauUsd = (xauUsdSQ && isFinite(xauUsdSQ)) ? xauUsdSQ : xauCdn?.xau?.usd;
+      const xagUsd = (xagUsdSQ && isFinite(xagUsdSQ)) ? xagUsdSQ : xagCdn?.xag?.usd;
+
       const rates = await fetchLiveMetalRates();
       setDebugRates({
-        xauUsd: xauCdn.xau.usd,
-        xagUsd: xagCdn.xag.usd,
-        usdInr: usdCdn.usd.inr,
-        xauInr: xauCdn.xau.inr,
-        xagInr: xagCdn.xag.inr,
+        xauUsd,
+        xagUsd,
+        usdInr,
+        xauInr: xauCdn?.xau?.inr,
+        xagInr: xagCdn?.xag?.inr,
         rates,
         fetchedAt: new Date().toLocaleTimeString(),
       });

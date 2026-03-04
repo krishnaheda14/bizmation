@@ -49,11 +49,12 @@ export const HomeLanding: React.FC = () => {
     const [priceFeed, setPriceFeed] = useState<any>(null);
     const fetchDetailedFeed = useCallback(async () => {
       try {
-        // Fetch CDN rates
+        // Fetch CDN rates with cache-bust to avoid stale CDN/browser cache
+        const bust = `?_=${Date.now()}`;
         const [xauData, xagData, usdData] = await Promise.all([
-          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json').then(r => r.json()),
-          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json').then(r => r.json()),
-          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r => r.json()),
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' }).then(r => r.json()),
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json' + bust, { cache: 'no-store' }).then(r => r.json()),
+          fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json' + bust, { cache: 'no-store' }).then(r => r.json()),
         ]);
         const xauInr = xauData?.xau?.inr;
         const xagInr = xagData?.xag?.inr;
@@ -71,8 +72,8 @@ export const HomeLanding: React.FC = () => {
           return null;
         };
         try {
-          const sqXau = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD')).then(r => r.json());
-          const sqXag = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD')).then(r => r.json());
+          const sqXau = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD') + `&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
+          const sqXag = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD') + `&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
           xauUsd = parseSQ(sqXau);
           xagUsd = parseSQ(sqXag);
         } catch (e) {}
