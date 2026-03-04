@@ -64,7 +64,7 @@ export const Dashboard: React.FC = () => {
       value: '0',
       change: '0 total',
       icon: <Package size={24} />,
-      color: 'bg-blue-500',
+      color: 'bg-amber-500',
     },
     {
       title: 'Gold Rate (22K)',
@@ -143,7 +143,7 @@ export const Dashboard: React.FC = () => {
               href={`#${action.action}`}
               className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 hover:shadow-lg transition-shadow cursor-pointer group"
             >
-              <div className="text-blue-600 dark:text-blue-400 mb-3 group-hover:scale-110 transition-transform">
+              <div className="text-amber-600 dark:text-amber-400 mb-3 group-hover:scale-110 transition-transform">
                 {action.icon}
               </div>
               <h3 className="font-semibold text-gray-800 dark:text-white mb-1">{action.title}</h3>

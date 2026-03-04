@@ -35,11 +35,14 @@ import {
   collection, query, where, getDocs, limit,
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { generateCustomerId, generateShopId } from '../utils/bizId';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UserProfile {
   uid: string;
+  bizCustomerId?: string;           // BIZ-CUST-XXXXXXXX (stable)
+  bizShopId?: string;               // BIZ-SHOP-XXXXXXXX (owners only)
   name: string;
   email: string;
   phone: string;
@@ -50,7 +53,7 @@ export interface UserProfile {
   panNumber: string;
   aadhaarLast4: string;          // last 4 digits only (for KYC display)
   kycStatus: 'PENDING' | 'VERIFIED';
-  role: 'CUSTOMER' | 'STAFF' | 'OWNER';
+  role: 'CUSTOMER' | 'STAFF' | 'OWNER' | 'SUPER_ADMIN';
   shopName?: string;             // for OWNER/STAFF accounts
   gstNumber?: string;            // GST registration number (OWNER)
   phoneVerified?: boolean;
@@ -86,6 +89,8 @@ interface AuthContextType {
   signInWithPhonePassword: (phone: string, password: string) => Promise<void>;
   sendOtp: (email: string) => Promise<void>;
   verifyOtp: () => Promise<{ success: boolean; email: string | null }>;
+  sendPhoneOtp: (phone: string) => Promise<void>;
+  verifyPhoneOtp: (phone: string, code: string) => Promise<{ valid: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -138,6 +143,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Sign Up ──────────────────────────────────────────────────────────────
   const signUp = async (data: SignUpData) => {
+    // ── Duplicate phone check ─────────────────────────────────────────────
+    if (data.phone && data.phone.length > 4) {
+      const phoneQ = query(collection(db, 'users'), where('phone', '==', data.phone.trim()), limit(1));
+      const phoneSnap = await getDocs(phoneQ);
+      if (!phoneSnap.empty) throw new Error('A user with this phone number already exists. Please sign in.');
+    }
+
     const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
     const createdUser = cred.user;
 
@@ -150,6 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Write full profile to Firestore
     const profile: UserProfile = {
       uid:                        createdUser.uid,
+      bizCustomerId:              data.role === 'CUSTOMER' ? generateCustomerId() : undefined,
+      bizShopId:                  data.role === 'OWNER' ? generateShopId() : undefined,
       name:                       data.name,
       email:                      data.email,
       phone:                      data.phone,
@@ -218,6 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const shopRef = doc(db, 'shops', createdUser.uid);
         await setDoc(shopRef, {
           id: createdUser.uid,
+          bizShopId: profile.bizShopId ?? generateShopId(),
           name: profile.shopName || profile.name,
           ownerUid: createdUser.uid,
           ownerName: profile.name,
@@ -241,6 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const custRef = doc(db, `shops/${shopDoc.id}/customers`, createdUser.uid);
           await setDoc(custRef, {
             uid: createdUser.uid,
+            bizCustomerId: profile.bizCustomerId ?? generateCustomerId(),
             name: profile.name,
             email: profile.email || null,
             phone: profile.phone || null,
@@ -293,6 +309,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Save email locally so we can complete sign-in on the same device
     localStorage.setItem(OTP_EMAIL_KEY, email);
   };
+  // ── Phone OTP via Twilio Verify (backend API) ─────────────────────────────
+  const sendPhoneOtp = async (phone: string): Promise<void> => {
+    const apiBase = (import.meta.env.VITE_API_URL as string) || '';
+    const url    = `${apiBase}/api/auth/send-otp`;
+
+    // ── Debug: log everything so we can trace failures ───────────────────
+    console.group('[sendPhoneOtp]');
+    console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
+    console.log('Resolved apiBase       :', apiBase);
+    console.log('Full URL               :', url);
+    console.log('Phone sent             :', phone);
+    if (!apiBase) {
+      console.warn(
+        '⚠  VITE_API_URL is NOT set.\n'
+        + '   Add it to Cloudflare Pages → Settings → Environment Variables\n'
+        + '   Value: https://your-railway-app.up.railway.app'
+      );
+    }
+    console.groupEnd();
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ phone }),
+      });
+    } catch (fetchErr: any) {
+      console.error('[sendPhoneOtp] Network error (fetch threw):', fetchErr);
+      console.error('  → This is usually caused by:');
+      console.error('    1. VITE_API_URL not set in Cloudflare Pages env vars');
+      console.error('    2. Railway backend is offline / not deployed');
+      console.error('    3. CORS policy on the Railway server blocking the request');
+      throw new Error(
+        `Network error calling ${url}. ` +
+        'Check: (1) VITE_API_URL is set in Cloudflare Pages, ' +
+        '(2) Railway backend is running, ' +
+        '(3) CORS is enabled on the backend.'
+      );
+    }
+
+    console.log('[sendPhoneOtp] HTTP status:', res.status, res.statusText);
+    let json: any;
+    try { json = await res.json(); } catch { json = {}; }
+    console.log('[sendPhoneOtp] Response body:', json);
+
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || `Server returned ${res.status}`);
+    }
+  };
+
+  const verifyPhoneOtp = async (phone: string, code: string): Promise<{ valid: boolean }> => {
+    const apiBase = (import.meta.env.VITE_API_URL as string) || '';
+    const url    = `${apiBase}/api/auth/verify-otp`;
+
+    console.group('[verifyPhoneOtp]');
+    console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
+    console.log('Full URL               :', url);
+    console.log('Phone                  :', phone);
+    console.groupEnd();
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ phone, code }),
+      });
+    } catch (fetchErr: any) {
+      console.error('[verifyPhoneOtp] Network error:', fetchErr);
+      throw new Error('Network error — check VITE_API_URL and Railway deployment.');
+    }
+
+    console.log('[verifyPhoneOtp] HTTP status:', res.status);
+    let json: any;
+    try { json = await res.json(); } catch { json = {}; }
+    console.log('[verifyPhoneOtp] Response body:', json);
+
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || `Server returned ${res.status}`);
+    }
+    return { valid: json.valid ?? false };
+  };
+
     // ── Google Sign In ───────────────────────────────────────────────────────
     const signInWithGoogle = async () => {
       const provider = new GoogleAuthProvider();
@@ -424,6 +524,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithPhonePassword,
       sendOtp,
       verifyOtp,
+      sendPhoneOtp,
+      verifyPhoneOtp,
       signOut,
       refreshProfile,
       signInWithGoogle,

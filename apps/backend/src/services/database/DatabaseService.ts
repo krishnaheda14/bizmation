@@ -1,10 +1,10 @@
 /**
  * Database Service
  *
- * Manages PostgreSQL database connections and queries.
- * Uses Supabase as the database provider — Supabase is fully
- * PostgreSQL-compatible so the standard `pg` Pool works unchanged.
- * SSL is always enforced because Supabase requires it.
+ * Manages PostgreSQL database connections and queries using the standard
+ * `pg` Pool. Works with any PostgreSQL provider (Railway Postgres,
+ * Neon, Turso-pg, self-hosted, etc.).
+ * SSL is enforced in production.
  */
 
 import { Pool, QueryResult } from 'pg';
@@ -17,13 +17,13 @@ export class DatabaseService {
     if (!connectionString) {
       throw new Error(
         'DATABASE_URL is not set. ' +
-        'Copy .env.example to .env and fill in your Supabase connection string.'
+        'Copy .env.example to .env and fill in a PostgreSQL connection string.'
       );
     }
 
     this.pool = new Pool({
       connectionString,
-      // Supabase requires SSL — disable cert verification only for local dev
+      // Enforce SSL in production; allow self-signed certs in local dev
       ssl: process.env.NODE_ENV === 'production'
         ? { rejectUnauthorized: true }
         : { rejectUnauthorized: false },

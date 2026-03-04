@@ -151,9 +151,11 @@ function downloadInvoice(order: GoldOrder, customerName: string, customerEmail: 
 // ── Component ────────────────────────────────────────────────────────────────
 export const Orders: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
-  const [orders, setOrders]   = useState<GoldOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
+  const [orders, setOrders]     = useState<GoldOrder[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
+  const [search, setSearch]     = useState('');
 
   const fetchOrders = useCallback(async () => {
     if (!currentUser) return;
@@ -194,52 +196,70 @@ export const Orders: React.FC = () => {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  const buyOrders  = orders.filter(o => o.type === 'BUY' && o.status === 'SUCCESS');
-  const totalGrams = buyOrders.reduce((s, o) => s + o.grams, 0);
-  const totalSpent = buyOrders.reduce((s, o) => s + o.totalAmountInr, 0);
-  const sellCount  = orders.filter(o => o.type === 'SELL').length;
-
   const customerName  = userProfile?.name  ?? currentUser?.displayName ?? '';
   const customerEmail = userProfile?.email ?? currentUser?.email ?? '';
+
+  const displayed = orders.filter(o => {
+    const matchType   = typeFilter === 'ALL' || o.type === typeFilter;
+    const searchLower = search.toLowerCase();
+    const matchSearch = !search ||
+      o.metal?.toLowerCase().includes(searchLower) ||
+      o.status?.toLowerCase().includes(searchLower) ||
+      o.razorpayPaymentId?.toLowerCase().includes(searchLower);
+    return matchType && matchSearch;
+  });
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 border-b border-amber-200 dark:border-yellow-900/30 px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-gradient-to-br from-stone-50 via-stone-100 to-amber-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 border-b border-stone-200 dark:border-gray-800 px-4 sm:px-6 lg:px-8 py-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-black text-amber-900 dark:text-white mb-1 flex items-center gap-3">
-              <Package className="text-amber-500 dark:text-yellow-400" size={32} />
-              My Orders
+            <h1 className="text-3xl font-black text-stone-800 dark:text-white mb-1 flex items-center gap-3">
+              <FileText className="text-stone-500 dark:text-gray-400" size={30} />
+              Transaction Log
             </h1>
-            <p className="text-amber-700/70 dark:text-gray-400 text-sm">
-              {customerName ? `View and download invoices, ${customerName}` : 'Your purchase & sell history'}
+            <p className="text-stone-500 dark:text-gray-400 text-sm">
+              Every buy &amp; sell transaction — with invoice download
             </p>
           </div>
-          <button
-            onClick={fetchOrders}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl text-sm transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <a href="#/portfolio" className="flex items-center gap-1.5 text-amber-600 hover:text-amber-800 dark:text-yellow-500 text-sm font-bold transition-colors">
+              ← View Portfolio
+            </a>
+            <button onClick={fetchOrders} disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-stone-700 hover:bg-stone-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-50">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Summary */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { label: 'Total Orders', value: String(orders.length), icon: <Package size={20} className="text-amber-500" />, color: 'from-amber-50 to-yellow-50 dark:from-yellow-900/20 dark:to-amber-900/10 border-amber-200 dark:border-yellow-800/40' },
-            { label: 'Gold Purchased', value: `${totalGrams.toFixed(3)}g`, icon: <Coins size={20} className="text-amber-500 dark:text-yellow-400" />, color: 'from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10 border-green-200 dark:border-green-800/40' },
-            { label: 'Total Invested', value: `₹${totalSpent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, icon: <TrendingUp size={20} className="text-blue-500 dark:text-blue-400" />, color: 'from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/10 border-blue-200 dark:border-blue-800/40' },
-          ].map(({ label, value, icon, color }) => (
-            <div key={label} className={`bg-gradient-to-br ${color} border rounded-2xl p-5 shadow-sm`}>
-              <div className="flex items-center gap-2 mb-2">{icon}<span className="text-xs font-bold text-stone-500 dark:text-gray-400 uppercase tracking-wide">{label}</span></div>
-              <p className="text-2xl font-black text-stone-800 dark:text-white">{value}</p>
-            </div>
-          ))}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* ── Filter bar ─────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 p-1 rounded-xl bg-stone-100 dark:bg-gray-800 border border-stone-200 dark:border-gray-700">
+            {(['ALL', 'BUY', 'SELL'] as const).map(f => (
+              <button key={f} onClick={() => setTypeFilter(f)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  typeFilter === f
+                    ? f === 'BUY'
+                      ? 'bg-green-500 text-white shadow'
+                      : f === 'SELL'
+                      ? 'bg-orange-500 text-white shadow'
+                      : 'bg-stone-700 text-white shadow'
+                    : 'text-stone-500 dark:text-gray-400 hover:bg-stone-200 dark:hover:bg-gray-700'
+                }`}>{f}</button>
+            ))}
+          </div>
+          <input type="search" placeholder="Search metal, status, payment ID…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="flex-1 min-w-[180px] max-w-xs rounded-xl border border-stone-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-2 text-sm text-stone-700 dark:text-white placeholder-stone-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+          <span className="text-xs text-stone-400 dark:text-gray-500 ml-auto">
+            {displayed.length} of {orders.length} transactions
+          </span>
         </div>
 
         {/* Error */}
@@ -255,39 +275,39 @@ export const Orders: React.FC = () => {
           <div className="flex items-center justify-center py-16">
             <Loader2 size={28} className="animate-spin text-amber-500" />
           </div>
-        ) : orders.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-gray-900 border border-amber-100 dark:border-gray-800 rounded-2xl">
-            <Package size={40} className="text-amber-300 dark:text-yellow-700 mx-auto mb-4" />
-            <p className="text-amber-700 dark:text-gray-400 font-semibold">No orders yet</p>
-            <p className="text-amber-500/70 dark:text-gray-500 text-sm mt-1">Your purchases and sell requests will appear here.</p>
-            <a href="#/" className="mt-5 inline-flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl text-sm transition-colors">
-              <ShoppingCart size={15} />
-              Buy Gold
-            </a>
+        ) : displayed.length === 0 ? (
+          <div className="text-center py-16 bg-white dark:bg-gray-900 border border-stone-100 dark:border-gray-800 rounded-2xl">
+            <Package size={40} className="text-stone-300 dark:text-gray-700 mx-auto mb-4" />
+            <p className="text-stone-500 dark:text-gray-400 font-semibold">{orders.length === 0 ? 'No orders yet' : 'No results for current filter'}</p>
+            {orders.length === 0 && (
+              <a href="#/" className="mt-5 inline-flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-xl text-sm transition-colors">
+                <ShoppingCart size={15} /> Buy Gold
+              </a>
+            )}
           </div>
         ) : (
-          <div className="bg-white dark:bg-gray-950 border border-amber-100 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+          <div className="bg-white dark:bg-gray-950 border border-stone-100 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-amber-100 dark:border-gray-800 bg-amber-50/60 dark:bg-gray-900">
-                    <th className="text-left py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Date</th>
-                    <th className="text-left py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Type</th>
-                    <th className="text-left py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Metal</th>
-                    <th className="text-right py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Weight</th>
-                    <th className="text-right py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Rate/g</th>
-                    <th className="text-right py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Amount</th>
-                    <th className="text-left py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Status</th>
-                    <th className="py-3 px-4 text-amber-700 dark:text-gray-400 text-xs font-semibold uppercase">Invoice</th>
+                  <tr className="border-b border-stone-100 dark:border-gray-800 bg-stone-50 dark:bg-gray-900">
+                    <th className="text-left py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Date</th>
+                    <th className="text-left py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Type</th>
+                    <th className="text-left py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Metal</th>
+                    <th className="text-right py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Weight</th>
+                    <th className="text-right py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Rate/g</th>
+                    <th className="text-right py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Amount</th>
+                    <th className="text-left py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Status</th>
+                    <th className="py-3 px-4 text-stone-500 dark:text-gray-400 text-xs font-semibold uppercase">Invoice</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map(order => {
+                  {displayed.map(order => {
                     const date = order.createdAt?.toDate
                       ? order.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                       : '—';
                     return (
-                      <tr key={order.id} className="border-b border-amber-50 dark:border-gray-800/60 hover:bg-amber-50/40 dark:hover:bg-gray-900/50 transition-colors">
+                      <tr key={order.id} className="border-b border-stone-50 dark:border-gray-800/60 hover:bg-stone-50 dark:hover:bg-gray-900/50 transition-colors">
                         <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300 whitespace-nowrap">{date}</td>
                         <td className="py-3.5 px-4">
                           <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${
@@ -299,7 +319,7 @@ export const Orders: React.FC = () => {
                             {order.type}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-sm font-semibold text-amber-700 dark:text-yellow-400">
+                        <td className="py-3.5 px-4 text-sm font-semibold text-stone-700 dark:text-gray-300">
                           {order.metal} {order.purity}K
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">
@@ -323,13 +343,10 @@ export const Orders: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <button
-                            onClick={() => downloadInvoice(order, customerName, customerEmail)}
-                            title="Download Invoice"
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-800/50 text-amber-800 dark:text-amber-300 rounded-lg text-xs font-bold transition-colors"
-                          >
+                          <button onClick={() => downloadInvoice(order, customerName, customerEmail)} title="Download Invoice"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700 text-stone-700 dark:text-gray-300 rounded-lg text-xs font-bold transition-colors">
                             <Download size={12} />
-                            Invoice
+                            PDF
                           </button>
                         </td>
                       </tr>
@@ -341,8 +358,8 @@ export const Orders: React.FC = () => {
           </div>
         )}
 
-        <p className="text-xs text-center text-amber-600/50 dark:text-gray-600">
-          Click <strong>Invoice</strong> on any order to open a printable invoice. Use your browser's Print → Save as PDF to download.
+        <p className="text-xs text-center text-stone-400 dark:text-gray-600">
+          Click <strong>PDF</strong> on any order to print or save as PDF invoice.
         </p>
       </div>
     </div>

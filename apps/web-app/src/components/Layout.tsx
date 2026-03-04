@@ -7,26 +7,21 @@
 import React, { useState } from 'react';
 import {
   Home,
-  ShoppingCart,
-  Package,
-  Camera,
   Menu,
   X,
   TrendingUp,
-  Brain,
   Users,
   Sun,
   Moon,
-  Wrench,
-  Coins,
-  Building2,
   ClipboardList,
-  PackageCheck,
-  ArrowRightLeft,
   LogOut,
   UserCircle,
   Briefcase,
   Settings,
+  BarChart3,
+  ArrowDownCircle,
+  Gift,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -54,28 +49,28 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const isCustomer = userProfile?.role === 'CUSTOMER';
 
-  const allNavItems: NavItem[] = [
-    { id: 'home',           label: 'Home',            icon: <Home size={20} />,           path: '/' },
-    { id: 'portfolio',      label: 'My Portfolio',    icon: <Briefcase size={20} />,       path: '/portfolio' },
-    { id: 'orders',         label: 'My Orders',       icon: <ClipboardList size={20} />,   path: '/orders' },
-    { id: 'profile',        label: 'My Profile',      icon: <Settings size={20} />,        path: '/profile' },
-    { id: 'dashboard',      label: 'Dashboard',       icon: <TrendingUp size={20} />,      path: '/dashboard' },
-    { id: 'billing',        label: 'Billing',         icon: <ShoppingCart size={20} />,    path: '/billing' },
-    { id: 'inventory',      label: 'Inventory',       icon: <Package size={20} />,         path: '/inventory' },
-    { id: 'catalog',        label: 'Catalog',         icon: <Camera size={20} />,          path: '/catalog' },
-    { id: 'repairs',        label: 'Repairs',         icon: <Wrench size={20} />,          path: '/repairs' },
-    { id: 'schemes',        label: 'Schemes',         icon: <Coins size={20} />,           path: '/schemes' },
-    { id: 'parties',        label: 'Parties',         icon: <Users size={20} />,           path: '/parties' },
-    { id: 'purchase-orders',label: 'Purchase Orders', icon: <ClipboardList size={20} />,   path: '/purchase-orders' },
-    { id: 'stock-on-hand',  label: 'Stock on Hand',   icon: <PackageCheck size={20} />,   path: '/stock-on-hand' },
-    { id: 'rates',          label: 'Gold Rates',      icon: <TrendingUp size={20} />,      path: '/rates' },
+  // Customer nav: digital-gold focused
+  const customerNav: NavItem[] = [
+    { id: 'home',       label: 'Home',           icon: <Home size={20} />,            path: '/' },
+    { id: 'portfolio',  label: 'My Portfolio',   icon: <Briefcase size={20} />,        path: '/portfolio' },
+    { id: 'orders',     label: 'My Orders',      icon: <ClipboardList size={20} />,    path: '/orders' },
+    { id: 'redemption', label: 'Sell / Redeem',  icon: <ArrowDownCircle size={20} />,  path: '/redemption' },
+    { id: 'referral',   label: 'Refer & Earn',   icon: <Gift size={20} />,             path: '/referral' },
+    { id: 'profile',    label: 'My Profile',     icon: <Settings size={20} />,         path: '/profile' },
   ];
 
-  // Customers only see Home, Portfolio, Orders and Profile; shop users see everything
-  const customerIds = new Set(['home', 'portfolio', 'orders', 'profile']);
-  const navItems = isCustomer
-    ? allNavItems.filter(item => customerIds.has(item.id))
-    : allNavItems.filter(item => !['portfolio', 'orders'].includes(item.id)); // portfolio/orders are customer-only
+  // Owner nav: management focused, no billing/repairs/inventory
+  const ownerNav: NavItem[] = [
+    { id: 'home',                label: 'Home',                icon: <Home size={20} />,            path: '/' },
+    { id: 'dashboard',           label: 'Dashboard',           icon: <LayoutDashboard size={20} />,  path: '/dashboard' },
+    { id: 'rates',               label: 'Gold Rates',          icon: <TrendingUp size={20} />,       path: '/rates' },
+    { id: 'parties',             label: 'Customers',           icon: <Users size={20} />,            path: '/parties' },
+    { id: 'analytics',           label: 'Analytics',           icon: <BarChart3 size={20} />,        path: '/analytics' },
+    { id: 'redemption-requests', label: 'Redemption Requests', icon: <ArrowDownCircle size={20} />,  path: '/redemption-requests' },
+    { id: 'profile',             label: 'My Profile',          icon: <Settings size={20} />,         path: '/profile' },
+  ];
+
+  const navItems = isCustomer ? customerNav : ownerNav;
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-gray-900">
@@ -107,8 +102,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <img
                 src="/logo.png"
                 alt="Bizmation"
-                className={`w-9 h-9 object-contain rounded-xl ${isDarkMode ? 'brightness-200 contrast-75' : ''}`}
-                style={{ mixBlendMode: isDarkMode ? 'normal' : 'multiply' }}
+                className="w-9 h-9 object-contain rounded-xl"
               />
               <div>
                 <h1 className="text-base font-black text-amber-900 dark:text-white leading-tight">Bizmation Gold</h1>
@@ -188,7 +182,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isDarkMode ? 'Dark Mode' : 'Light Mode'}
               </span>
               {isDarkMode ? (
-                <Moon size={18} className="text-blue-400" />
+                <Moon size={18} className="text-amber-400" />
               ) : (
                 <Sun size={18} className="text-amber-500" />
               )}

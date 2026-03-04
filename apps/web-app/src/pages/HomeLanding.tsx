@@ -5,12 +5,12 @@
  * Features: Live gold & silver rates, Buy, Sell, AutoPay, daily tracking
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, TrendingDown, ShoppingCart, ArrowUpRight,
   RefreshCw, Shield, Bell, Zap, Star, ChevronRight,
   Coins, CreditCard, Repeat, CheckCircle, AlertCircle,
-  X, Loader2, Phone, Mail, User,
+  X, Loader2, Phone, Mail, User, Timer,
 } from 'lucide-react';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
@@ -120,6 +120,46 @@ export const HomeLanding: React.FC = () => {
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
+  const [slideValue, setSlideValue] = useState(0);
+  // ── Price-lock countdown ──────────────────────────────────────────
+  const LOCK_DURATION = 120; // seconds
+  const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
+  const lockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startLockTimer = () => {
+    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
+    setLockSecondsLeft(LOCK_DURATION);
+    lockIntervalRef.current = setInterval(() => {
+      setLockSecondsLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(lockIntervalRef.current!);
+          lockIntervalRef.current = null;
+          setLockedRate(null); // price expired
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const clearLockTimer = () => {
+    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
+    lockIntervalRef.current = null;
+    setLockSecondsLeft(0);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => () => clearLockTimer(), []);
+
+  // Auto-start timer whenever a rate is locked
+  useEffect(() => {
+    if (lockedRate) {
+      startLockTimer();
+    } else {
+      clearLockTimer();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedRate]);
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 24);
   // Buy prices: 24K rate minus 1.75% — displayed as the effective buy price (not shown in UI)
@@ -172,7 +212,7 @@ export const HomeLanding: React.FC = () => {
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
-        setSuccessMsg(`✅ ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
+        setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
 
@@ -231,7 +271,7 @@ export const HomeLanding: React.FC = () => {
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
-        setSuccessMsg(`✅ AutoPay activated! ID: ${id}. Gold SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/month is set up.`);
+        setSuccessMsg(`AutoPay activated! ID: ${id}. Gold SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/month is set up.`);
         setAutoPayForm({ amount: '500' });
         setTimeout(() => setSuccessMsg(''), 10000);
 
@@ -277,7 +317,7 @@ export const HomeLanding: React.FC = () => {
     const custPhone   = userProfile?.phone ?? '';
 
     setModal({ type: null });
-    setSuccessMsg(`✅ Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${custPhone || 'your registered number'} within 24 hours.`);
+    setSuccessMsg(`Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${custPhone || 'your registered number'} within 24 hours.`);
     setSellForm({ grams: '', purity: '24', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
 
@@ -346,10 +386,34 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           HERO
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30">
-        {/* Decorative circles */}
+          <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30">
+        {/* Decorative blur circles */}
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-yellow-300/30 dark:bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-300/30 dark:bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Floating sparkle particles */}
+        {[
+          { top:'8%',  left:'6%',  size:14, delay:'0s'   },
+          { top:'15%', left:'88%', size:10, delay:'0.7s'  },
+          { top:'42%', left:'92%', size:18, delay:'1.3s'  },
+          { top:'70%', left:'4%',  size:12, delay:'0.4s'  },
+          { top:'85%', left:'80%', size:16, delay:'1.9s'  },
+          { top:'30%', left:'2%',  size:9,  delay:'2.2s'  },
+          { top:'55%', left:'95%', size:20, delay:'0.9s'  },
+          { top:'20%', left:'50%', size:8,  delay:'1.6s'  },
+        ].map(({ top, left, size, delay }, i) => (
+          <svg key={i} width={size} height={size} viewBox="0 0 24 24" fill="none"
+            className="absolute pointer-events-none animate-sparkle"
+            style={{ top, left, animationDelay: delay, opacity: 0 }}>
+            <path d="M12 2 L13.5 10.5 L22 12 L13.5 13.5 L12 22 L10.5 13.5 L2 12 L10.5 10.5 Z"
+              fill="url(#hsg)" />
+            <defs>
+              <linearGradient id="hsg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fcd34d"/>
+                <stop offset="100%" stopColor="#f59e0b"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        ))}
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -481,8 +545,19 @@ export const HomeLanding: React.FC = () => {
       <section className="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-400 dark:bg-yellow-500 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap justify-center gap-6 md:gap-12 text-amber-950 dark:text-black text-sm font-semibold">
-            {['✓ 100% Pure Gold', '✓ Live Market Prices', '✓ Secure Payments via Razorpay', '✓ AutoPay / Monthly SIP', '✓ Sell Anytime'].map((f) => (
-              <span key={f}>{f}</span>
+            {[
+              '100% Pure Gold',
+              'Live Market Prices',
+              'Secure Payments via Razorpay',
+              'AutoPay / Monthly SIP',
+              'Sell Anytime',
+            ].map((f) => (
+              <span key={f} className="flex items-center gap-1.5">
+                <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2.5}>
+                  <path d="M3 8l3.5 3.5L13 4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {f}
+              </span>
             ))}
           </div>
         </div>
@@ -501,7 +576,7 @@ export const HomeLanding: React.FC = () => {
         <div className="grid md:grid-cols-2 gap-5">
           <div className="rounded-2xl overflow-hidden border border-amber-200 dark:border-gray-700 shadow-md bg-white dark:bg-gray-900">
             <div className="px-4 py-2.5 bg-amber-50 dark:bg-gray-800 border-b border-amber-100 dark:border-gray-700 flex items-center gap-2">
-              <span className="text-base">🥇</span>
+              <Coins size={15} className="text-amber-500 dark:text-yellow-400" />
               <span className="font-bold text-amber-800 dark:text-yellow-400 text-sm">Gold (XAU/USD)</span>
               {gold24 && !loading && (
                 <span className="ml-auto font-mono text-amber-700 dark:text-yellow-300 text-sm font-bold">
@@ -513,7 +588,7 @@ export const HomeLanding: React.FC = () => {
           </div>
           <div className="rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-md bg-white dark:bg-gray-900">
             <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-              <span className="text-base">🥈</span>
+              <Coins size={15} className="text-gray-400 dark:text-gray-400" />
               <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">Silver (XAG/USD)</span>
               {silver24 && !loading && (
                 <span className="ml-auto font-mono text-gray-600 dark:text-gray-300 text-sm font-bold">
@@ -751,87 +826,116 @@ export const HomeLanding: React.FC = () => {
           MODALS
       ════════════════════════════════════════════════════════════════════ */}
 
-      {/* Buy Metal Modal */}
+      {/* Buy Metal Bottom Sheet */}
       {modal.type === 'buy' && (
-        <ModalWrapper title={`Buy ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'}`} onClose={() => setModal({ type: null })}>
-          <div className="space-y-4">
-            {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg border border-amber-200 dark:border-amber-700">
-              ⚠️ Razorpay key not set. Add <code>VITE_RAZORPAY_KEY_ID</code> to <code>apps/web-app/.env</code> to enable real payments.
+        <BottomSheet title={`Buy ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'}`} onClose={() => { setModal({ type: null }); setSlideValue(0); clearLockTimer(); }}>
+          <div className="space-y-5">
+            {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-xl border border-amber-200 dark:border-amber-700 flex items-center gap-2">
+              <AlertCircle size={13} className="flex-shrink-0" />
+              Razorpay key not set — payments disabled.
             </div>}
 
-            {/* Metal toggle */}
-            <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
+            {/* Metal toggle ─ SVG icons, no emojis */}
+            <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); if (m === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice); else setLockedRate(null); }}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${buyMetal === m
-                    ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow'
-                    : 'text-amber-700 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-700'}`}>
-                  {m === 'GOLD' ? '🥇 Gold' : '🥈 Silver'}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); if (m === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice); else setLockedRate(null); }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    buyMetal === m
+                      ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
+                      : 'text-amber-700 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-700'}`}>
+                  {m === 'GOLD'
+                    ? <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z"/></svg>
+                    : <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" opacity="0.7"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z"/></svg>
+                  }
+                  {m === 'GOLD' ? 'Gold' : 'Silver'}
                 </button>
               ))}
             </div>
 
-            <div>
-              <label className="fieldLabel">Grams of {buyMetal === 'GOLD' ? '24K Gold' : '24K Silver'}</label>
-              <input type="number" min="0.1" step="0.1" placeholder="e.g. 2.5"
-                value={buyForm.grams}
-                onChange={(e) => setBuyForm((f) => ({ ...f, grams: e.target.value }))}
-                className="fieldInput"
-              />
+            {/* Live price display + lock timer */}
+            <div className="rounded-2xl px-5 py-4 text-center" style={{ background:'linear-gradient(135deg,rgba(253,243,212,0.9),rgba(254,243,199,0.5))', border:'1px solid rgba(251,191,36,0.3)' }}>
+              <p className="text-xs text-amber-600 font-semibold uppercase tracking-widest mb-0.5">Live {buyMetal === 'GOLD' ? 'Gold' : 'Silver'} Price</p>
+              <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(2)}<span className="text-sm font-medium text-amber-600">/g</span></p>
+              {lockedRate && buyMetal === 'GOLD' && lockSecondsLeft > 0 && (
+                <div className="flex items-center justify-center gap-1.5 mt-1">
+                  <Timer size={13} className={lockSecondsLeft <= 30 ? 'text-red-500 animate-pulse' : 'text-green-600'} />
+                  <span className={`text-xs font-bold tabular-nums ${lockSecondsLeft <= 30 ? 'text-red-600' : 'text-green-700'}`}>
+                    Price locked &bull; {Math.floor(lockSecondsLeft / 60)}:{String(lockSecondsLeft % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+              {lockedRate && lockSecondsLeft === 0 && (
+                <div className="mt-1 flex flex-col items-center gap-1">
+                  <span className="text-xs text-red-600 font-bold">Price expired — refresh to lock again</span>
+                  <button onClick={() => { if (goldBuyPrice) setLockedRate(goldBuyPrice); }} className="text-[10px] font-semibold text-amber-700 underline">
+                    Refresh price
+                  </button>
+                </div>
+              )}
+              {!lockedRate && buyMetal === 'GOLD' && <p className="text-xs text-amber-500 mt-0.5">Price updates live every 5s</p>}
             </div>
 
-            {buyTotal && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm">
-                <div className="flex justify-between text-amber-800 dark:text-amber-300">
-                  <span>{buyForm.grams}g × ₹{activeRate.toFixed(2)}/g {lockedRate && buyMetal === 'GOLD' ? <span className="text-xs text-green-600 dark:text-green-400 ml-1">(price locked)</span> : null}</span>
-                  <span className="font-black text-lg text-amber-900 dark:text-yellow-300">₹{Number(buyTotal).toLocaleString('en-IN')}</span>
-                </div>
+            {/* Quick-select grams */}
+            <div>
+              <p className="text-xs text-amber-700 font-semibold mb-2">Quick Select</p>
+              <div className="grid grid-cols-4 gap-2">
+                {['0.5', '1', '2', '5'].map(g => (
+                  <button key={g} type="button"
+                    onClick={() => { setBuyForm({ grams: g }); setSlideValue(0); }}
+                    className={`py-2.5 rounded-xl text-sm font-bold transition-all border ${
+                      buyForm.grams === g
+                        ? 'bg-amber-500 border-amber-500 text-black shadow'
+                        : 'bg-white/80 dark:bg-gray-800 border-amber-200 dark:border-gray-700 text-amber-800 dark:text-amber-300 hover:border-amber-400'}`}>
+                    {g}g
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
 
-            {userProfile && (
-              <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm">
-                <User size={16} className="text-amber-600 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold text-amber-900 dark:text-white">{userProfile.name}</p>
-                  {userProfile.phone && <p className="text-xs text-amber-600 dark:text-amber-400">{userProfile.phone}</p>}
+            {/* Manual gram input */}
+            <div className="relative">
+              <input type="number" min="0.1" step="0.1" placeholder="Custom grams (e.g. 3.5)"
+                value={buyForm.grams}
+                onChange={e => { setBuyForm(f => ({ ...f, grams: e.target.value })); setSlideValue(0); }}
+                className="w-full rounded-2xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-300 dark:placeholder-gray-600"
+              />
+              {buyTotal && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right pointer-events-none">
+                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN')}</p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Email verification gating */}
             {currentUser && !currentUser.emailVerified && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
-                <span>
-                  Please verify your email to buy gold or silver. Check your inbox for a verification link.
-                </span>
-                <button
-                  onClick={handleResendVerification}
-                  disabled={resending}
-                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
-                >
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex flex-col gap-2">
+                <span>Verify your email to buy. Check your inbox.</span>
+                <button onClick={handleResendVerification} disabled={resending}
+                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs">
                   {resending ? 'Sending...' : 'Resend verification email'}
                 </button>
                 {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
               </div>
             )}
 
-            <button
-              onClick={handleBuy}
-              disabled={Boolean(paying || !buyForm.grams || (currentUser && currentUser.emailVerified === false))}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
-            >
-              {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-              {paying ? 'Opening Payment...' : `Pay ₹${buyTotal ? Number(buyTotal).toLocaleString('en-IN') : '—'}`}
-            </button>
+            {/* Slide to Buy */}
+            {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified) && (
+              <SlideToConfirm
+                label={paying ? 'Opening payment…' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN')}`}
+                value={slideValue}
+                disabled={paying}
+                onChange={setSlideValue}
+                onConfirm={handleBuy}
+              />
+            )}
           </div>
-        </ModalWrapper>
+        </BottomSheet>
       )}
 
       {/* Sell Gold Modal */}
       {modal.type === 'sell' && (
-        <ModalWrapper title="Sell Gold" onClose={() => setModal({ type: null })}>
+        <BottomSheet title="Sell Gold" onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
             <div>
               <label className="fieldLabel">Gold Purity</label>
@@ -907,15 +1011,16 @@ export const HomeLanding: React.FC = () => {
             </button>
             <p className="text-xs text-amber-600/70 dark:text-gray-500 text-center">Our team will review and contact you within 24 hours.</p>
           </div>
-        </ModalWrapper>
+        </BottomSheet>
       )}
 
       {/* AutoPay Modal */}
       {modal.type === 'autopay' && (
-        <ModalWrapper title="Setup Gold AutoPay (SIP)" onClose={() => setModal({ type: null })}>
+        <BottomSheet title="Setup Gold AutoPay (SIP)" onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
-            {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg border border-amber-200 dark:border-amber-700">
-              ⚠️ Razorpay key not set. Add <code>VITE_RAZORPAY_KEY_ID</code> to <code>apps/web-app/.env</code> to enable payments.
+            {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg border border-amber-200 dark:border-amber-700 flex items-center gap-2">
+              <AlertCircle size={13} className="flex-shrink-0" />
+              Razorpay key not set. Add <code>VITE_RAZORPAY_KEY_ID</code> to <code>apps/web-app/.env</code> to enable payments.
             </div>}
 
             <div>
@@ -977,7 +1082,7 @@ export const HomeLanding: React.FC = () => {
               {paying ? 'Setting up...' : `Activate ₹${Number(autoPayForm.amount || 0).toLocaleString('en-IN')}/month AutoPay`}
             </button>
           </div>
-        </ModalWrapper>
+        </BottomSheet>
       )}
     </div>
   );
@@ -1026,21 +1131,164 @@ const TradingViewMini: React.FC<{ symbol: string; theme?: string }> = ({ symbol,
 };
 
 // ────────────────────────────────────────────────────────────────────────────
-// Modal Wrapper Component
+// Bottom Sheet Component (slides up from bottom)
 // ────────────────────────────────────────────────────────────────────────────
-const ModalWrapper: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
+const BottomSheet: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
   title, onClose, children,
-}) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-    <div className="relative bg-white dark:bg-gray-950 border border-amber-100 dark:border-yellow-900/30 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-amber-100 dark:border-gray-800">
-        <h3 className="text-lg font-black text-amber-900 dark:text-white">{title}</h3>
-        <button onClick={onClose} className="text-amber-400 dark:text-gray-500 hover:text-amber-700 dark:hover:text-gray-300 transition-colors">
-          <X size={22} />
-        </button>
+}) => {
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
+  const close = () => { setVisible(false); setTimeout(onClose, 320); };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
+        style={{ opacity: visible ? 1 : 0 }}
+        onClick={close}
+      />
+      <div
+        className="relative bg-white dark:bg-gray-950 border border-amber-100 dark:border-yellow-900/30 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[92vh] flex flex-col transition-transform duration-300 ease-out"
+        style={{ transform: visible ? 'translateY(0)' : 'translateY(100%)' }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full bg-amber-200 dark:bg-gray-700" />
+        </div>
+        <div className="flex items-center justify-between px-6 py-3 border-b border-amber-100 dark:border-gray-800">
+          <h3 className="text-lg font-black text-amber-900 dark:text-white">{title}</h3>
+          <button onClick={close} className="text-amber-400 dark:text-gray-500 hover:text-amber-700 dark:hover:text-gray-300 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-amber-50 dark:hover:bg-gray-800">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-6 py-5 space-y-1">{children}</div>
       </div>
-      <div className="overflow-y-auto px-6 py-5 space-y-1">{children}</div>
     </div>
-  </div>
-);
+  );
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// Slide to Confirm — cinematic gold slider with SVG arrow
+// ────────────────────────────────────────────────────────────────────────────
+const SlideToConfirm: React.FC<{
+  label: string; value: number; disabled: boolean;
+  onChange: (v: number) => void; onConfirm: () => void;
+}> = ({ label, value, disabled, onChange, onConfirm }) => {
+  const confirmed = value >= 95;
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = Number(e.target.value);
+    onChange(v);
+    if (v >= 95 && !disabled) {
+      setTimeout(() => { onChange(100); onConfirm(); }, 150);
+    }
+  };
+
+  // SVG check mark icon
+  const CheckSVG = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M4 12l5 5L20 7" />
+    </svg>
+  );
+  // SVG right-chevron arrow for the thumb
+  const ChevronSVG = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  );
+  // Double chevron arrows shown on the track as a hint
+  const ArrowHint = () => (
+    <svg viewBox="0 0 40 20" fill="none" className="w-10 h-5 opacity-30">
+      <path d="M2 10 l7 -7 l7 7 l-7 7 Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" transform="translate(0,0)" />
+      <path d="M2 10 l7 -7 l7 7 l-7 7 Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" transform="translate(14,0)" />
+      <path d="M2 10 l7 -7 l7 7 l-7 7 Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" transform="translate(24,0)" />
+    </svg>
+  );
+
+  return (
+    <div className="relative select-none" ref={trackRef}>
+      {/* Track */}
+      <div
+        className="relative h-16 rounded-2xl overflow-hidden"
+        style={{
+          background: confirmed
+            ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+            : 'linear-gradient(135deg,#1c1c1c 0%,#2a2a2a 100%)',
+          border: confirmed ? '1.5px solid #22c55e' : '1.5px solid rgba(251,191,36,0.5)',
+          boxShadow: confirmed
+            ? '0 0 20px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.1)'
+            : '0 0 20px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.05)',
+          transition: 'background 0.4s ease, box-shadow 0.4s ease',
+        }}
+      >
+        {/* Gold fill as user drags */}
+        <div
+          className="absolute inset-y-0 left-0 rounded-2xl"
+          style={{
+            width: `${value}%`,
+            background: confirmed
+              ? 'rgba(34,197,94,0.3)'
+              : 'linear-gradient(90deg,rgba(251,191,36,0.25),rgba(245,158,11,0.12))',
+            transition: 'width 0.05s linear',
+          }}
+        />
+
+        {/* "Slide to pay →→→" hint arrows (hidden once dragging starts) */}
+        {value < 10 && !confirmed && (
+          <div className="absolute inset-0 flex items-center justify-center gap-8 pointer-events-none">
+            <div className="flex gap-1 text-amber-400/40">
+              <ArrowHint />
+            </div>
+          </div>
+        )}
+
+        {/* Centre label */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none pl-14">
+          <span className={`text-sm font-bold tracking-wide ${confirmed ? 'text-white' : 'text-amber-300'}`}>
+            {confirmed ? 'Confirmed — opening payment...' : label}
+          </span>
+        </div>
+
+        {/* Thumb — gold pill with arrow icon */}
+        <div
+          className="absolute inset-y-0 flex items-center pointer-events-none"
+          style={{
+            left: `calc(${Math.min(value, 94)}% - 2px)`,
+            transition: confirmed ? 'none' : 'left 0.05s linear',
+          }}
+        >
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center shadow-xl"
+            style={{
+              background: confirmed
+                ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                : 'linear-gradient(135deg,#fde68a 0%,#f59e0b 60%,#d97706 100%)',
+              border: '2px solid rgba(255,255,255,0.25)',
+              boxShadow: confirmed
+                ? '0 4px 16px rgba(34,197,94,0.5)'
+                : '0 4px 16px rgba(245,158,11,0.6), 0 0 0 3px rgba(251,191,36,0.2)',
+              color: confirmed ? '#fff' : '#451a03',
+              transform: 'scale(1.05)',
+            }}
+          >
+            {confirmed ? <CheckSVG /> : <ChevronSVG />}
+          </div>
+        </div>
+
+        {/* Invisible range input */}
+        <input
+          type="range" min={0} max={100} value={value}
+          disabled={disabled || confirmed}
+          onChange={handleChange}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-grab active:cursor-grabbing disabled:cursor-not-allowed"
+          style={{ WebkitAppearance: 'none' }}
+        />
+      </div>
+      <p className="text-center text-xs text-amber-500/70 dark:text-amber-600/60 mt-1.5 flex items-center justify-center gap-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        Slide right to confirm purchase
+      </p>
+    </div>
+  );
+};
+

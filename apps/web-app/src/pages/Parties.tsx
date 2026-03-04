@@ -125,16 +125,13 @@ export const Parties: React.FC = () => {
         return (first?.bid != null && first?.ask != null) ? (first.bid + first.ask) / 2 : null;
       };
 
-      // Fetch all sources in parallel
+      // Fetch all sources in parallel (Swissquote primary for USD prices)
       const PROXY = 'https://corsproxy.io/?url=';
       const [xauCdn, xagCdn, sqXauRaw, sqXagRaw, erFun] = await Promise.all([
-        // CDN direct INR values (used in main calculations)
         fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
         fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        // Swissquote real-time USD prices
         fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
         fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        // exchangerate.fun for accurate real-time USD/INR
         fetch('https://api.exchangerate.fun/latest?base=USD' + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
       ]);
 
@@ -143,23 +140,66 @@ export const Parties: React.FC = () => {
       const usdInrCdn = (await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null))?.usd?.inr;
       const usdInr = (usdInrEr && isFinite(usdInrEr)) ? usdInrEr : usdInrCdn;
 
-      // Real-time XAU/USD and XAG/USD from Swissquote
+      // Swissquote real-time XAU/USD and XAG/USD (preferred)
       const xauUsdSQ = sqXauRaw ? parseSQMid(sqXauRaw) : null;
       const xagUsdSQ = sqXagRaw ? parseSQMid(sqXagRaw) : null;
 
-      // Fallback USD values from CDN if Swissquote unavailable
-      const xauUsd = (xauUsdSQ && isFinite(xauUsdSQ)) ? xauUsdSQ : xauCdn?.xau?.usd;
-      const xagUsd = (xagUsdSQ && isFinite(xagUsdSQ)) ? xagUsdSQ : xagCdn?.xag?.usd;
+      // If Swissquote provided valid mid prices, prefer them over CDN daily values
+      const xauUsdPreferred = (xauUsdSQ && isFinite(xauUsdSQ)) ? xauUsdSQ : xauCdn?.xau?.usd;
+      const xagUsdPreferred = (xagUsdSQ && isFinite(xagUsdSQ)) ? xagUsdSQ : xagCdn?.xag?.usd;
 
-      const rates = await fetchLiveMetalRates();
+      // Compute price-per-gram (INR) derived from Swissquote USD spot and exchangerate.fun
+      const TROY_OZ_GRAMS = 31.1035;
+      const IMPORT_DUTY = 1.09;
+      let derivedGold24GramInr: number | null = null;
+      if (xauUsdSQ && isFinite(xauUsdSQ) && isFinite(usdInr) && usdInr > 0) {
+        derivedGold24GramInr = (xauUsdSQ * usdInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+      }
+
+      // Fetch backend rates (single source of truth). We'll compare backend 24K with Swissquote-derived 24K.
+      const backendRates = await fetchLiveMetalRates().catch(() => null);
+      const backendGold24 = backendRates?.find((r: any) => r.metalType === 'GOLD' && r.purity === 24)?.ratePerGram;
+
+      // If both backend and Swissquote-derived exist, compare and auto-sync if they differ significantly
+      const mismatchThresholdPercent = 0.5; // 0.5% allowed diff
+      let syncAction = 'none';
+      if (derivedGold24GramInr && isFinite(derivedGold24GramInr) && backendGold24 && isFinite(backendGold24)) {
+        const diffPercent = Math.abs(backendGold24 - derivedGold24GramInr) / derivedGold24GramInr * 100;
+        if (diffPercent > mismatchThresholdPercent) {
+          // Force a backend reconcile to pull fresh Swissquote values and update DB
+          try {
+            const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_URL) ? (import.meta as any).env.VITE_API_URL as string : '';
+            const reconcilePath = '/api/gold-rates/reconcile?thresholdPercent=0';
+            const reconcileUrl = API_BASE ? (API_BASE.replace(/\/$/, '') + reconcilePath) : reconcilePath;
+            await fetch(reconcileUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' } , cache: 'no-store' , body: JSON.stringify({ thresholdPercent: 0 }) }).catch(() => null);
+            // re-fetch backend rates after reconcile
+            const refreshed = await fetchLiveMetalRates().catch(() => null);
+            if (refreshed) {
+              // replace backendRates
+              // eslint-disable-next-line no-param-reassign
+              // @ts-ignore
+              backendRates.length = 0; backendRates.push(...refreshed);
+              syncAction = 'reconciled';
+            } else {
+              syncAction = 'reconcile_failed';
+            }
+          } catch (reErr) {
+            syncAction = 'reconcile_error';
+          }
+        } else {
+          syncAction = 'matched';
+        }
+      }
+
       setDebugRates({
-        xauUsd,
-        xagUsd,
+        xauUsd: xauUsdPreferred,
+        xagUsd: xagUsdPreferred,
         usdInr,
         xauInr: xauCdn?.xau?.inr,
         xagInr: xagCdn?.xag?.inr,
-        rates,
+        rates: backendRates || [],
         fetchedAt: new Date().toLocaleTimeString(),
+        syncAction,
       });
     } catch (e: any) {
       setDebugError('Failed to fetch rates: ' + (e?.message ?? ''));

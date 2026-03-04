@@ -21,6 +21,11 @@ import { Orders } from './pages/Orders';
 import { PurchaseOrders } from './pages/PurchaseOrders';
 import { StockOnHand } from './pages/StockOnHand';
 import { Profile } from './pages/Profile';
+import { Analytics } from './pages/Analytics';
+import { Referral } from './pages/Referral';
+import { RedemptionPage } from './pages/RedemptionPage';
+import { RedemptionRequests } from './pages/RedemptionRequests';
+import { SuperAdmin } from './pages/SuperAdmin';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -64,14 +69,28 @@ function App() {
     return null;
   }
 
-  const isCustomer = userProfile?.role === 'CUSTOMER';
+  const isCustomer   = userProfile?.role === 'CUSTOMER';
+  const isSuperAdmin = userProfile?.role === 'SUPER_ADMIN';
+
+  // ── Super Admin: full-platform console ────────────────────────────────────
+  if (isSuperAdmin) {
+    return (
+      <ThemeProvider>
+        {currentRoute === '/super-admin'
+          ? <SuperAdmin />
+          : (() => { window.location.hash = '#/super-admin'; return null; })()}
+      </ThemeProvider>
+    );
+  }
 
   // Render component based on route
   const renderPage = () => {
     // Customer-only routes
-    if (currentRoute === '/portfolio') return <CustomerPortfolio />;
-    if (currentRoute === '/orders')    return <Orders />;
-    if (currentRoute === '/profile')   return <Profile />;
+    if (currentRoute === '/portfolio')  return <CustomerPortfolio />;
+    if (currentRoute === '/orders')     return <Orders />;
+    if (currentRoute === '/profile')    return <Profile />;
+    if (currentRoute === '/redemption') return <RedemptionPage />;
+    if (currentRoute === '/referral')   return <Referral />;
 
     // For customer accounts, only home, portfolio and profile are allowed
     if (isCustomer) {
@@ -84,36 +103,33 @@ function App() {
         return <HomeLanding />;
       case '/dashboard':
         return <Dashboard />;
-      case '/billing':
-        return <Billing />;
-      case '/inventory':
-        return <Inventory />;
-      case '/catalog':
-        return <Catalog />;
-      case '/repairs':
-        return <Repairs />;
-      case '/schemes':
-        return <Schemes />;
+      case '/dashboard':
+        return <Dashboard />;
       case '/parties':
         return <Parties />;
-      case '/shop-customers':
-        return <ShopCustomers />;
-      // /suppliers kept for backward compat but hidden from nav
-      case '/suppliers':
-        return <Suppliers />;
-      case '/purchase-orders':
-        return <PurchaseOrders />;
-      case '/stock-on-hand':
-        return <StockOnHand />;
+      case '/analytics':
+        return <Analytics />;
+      case '/redemption-requests':
+        return <RedemptionRequests />;
       case '/rates':
         return <GoldRates />;
+      // Legacy routes — keep for backward compat but hidden from nav
+      case '/billing':         return <Billing />;
+      case '/inventory':       return <Inventory />;
+      case '/catalog':         return <Catalog />;
+      case '/repairs':         return <Repairs />;
+      case '/schemes':         return <Schemes />;
+      case '/shop-customers':  return <ShopCustomers />;
+      case '/suppliers':       return <Suppliers />;
+      case '/purchase-orders': return <PurchaseOrders />;
+      case '/stock-on-hand':   return <StockOnHand />;
       default:
         return <Dashboard />;
     }
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/profile']);
+  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/profile', '/redemption', '/referral', '/analytics', '/redemption-requests', '/super-admin']);
 
   return (
     <ThemeProvider>

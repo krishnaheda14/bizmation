@@ -1,27 +1,27 @@
 ﻿/**
- * AuthPage - Sign In | Create Account
+ * AuthPage – Sign In | Create Account
  *
- * Theme  : Cream / beige / golden  - matches the rest of the app
- * Font   : Cormorant Garamond for display headings
- *
- * Modes  :
- *   Sign In  -> Email + Password  OR  Magic Link (passwordless)
- *   Sign Up  -> 2-step form  (basic info -> identity / KYC)
+ * Theme   : Warm gold/cream/amber – matches the rest of the app
+ * Modes   : Password  |  Magic Link (email OTP)
+ * Signup  : 3-step form  (type → basics → compliance)
  */
 
 import React, { useState, useEffect } from 'react';
+import { Lock, Mail, Smartphone, User, Store } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
-// --- Sparkle positions ---------------------------------------------------
+// ── Floating sparkles ────────────────────────────────────────────────────────
 const SPARKLES = [
-  { top: '8%',  left: '5%',  delay: '0s',   size: 18 },
-  { top: '15%', left: '88%', delay: '0.6s', size: 12 },
-  { top: '35%', left: '92%', delay: '1.2s', size: 20 },
-  { top: '60%', left: '4%',  delay: '0.3s', size: 14 },
-  { top: '75%', left: '85%', delay: '1.8s', size: 16 },
-  { top: '88%', left: '12%', delay: '0.9s', size: 10 },
-  { top: '50%', left: '96%', delay: '2.1s', size: 22 },
-  { top: '25%', left: '2%',  delay: '1.5s', size: 12 },
+  { top: '7%',  left: '4%',  delay: '0s',   size: 18 },
+  { top: '14%', left: '89%', delay: '0.6s', size: 12 },
+  { top: '34%', left: '93%', delay: '1.2s', size: 20 },
+  { top: '58%', left: '3%',  delay: '0.3s', size: 14 },
+  { top: '74%', left: '86%', delay: '1.8s', size: 16 },
+  { top: '87%', left: '11%', delay: '0.9s', size: 10 },
+  { top: '50%', left: '97%', delay: '2.1s', size: 22 },
+  { top: '24%', left: '1%',  delay: '1.5s', size: 12 },
 ];
 
 const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size, style }) => (
@@ -31,48 +31,60 @@ const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size
       fill="url(#sparkG)" opacity="0.85" />
     <defs>
       <linearGradient id="sparkG" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%"   stopColor="#fcd34d" />
+        <stop offset="0%" stopColor="#fcd34d" />
         <stop offset="100%" stopColor="#f59e0b" />
       </linearGradient>
     </defs>
   </svg>
 );
 
-// --- Types ----------------------------------------------------------------
-type Tab       = 'login'    | 'signup';
-type LoginMode = 'password' | 'otp' | 'phone';
-type OtpStep   = 'input'    | 'sent';
+type Tab       = 'login' | 'signup';
+type LoginMode = 'password' | 'otp' | 'phone-otp';
+type OtpStep   = 'input' | 'sent';
+type PhoneOtpStep = 'phone' | 'code' | 'done';
 
 interface ExtSignUpData {
-  name: string;
-  email: string;
-  password: string;
-  phone: string;
-  city: string;
-  state: string;
-  country: string;
-  dateOfBirth: string;
-  panNumber: string;
-  aadhaarLast4: string;
-  gstNumber: string;
-  role?: 'CUSTOMER' | 'OWNER';
-  shopName?: string;
+  name: string; email: string; password: string; phone: string;
+  role: 'CUSTOMER' | 'OWNER'; shopName: string;
+  city: string; state: string; country: string; dateOfBirth: string;
+  investmentGoal: string; referralCode: string;
+  panNumber: string; aadhaarLast4: string; gstNumber: string; businessType: string;
 }
 
-// --- Main component -------------------------------------------------------
-const AuthPage: React.FC = () => {
-  const { signIn, signUp, sendOtp, verifyOtp, signInWithPhonePassword, signInWithGoogle } = useAuth();
+const blankForm = (): ExtSignUpData => ({
+  name: '', email: '', password: '', phone: '+91',
+  role: 'CUSTOMER', shopName: '',
+  city: '', state: '', country: 'India', dateOfBirth: '',
+  investmentGoal: '', referralCode: '',
+  panNumber: '', aadhaarLast4: '', gstNumber: '', businessType: '',
+});
 
-  const [tab,       setTab]       = useState<Tab>('login');
-  const [loginMode, setLoginMode] = useState<LoginMode>('password');
-  const [otpStep,   setOtpStep]   = useState<OtpStep>('input');
-  const [error,     setError]     = useState('');
-  const [info,      setInfo]      = useState('');
-  const [loading,   setLoading]   = useState(false);
-  const [showPass,  setShowPass]  = useState(false);
-  const [phoneNum,   setPhoneNum]  = useState('+91');
-  const [phonePass,  setPhonePass] = useState('');
-  const [accountCreated, setAccountCreated] = useState<string>(''); // email shown in overlay
+const AuthPage: React.FC = () => {
+  const { signIn, signUp, sendOtp, verifyOtp, signInWithGoogle, sendPhoneOtp, verifyPhoneOtp, signInWithPhonePassword } = useAuth();
+
+  const [tab,        setTab]        = useState<Tab>('login');
+  const [loginMode,  setLoginMode]  = useState<LoginMode>('password');
+  const [otpStep,    setOtpStep]    = useState<OtpStep>('input');
+  const [phoneOtpStep, setPhoneOtpStep] = useState<PhoneOtpStep>('phone');
+  const [phoneOtpNumber, setPhoneOtpNumber] = useState('+91');
+  const [phoneOtpCode, setPhoneOtpCode]     = useState('');
+  const [signupStep, setSignupStep] = useState<1|2|3>(1);
+  const [error,      setError]      = useState('');
+  const [info,       setInfo]       = useState('');
+  const [loading,    setLoading]    = useState(false);
+  const [showPass,   setShowPass]   = useState(false);
+  const [accountCreated, setAccountCreated] = useState('');
+
+  const [lpEmail,    setLpEmail]    = useState('');
+  const [lpPassword, setLpPassword] = useState('');
+  const [otpEmail,   setOtpEmail]   = useState('');
+  const [form,       setForm]       = useState<ExtSignUpData>(blankForm());
+  const [confirmPass, setConfirmPass] = useState('');
+
+  const clearMsgs = () => { setError(''); setInfo(''); };
+  const setF = (key: keyof ExtSignUpData) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [key]: e.target.value }));
 
   useEffect(() => {
     if (window.location.hash.includes('/auth/verify') || window.location.search.includes('mode=signIn')) {
@@ -82,517 +94,424 @@ const AuthPage: React.FC = () => {
           const res = await verifyOtp();
           if (res.success) setInfo('Signed in as ' + res.email + '. Redirecting...');
           else setError('Link is invalid or expired. Please request a new one.');
-        } catch (e: any) {
-          setError(e?.message ?? 'Verification failed.');
-        } finally {
-          setLoading(false);
-        }
+        } catch (e: any) { setError(e?.message ?? 'Verification failed.'); }
+        finally { setLoading(false); }
       })();
     }
   }, []);
 
-  const clearMsgs = () => { setError(''); setInfo(''); };
-
-  const [lpEmail,    setLpEmail]    = useState('');
-  const [lpPassword, setLpPassword] = useState('');
-
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
-    try   {
-      await signIn(lpEmail.trim(), lpPassword);
-      console.log('[AuthPage] Password login success', lpEmail);
-    }
-    catch (e: any) {
-      setError(friendlyError(e?.code ?? e?.message));
-      console.error('[AuthPage] Password login error', e);
-    }
-    finally        { setLoading(false); }
+    try { await signIn(lpEmail.trim(), lpPassword); }
+    catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally { setLoading(false); }
   };
 
-  const handlePhonePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); clearMsgs(); setLoading(true);
-    try {
-      await signInWithPhonePassword(phoneNum.trim(), phonePass);
-      console.log('[AuthPage] Phone login success', phoneNum);
-    } catch (e: any) {
-      setError(friendlyError(e?.code ?? e?.message));
-      console.error('[AuthPage] Phone login error', e);
-    }
-    finally           { setLoading(false); }
-  };
-
-  // Google sign-in handler
   const handleGoogleLogin = async () => {
-    setLoading(true);
-    clearMsgs();
-    try {
-      await signInWithGoogle();
-      console.log('[AuthPage] Google login success');
-    } catch (e: any) {
-      setError(friendlyError(e?.code ?? e?.message));
-      console.error('[AuthPage] Google login error', e);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); clearMsgs();
+    try { await signInWithGoogle(); }
+    catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
+    finally { setLoading(false); }
   };
 
-  const [otpEmail, setOtpEmail] = useState('');
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
-    try   { await sendOtp(otpEmail.trim()); setOtpStep('sent'); }
+    try { await sendOtp(otpEmail.trim()); setOtpStep('sent'); }
     catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally        { setLoading(false); }
+    finally { setLoading(false); }
   };
 
-  const blankForm = (): ExtSignUpData => ({
-    name: '', email: '', password: '', phone: '+91',
-    city: '', state: '', country: 'India',
-    dateOfBirth: '', panNumber: '', aadhaarLast4: '', gstNumber: '',
-    role: 'CUSTOMER', shopName: '',
-  });
-  const [form,        setForm]        = useState<ExtSignUpData>(blankForm());
-  const [confirmPass, setConfirmPass] = useState('');
-  const [signupStep,  setSignupStep]  = useState<1 | 2>(1);
-  const setF = (key: keyof ExtSignUpData) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm(f => ({ ...f, [key]: e.target.value }));
+  const handleSendPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs(); setLoading(true);
+    try {
+      await sendPhoneOtp(phoneOtpNumber.trim());
+      setPhoneOtpStep('code');
+      setInfo('OTP sent to ' + phoneOtpNumber);
+    } catch (e: any) { setError(e?.message ?? 'Failed to send OTP.'); }
+    finally { setLoading(false); }
+  };
+
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs(); setLoading(true);
+    try {
+      const { valid } = await verifyPhoneOtp(phoneOtpNumber.trim(), phoneOtpCode.trim());
+      if (!valid) { setError('Invalid or expired OTP. Please try again.'); return; }
+      // OTP verified — now sign in using phone+password lookup
+      // Since phone-only users may not have a password, try email lookup
+      await signInWithPhonePassword(phoneOtpNumber.trim(), '');
+    } catch (e: any) {
+      // signInWithPhonePassword may fail if no password — tell user to use email login
+      setError('Phone verified. Please sign in with your email and password.');
+      setLoginMode('password');
+    } finally { setLoading(false); }
+  };
+
+  const goStep2 = async (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs();
+    if (!form.name.trim())               { setError('Please enter your name.'); return; }
+    if (!form.email.trim())              { setError('Please enter your email.'); return; }
+    if (form.password.length < 6)        { setError('Password must be at least 6 characters.'); return; }
+    if (form.password !== confirmPass)   { setError('Passwords do not match.'); return; }
+    if (!form.shopName.trim())           { setError('Please enter the shop / business name.'); return; }
+
+    // For CUSTOMER role: validate that the shop exists in Firestore
+    if (form.role === 'CUSTOMER') {
+      try {
+        setLoading(true);
+        const shopQ = query(collection(db, 'shops'), where('name', '==', form.shopName.trim()), limit(1));
+        const shopSnap = await getDocs(shopQ);
+        if (shopSnap.empty) {
+          setError('Shop not found. Please ask your shop owner for the exact shop name, or check spelling.');
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // Allow signup if Firestore check fails (non-blocking)
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    setSignupStep(2);
+  };
+
+  const goStep3 = (e: React.FormEvent) => {
+    e.preventDefault(); clearMsgs();
+    if (!form.city.trim() || !form.state.trim()) { setError('City and state are required.'); return; }
+    if (!form.dateOfBirth) { setError('Date of birth is required.'); return; }
+    setSignupStep(3);
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs();
-    if (form.password !== confirmPass) { setError('Passwords do not match.'); return; }
-    if (form.password.length < 6)     { setError('Password must be at least 6 characters.'); return; }
-    // For OWNER: require PAN, GST, Aadhaar
     if (form.role === 'OWNER') {
-      if (!form.panNumber.trim())   { setError('PAN number is required for shop owners.'); return; }
-      if (!form.gstNumber.trim())   { setError('GST number is required for shop owners.'); return; }
-      if (!form.aadhaarLast4.trim()){ setError('Aadhaar last 4 digits are required for shop owners.'); return; }
-      if (!form.shopName?.trim())   { setError('Shop name is required for shop owners.'); return; }
+      if (!form.panNumber.trim())    { setError('PAN number is required for shop owners.'); return; }
+      if (!form.gstNumber.trim())    { setError('GST number is required for shop owners.'); return; }
+      if (!form.aadhaarLast4.trim()) { setError('Aadhaar last 4 digits are required.'); return; }
     }
     setLoading(true);
     try {
-      await signUp({ ...form, gstNumber: form.gstNumber } as any);
+      await signUp({ ...form } as any);
       setAccountCreated(form.email);
       setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
     } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally           { setLoading(false); }
+    finally { setLoading(false); }
   };
 
-  // Post-signup: simple state removed — signup now signs out and shows email verification info
+  const stepLabels = ['Account Type & Basics', 'Personal Details', 'KYC & Compliance'];
 
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-4 py-10"
       style={{ background: 'linear-gradient(135deg, #fef9ee 0%, #fdf3d8 40%, #fef5e0 70%, #fffbf0 100%)' }}>
 
-      {/* ── Account Created Success Overlay ── */}
       {accountCreated && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(10px)' }}>
           <div className="relative w-full max-w-sm rounded-3xl p-8 flex flex-col items-center text-center"
-            style={{
-              background: 'linear-gradient(145deg, #fffdf5 0%, #fef9e0 100%)',
-              boxShadow: '0 32px 80px rgba(180,120,0,0.25), 0 0 0 1px rgba(251,191,36,0.4)',
-            }}>
-            {/* animated checkmark ring */}
+            style={{ background: 'linear-gradient(145deg,#fffdf5 0%,#fef9e0 100%)', boxShadow: '0 32px 80px rgba(180,120,0,0.25),0 0 0 1px rgba(251,191,36,0.4)' }}>
             <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5 animate-float"
               style={{ background: 'linear-gradient(135deg,#fde68a,#f59e0b)', boxShadow: '0 8px 32px rgba(245,158,11,0.4)' }}>
               <svg viewBox="0 0 36 36" className="w-10 h-10">
-                <path d="M6 18 l8 8 l16 -16" fill="none" stroke="#451a03" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"
-                  style={{ strokeDasharray: 40, strokeDashoffset: 0, animation: 'dash 0.6s ease forwards' }} />
+                <path d="M6 18 l8 8 l16 -16" fill="none" stroke="#451a03" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
             <h2 className="text-2xl font-black text-amber-900 mb-2">Account Created!</h2>
-            <p className="text-sm text-amber-700 leading-relaxed mb-2">
-              A verification email has been sent to
-            </p>
+            <p className="text-sm text-amber-700 mb-2">Verification email sent to</p>
             <p className="font-bold text-amber-800 text-sm mb-4 break-all">{accountCreated}</p>
-            <p className="text-xs text-amber-600 leading-relaxed mb-6">
-              Please click the link in your email to verify your account before signing in.
-            </p>
-            {/* sparkle row */}
-            <div className="flex gap-3 mb-6">
-              {['✨','🥇','💛','🥇','✨'].map((s,i)=><span key={i} className="text-xl">{s}</span>)}
+            <p className="text-xs text-amber-600 mb-6">Please verify your email before signing in.</p>
+            <div className="flex gap-3 mb-6 text-amber-400">
+              {[16,12,20,12,16].map((sz,i) => (
+                <svg key={i} width={sz} height={sz} viewBox="0 0 24 24" fill="url(#acg)" className="animate-sparkle" style={{animationDelay:`${i*0.3}s`}}>
+                  <path d="M12 2 L13.5 10.5 L22 12 L13.5 13.5 L12 22 L10.5 13.5 L2 12 L10.5 10.5 Z" />
+                  <defs><linearGradient id="acg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#fcd34d"/><stop offset="100%" stopColor="#f59e0b"/></linearGradient></defs>
+                </svg>
+              ))}
             </div>
-            <button
-              onClick={() => { setAccountCreated(''); setTab('login'); }}
-              className="w-full py-3 rounded-2xl font-bold text-sm transition-all active:scale-[0.97] animate-shimmer"
-              style={{
-                background: 'linear-gradient(90deg,#fde68a 0%,#f59e0b 50%,#fbbf24 100%)',
-                backgroundSize: '200% auto',
-                color: '#451a03',
-                boxShadow: '0 4px 16px rgba(245,158,11,0.35)',
-              }}>
-              Go to Sign In
-            </button>
+            <GoldButton loading={false} onClick={() => { setAccountCreated(''); setTab('login'); }}>Go to Sign In</GoldButton>
           </div>
         </div>
       )}
 
-      {/* Background glow blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20"
-          style={{ background: 'radial-gradient(circle, #fcd34d 0%, transparent 70%)' }} />
-        <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full opacity-15"
-          style={{ background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }} />
+        <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20" style={{ background: 'radial-gradient(circle,#fcd34d 0%,transparent 70%)' }} />
+        <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full opacity-15" style={{ background: 'radial-gradient(circle,#f59e0b 0%,transparent 70%)' }} />
       </div>
+      {SPARKLES.map((s,i) => <Sparkle key={i} size={s.size} style={{ top: s.top, left: s.left, animationDelay: s.delay }} />)}
 
-      {/* Floating sparkles */}
-      {SPARKLES.map((s, i) => (
-        <Sparkle key={i} size={s.size} style={{ top: s.top, left: s.left, animationDelay: s.delay }} />
-      ))}
-
-      {/* Brand / logo - transparent logo, no ring or background */}
       <div className="relative z-10 mb-8 flex flex-col items-center animate-float">
-        <img
-          src="/logo.png"
-          alt="Bizmation"
-          className="w-28 h-28 object-contain mb-4 drop-shadow-lg"
-        />
-        <h1 className="font-display text-4xl font-semibold text-amber-900 tracking-wide leading-none">
-          Bizmation Gold
-        </h1>
-        <p className="text-sm text-amber-600 mt-1 tracking-widest">
-          Trusted Since 2024 &middot; Ahilyanagar
-        </p>
+        <img src="/logo.png" alt="Bizmation" className="w-28 h-28 object-contain mb-4 drop-shadow-lg" />
+        <h1 className="font-display text-4xl font-semibold text-amber-900 tracking-wide leading-none">Bizmation Gold</h1>
+        <p className="text-sm text-amber-600 mt-1 tracking-widest">Digital Gold &amp; Silver · India</p>
       </div>
 
-      {/* Auth card */}
       <div className="relative z-10 w-full max-w-md rounded-3xl overflow-hidden"
-        style={{
-          background: 'rgba(255,253,245,0.92)',
-          border: '1px solid rgba(251,191,36,0.3)',
-          boxShadow: '0 20px 60px rgba(180,120,0,0.12), 0 4px 16px rgba(180,120,0,0.08)',
-          backdropFilter: 'blur(12px)',
-        }}>
+        style={{ background: 'rgba(255,253,245,0.92)', border: '1px solid rgba(251,191,36,0.3)', boxShadow: '0 20px 60px rgba(180,120,0,0.12),0 4px 16px rgba(180,120,0,0.08)', backdropFilter: 'blur(12px)' }}>
 
-        {/* Tab bar */}
         <div className="flex">
-          {(['login', 'signup'] as Tab[]).map(t => (
-            <button key={t}
-              onClick={() => { setTab(t); clearMsgs(); setSignupStep(1); }}
+          {(['login','signup'] as Tab[]).map(t => (
+            <button key={t} onClick={() => { setTab(t); clearMsgs(); setSignupStep(1); }}
               className="flex-1 py-4 text-sm font-semibold tracking-widest uppercase transition-all"
-              style={tab === t ? {
-                background: 'linear-gradient(135deg, #fde68a 0%, #f59e0b 80%, #d97706 100%)',
-                color: '#451a03',
-              } : { background: 'rgba(253,243,212,0.6)', color: '#92400e' }}>
-              {t === 'login' ? 'Sign In' : 'Create Account'}
+              style={tab===t ? { background:'linear-gradient(135deg,#fde68a 0%,#f59e0b 80%,#d97706 100%)',color:'#451a03' } : { background:'rgba(253,243,212,0.6)',color:'#92400e' }}>
+              {t==='login'?'Sign In':'Create Account'}
             </button>
           ))}
         </div>
 
         <div className="p-7">
-          {error && (
-            <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border"
-              style={{ background: '#fff5f5', borderColor: '#fecaca', color: '#b91c1c' }}>
-              <span className="flex-shrink-0 mt-0.5">!</span><p>{error}</p>
-            </div>
-          )}
-          {info && (
-            <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border"
-              style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
-              <span className="flex-shrink-0 mt-0.5">✓</span><p>{info}</p>
-            </div>
-          )}
+          {error && <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border" style={{ background:'#fff5f5',borderColor:'#fecaca',color:'#b91c1c' }}><span className="flex-shrink-0 mt-0.5">⚠</span><p>{error}</p></div>}
+          {info  && <div className="mb-5 flex items-start gap-3 rounded-2xl px-4 py-3 text-sm border" style={{ background:'#f0fdf4',borderColor:'#bbf7d0',color:'#166534' }}><span className="flex-shrink-0 mt-0.5">✓</span><p>{info}</p></div>}
 
-          {/* SIGN IN */}
           {tab === 'login' && (
             <div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">Welcome back</h2>
               <p className="text-xs text-amber-500 mb-5 tracking-wide">Sign in to your gold account</p>
 
-              {/* Google Sign-In Button */}
-              <div className="mb-4 flex flex-col items-center">
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-white border border-amber-300 shadow-sm hover:bg-amber-50 text-amber-700 font-semibold text-sm transition-all"
-                  disabled={loading}
-                  style={{ marginBottom: '8px' }}
-                >
-                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 mr-2" />
-                  Sign in with Google
-                </button>
+              <button type="button" onClick={handleGoogleLogin} disabled={loading}
+                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-xl mb-4 border transition-all hover:scale-[1.01] active:scale-[0.98] hover:shadow-md"
+                style={{ background:'#fff',borderColor:'rgba(251,191,36,0.5)',boxShadow:'0 2px 8px rgba(180,120,0,0.08)',color:'#92400e' }}>
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                <span className="text-sm font-semibold">Continue with Google</span>
+              </button>
+
+              <div className="flex items-center gap-3 mb-5">
+                <div className="flex-1 h-px" style={{ background:'rgba(251,191,36,0.3)' }} />
+                <span className="text-xs text-amber-400 font-medium">or</span>
+                <div className="flex-1 h-px" style={{ background:'rgba(251,191,36,0.3)' }} />
               </div>
 
-              <div className="flex gap-2 p-1 mb-6 rounded-2xl"
-                style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                {(['password', 'otp', 'phone'] as LoginMode[]).map(m => (
-                  <button key={m}
-                    onClick={() => { setLoginMode(m); setOtpStep('input'); clearMsgs(); }}
-                    className="flex-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all"
-                    style={loginMode === m ? {
-                      background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
-                      color: '#451a03',
-                    } : { color: '#92400e' }}>
-                    {m === 'password' ? 'Password' : m === 'otp' ? 'Magic Link' : 'Phone OTP'}
+              <div className="flex gap-1.5 p-1 mb-6 rounded-2xl" style={{ background:'rgba(253,243,212,0.8)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                {([
+                  { mode: 'password'  as LoginMode, Icon: Lock,       label: 'Password'   },
+                  { mode: 'otp'       as LoginMode, Icon: Mail,       label: 'Magic Link' },
+                  { mode: 'phone-otp' as LoginMode, Icon: Smartphone, label: 'Phone OTP'  },
+                ] as { mode: LoginMode; Icon: React.FC<any>; label: string }[]).map(({ mode, Icon, label }) => (
+                  <button key={mode} onClick={() => { setLoginMode(mode); setOtpStep('input'); setPhoneOtpStep('phone'); clearMsgs(); }}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all flex flex-col items-center gap-0.5"
+                    style={loginMode===mode ? { background:'linear-gradient(135deg,#fde68a,#f59e0b)',color:'#451a03' } : { color:'#92400e' }}>
+                    <Icon size={13} />
+                    {label}
                   </button>
                 ))}
               </div>
 
               {loginMode === 'password' ? (
                 <form onSubmit={handlePasswordLogin} className="space-y-4">
-                  <GoldInput label="Email Address" type="email" value={lpEmail}
-                    onChange={e => setLpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
+                  <GoldInput label="Email Address" type="email" value={lpEmail} onChange={e=>setLpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
                   <div className="relative">
-                    <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={lpPassword}
-                      onChange={e => setLpPassword(e.target.value)} required placeholder="Enter your password" />
-                    <button type="button" tabIndex={-1} onClick={() => setShowPass(v => !v)}
-                      className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium">
-                      {showPass ? 'Hide' : 'Show'}
-                    </button>
+                    <GoldInput label="Password" type={showPass?'text':'password'} value={lpPassword} onChange={e=>setLpPassword(e.target.value)} required placeholder="Enter your password" />
+                    <button type="button" tabIndex={-1} onClick={()=>setShowPass(v=>!v)} className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium transition-colors">{showPass?'Hide':'Show'}</button>
                   </div>
                   <GoldButton loading={loading}>Sign In</GoldButton>
-                  <p className="text-center text-xs text-amber-500 mt-1">
-                    New here?{' '}
-                    <button type="button" onClick={() => setTab('signup')}
-                      className="text-amber-700 font-semibold underline underline-offset-2">
-                      Create an account
-                    </button>
-                  </p>
+                  <p className="text-center text-xs text-amber-500 mt-1">New here? <button type="button" onClick={()=>setTab('signup')} className="text-amber-700 font-semibold underline underline-offset-2 hover:text-amber-900 transition-colors">Create an account</button></p>
                 </form>
-              ) : loginMode === 'phone' ? (
-                <form onSubmit={handlePhonePasswordLogin} className="space-y-4">
-                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
-                    style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                    Enter your registered mobile number (with country code) and your account password.
-                  </div>
-                  <GoldInput label="Mobile Number" type="tel" value={phoneNum}
-                    onChange={e => setPhoneNum(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
-                  <div className="relative">
-                    <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={phonePass}
-                      onChange={e => setPhonePass(e.target.value)} required placeholder="Enter your password" />
-                    <button type="button" tabIndex={-1} onClick={() => setShowPass(v => !v)}
-                      className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium">
-                      {showPass ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                  <GoldButton loading={loading}>Sign In</GoldButton>
-                </form>
-              ) : otpStep === 'input' ? (
+              ) : loginMode === 'otp' ? otpStep === 'input' ? (
                 <form onSubmit={handleSendOtp} className="space-y-4">
-                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700 leading-relaxed"
-                    style={{ background: 'rgba(253,243,212,0.7)', border: '1px solid rgba(251,191,36,0.25)' }}>
-                    Enter your email and we will send you a secure magic link. Click it to sign in instantly - no password needed.
+                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                    Enter your email and we will send a secure magic link. Click it to sign in instantly — no password needed.
                   </div>
-                  <GoldInput label="Email Address" type="email" value={otpEmail}
-                    onChange={e => setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
+                  <GoldInput label="Email Address" type="email" value={otpEmail} onChange={e=>setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
                   <GoldButton loading={loading}>Send Magic Link</GoldButton>
                 </form>
               ) : (
                 <div className="text-center py-6 space-y-4">
-                  <div className="text-5xl animate-float">✉</div>
+                  <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto animate-float">
+                  <Mail size={32} className="text-amber-500" />
+                </div>
                   <h3 className="font-display text-xl font-semibold text-amber-900">Check your inbox</h3>
-                  <p className="text-sm text-amber-600 leading-relaxed">
-                    We sent a magic link to<br />
-                    <strong className="text-amber-800">{otpEmail}</strong>.<br />
-                    Click it to sign in instantly - no password needed.
-                  </p>
-                  <button onClick={() => { setOtpStep('input'); clearMsgs(); }}
-                    className="text-xs text-amber-500 underline underline-offset-2">
-                    Wrong email? Try again
-                  </button>
+                  <p className="text-sm text-amber-600 leading-relaxed">We sent a magic link to<br /><strong className="text-amber-800">{otpEmail}</strong></p>
+                  <button onClick={()=>{setOtpStep('input');clearMsgs();}} className="text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong email? Try again</button>
+                </div>
+              ) : phoneOtpStep === 'phone' ? (
+                <form onSubmit={handleSendPhoneOtp} className="space-y-4">
+                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                    Enter your registered mobile number. We'll send a 6-digit OTP to verify your identity.
+                  </div>
+                  <GoldInput label="Mobile Number" type="tel" value={phoneOtpNumber} onChange={e=>setPhoneOtpNumber(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
+                  <GoldButton loading={loading}>Send OTP</GoldButton>
+                </form>
+              ) : phoneOtpStep === 'code' ? (
+                <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
+                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                    Enter the 6-digit OTP sent to <strong>{phoneOtpNumber}</strong>.
+                  </div>
+                  <GoldInput label="6-Digit OTP" type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={phoneOtpCode} onChange={e=>setPhoneOtpCode(e.target.value.replace(/\D/g,''))} required autoFocus placeholder="------" />
+                  <GoldButton loading={loading}>Verify OTP</GoldButton>
+                  <button type="button" onClick={()=>{setPhoneOtpStep('phone');setPhoneOtpCode('');clearMsgs();}} className="w-full text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong number? Go back</button>
+                </form>
+              ) : (
+                <div className="text-center py-6 space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                  <svg viewBox="0 0 36 36" className="w-8 h-8"><path d="M6 18 l8 8 l16 -16" fill="none" stroke="#16a34a" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+                  <h3 className="font-display text-xl font-semibold text-amber-900">Phone Verified</h3>
+                  <p className="text-sm text-amber-600">Signing you in…</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* SIGN UP */}
           {tab === 'signup' && (
             <div>
-              <h2 className="font-display text-2xl font-semibold text-amber-900 mb-1">
-                {signupStep === 1 ? 'Create your account' : 'Identity Details'}
-              </h2>
-              <p className="text-xs text-amber-500 mb-5 tracking-wide">
-                {signupStep === 1 ? 'Join thousands of gold investors' : 'For compliance and fast payouts'}
-              </p>
-
               <div className="flex items-center gap-2 mb-6">
-                {[1, 2].map(s => (
+                {[1,2,3].map(s => (
                   <React.Fragment key={s}>
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all"
-                      style={signupStep >= s ? {
-                        background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
-                        color: '#451a03',
-                        boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
-                      } : {
-                        background: 'rgba(253,243,212,0.8)',
-                        border: '1px solid rgba(251,191,36,0.3)',
-                        color: '#b45309',
-                      }}>{s}</div>
-                    {s < 2 && (
-                      <div className="flex-1 h-px rounded-full"
-                        style={{ background: signupStep > 1 ? 'linear-gradient(90deg,#fde68a,#f59e0b)' : 'rgba(251,191,36,0.2)' }} />
-                    )}
-                  </React.Fragment>
-                ))}
-                <span className="ml-2 text-xs text-amber-600 font-medium">Step {signupStep} of 2</span>
-              </div>
-
-              <form onSubmit={signupStep === 1 ? (e => { e.preventDefault(); clearMsgs(); setSignupStep(2); }) : handleSignup}
-                className="space-y-4">
-                {signupStep === 1 ? (
-                  <>
-                    <GoldInput label="Full Name" value={form.name} onChange={setF('name')} required autoFocus placeholder="Your full name" />
-                    <GoldInput label="Email Address" type="email" value={form.email} onChange={setF('email')} required placeholder="you@example.com" />
-                    <div className="relative">
-                      <GoldInput label="Password" type={showPass ? 'text' : 'password'} value={form.password}
-                        onChange={setF('password')} required placeholder="Min 6 characters" />
-                      <button type="button" tabIndex={-1} onClick={() => setShowPass(v => !v)}
-                        className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium">
-                        {showPass ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    <GoldInput label="Confirm Password" type={showPass ? 'text' : 'password'}
-                      value={confirmPass} onChange={e => setConfirmPass(e.target.value)} required placeholder="Repeat password" />
-                    <GoldInput label="Mobile Number" type="tel" value={form.phone}
-                      onChange={setF('phone')} required placeholder="+91 98765 43210" />
-
-                    {/* Account type selector */}
-                    <div>
-                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Account Type</label>
-                      <div className="flex gap-2">
-                        {(['CUSTOMER', 'OWNER'] as const).map(r => (
-                          <button key={r} type="button"
-                            onClick={() => setForm(f => ({ ...f, role: r }))}
-                            className="flex-1 py-2 rounded-2xl text-xs font-semibold transition-all"
-                            style={form.role === r ? {
-                              background: 'linear-gradient(135deg, #fde68a, #f59e0b)',
-                              color: '#451a03',
-                              boxShadow: '0 2px 8px rgba(245,158,11,0.3)',
-                            } : {
-                              background: 'rgba(253,243,212,0.8)',
-                              border: '1px solid rgba(251,191,36,0.3)',
-                              color: '#b45309',
-                            }}>
-                            {r === 'CUSTOMER' ? '👤 Customer' : '🏥 Shop Owner'}
-                          </button>
-                        ))}
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+                        style={signupStep > s ? { background:'linear-gradient(135deg,#fde68a,#f59e0b)',color:'#451a03' }
+                          : signupStep===s ? { background:'linear-gradient(135deg,#fde68a,#f59e0b)',color:'#451a03',boxShadow:'0 0 0 3px rgba(251,191,36,0.3)' }
+                          : { background:'rgba(253,243,212,0.8)',border:'1px solid rgba(251,191,36,0.3)',color:'#b45309' }}>
+                        {signupStep > s ? '✓' : s}
                       </div>
                     </div>
+                    {s<3 && <div className="flex-1 h-0.5 rounded-full transition-all" style={{ background:signupStep>s?'linear-gradient(90deg,#fde68a,#f59e0b)':'rgba(251,191,36,0.2)' }} />}
+                  </React.Fragment>
+                ))}
+              </div>
+              <h2 className="font-display text-2xl font-semibold text-amber-900 mb-0.5">{stepLabels[signupStep-1]}</h2>
+              <p className="text-xs text-amber-500 mb-5 tracking-wide">
+                {signupStep===1?'Choose your account type and basics':signupStep===2?'Your personal & contact details':'For regulatory compliance and fast payouts'}
+              </p>
 
-                    {(form.role === 'OWNER' || form.role === 'CUSTOMER') && (
-                      <GoldInput label={form.role === 'OWNER' ? 'Shop / Business Name *' : 'Shop / Business Name *'} value={form.shopName ?? ''}
-                        onChange={setF('shopName')} required placeholder={form.role === 'OWNER' ? 'e.g. Lakshmi Gold Palace' : 'e.g. Lakshmi Gold Palace'} />
-                    )}
-
-                    <GoldButton loading={false}>Continue</GoldButton>
-                  </>
-                ) : (
-                  <>
+              {signupStep === 1 && (
+                <form onSubmit={goStep2} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-2 tracking-wide">I am a…</label>
                     <div className="grid grid-cols-2 gap-3">
-                      <GoldInput label="City" value={form.city} onChange={setF('city')} required placeholder="Mumbai" />
-                      <GoldInput label="State" value={form.state} onChange={setF('state')} required placeholder="Maharashtra" />
+                      {([
+                        { role:'CUSTOMER' as const, Icon: User,  title:'Customer',   desc:'Buy & invest in digital gold/silver' },
+                        { role:'OWNER'    as const, Icon: Store, title:'Shop Owner', desc:'Manage your jewellery shop & customers' },
+                      ]).map(({ role, icon, title, desc }) => (
+                        <button key={role} type="button" onClick={()=>setForm(f=>({...f,role}))}
+                          className="flex flex-col items-center p-4 rounded-2xl border-2 text-center transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          style={form.role===role
+                            ? { background:'linear-gradient(135deg,#fffbeb,#fef3c7)',borderColor:'#f59e0b',boxShadow:'0 4px 16px rgba(245,158,11,0.2)' }
+                            : { background:'rgba(253,243,212,0.5)',borderColor:'rgba(251,191,36,0.25)',color:'#92400e' }}>
+                          <span className="text-3xl mb-1.5">{icon}</span>
+                          <span className="font-bold text-sm text-amber-900">{title}</span>
+                          <span className="text-[10px] text-amber-600 mt-0.5 leading-tight">{desc}</span>
+                          {form.role===role && <span className="mt-2 text-[10px] font-bold text-amber-700 bg-amber-200 rounded-full px-2 py-0.5">Selected ✓</span>}
+                        </button>
+                      ))}
                     </div>
-                    <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
-                    <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
-                    <GoldInput label={form.role === 'OWNER' ? 'PAN Number *' : 'PAN Number (optional)'}
-                      value={form.panNumber} onChange={setF('panNumber')}
-                      placeholder="ABCDE1234F" maxLength={10}
-                      required={form.role === 'OWNER'} />
-                    <GoldInput label="Aadhaar Last 4 Digits" value={form.aadhaarLast4}
-                      onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4}
-                      required={form.role === 'OWNER'} />
-                    {form.role === 'OWNER' && (
-                      <GoldInput label="GST Number *" value={form.gstNumber}
-                        onChange={setF('gstNumber')} placeholder="e.g. 27AABCU9603R1ZM" maxLength={15}
-                        required />
-                    )}
-                    <p className="text-xs text-stone-400 leading-relaxed px-1">
-                      {form.role === 'OWNER'
-                        ? 'PAN, Aadhaar & GST are mandatory for shop owners for compliance and authentication.'
-                        : 'By creating an account you agree to our Terms of Service. Data is stored securely for KYC and tax compliance (India).'}
-                    </p>
-                    <div className="flex gap-3">
-                      <button type="button" onClick={() => setSignupStep(1)}
-                        className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all"
-                        style={{ background: 'rgba(253,243,212,0.8)', border: '1px solid rgba(251,191,36,0.4)', color: '#92400e' }}>
-                        Back
-                      </button>
-                      <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>
-                    </div>
-                  </>
-                )}
-              </form>
+                  </div>
+                  <GoldInput label="Full Name" value={form.name} onChange={setF('name')} required autoFocus placeholder="Your full legal name" />
+                  <GoldInput label="Email Address" type="email" value={form.email} onChange={setF('email')} required placeholder="you@example.com" />
+                  <div className="relative">
+                    <GoldInput label="Password" type={showPass?'text':'password'} value={form.password} onChange={setF('password')} required placeholder="Min 6 characters" />
+                    <button type="button" tabIndex={-1} onClick={()=>setShowPass(v=>!v)} className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium transition-colors">{showPass?'Hide':'Show'}</button>
+                  </div>
+                  <GoldInput label="Confirm Password" type={showPass?'text':'password'} value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} required placeholder="Repeat password" />
+                  <GoldInput label="Mobile Number" type="tel" value={form.phone} onChange={setF('phone')} required placeholder="+91 98765 43210" />
+                  <GoldInput label={form.role==='OWNER'?'Shop / Business Name *':'Name of your Gold Shop *'} value={form.shopName} onChange={setF('shopName')} required placeholder={form.role==='OWNER'?'e.g. Lakshmi Gold Palace':'e.g. Bizmation Gold, Ahilyanagar'} />
+                  <GoldButton loading={false}>Continue →</GoldButton>
+                </form>
+              )}
+
+              {signupStep === 2 && (
+                <form onSubmit={goStep3} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <GoldInput label="City" value={form.city} onChange={setF('city')} required placeholder="Mumbai" />
+                    <GoldInput label="State" value={form.state} onChange={setF('state')} required placeholder="Maharashtra" />
+                  </div>
+                  <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
+                  <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">{form.role==='CUSTOMER'?'Investment Goal':'Business Type'}</label>
+                    <select value={form.role==='CUSTOMER'?form.investmentGoal:form.businessType} onChange={setF(form.role==='CUSTOMER'?'investmentGoal':'businessType')}
+                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none"
+                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
+                      {form.role==='CUSTOMER' ? (
+                        <>
+                          <option value="">Select goal (optional)</option>
+                          <option value="Wealth Building">Wealth Building</option>
+                          <option value="Gift/Wedding">Gift / Wedding</option>
+                          <option value="SIP/Recurring">SIP / Recurring</option>
+                          <option value="Emergency Fund">Emergency Fund</option>
+                          <option value="Short Term Savings">Short Term Savings</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="">Select type (optional)</option>
+                          <option value="Retailer">Retailer</option>
+                          <option value="Manufacturer">Manufacturer</option>
+                          <option value="Wholesaler">Wholesaler</option>
+                          <option value="Multi-branch">Multi-branch</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                  <GoldInput label="Referral Code (optional)" value={form.referralCode} onChange={setF('referralCode')} placeholder="Enter referral code if you have one" />
+                  <div className="flex gap-3">
+                    <BackButton onClick={()=>setSignupStep(1)} />
+                    <GoldButton loading={false} className="flex-1">Continue →</GoldButton>
+                  </div>
+                </form>
+              )}
+
+              {signupStep === 3 && (
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(254,252,232,0.9)',border:'1px solid rgba(251,191,36,0.3)' }}>
+                    {form.role==='OWNER'
+                      ? 'PAN, Aadhaar & GST are mandatory for shop owners for regulatory compliance.'
+                      : 'PAN & Aadhaar required per Indian regulations for gold purchases above ₹50,000. Data is encrypted.'}
+                  </div>
+                  <GoldInput label={form.role==='OWNER'?'PAN Number *':'PAN Number (optional)'} value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} required={form.role==='OWNER'} />
+                  <GoldInput label="Aadhaar Last 4 Digits" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} required={form.role==='OWNER'} />
+                  {form.role==='OWNER' && <GoldInput label="GST Number *" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="27AABCU9603R1ZM" maxLength={15} required />}
+                  <p className="text-[11px] text-stone-400 leading-relaxed px-1">By creating an account you agree to our Terms of Service and Privacy Policy. Data stored securely for KYC and tax compliance (India).</p>
+                  <div className="flex gap-3">
+                    <BackButton onClick={()=>setSignupStep(2)} />
+                    <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>
+                  </div>
+                </form>
+              )}
             </div>
           )}
-
         </div>
       </div>
 
-      <p className="relative z-10 mt-7 text-xs text-amber-500/70 text-center">
-        Secured by Firebase Auth · TLS 1.3 · 256-bit encrypted
-      </p>
+      <p className="relative z-10 mt-7 text-xs text-amber-500/70 text-center">Secured by Firebase Auth · TLS 1.3 · 256-bit encrypted</p>
     </div>
   );
 };
 
-// --- Gold input field -----------------------------------------------------
-interface GoldInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label: string;
-}
+interface GoldInputProps extends React.InputHTMLAttributes<HTMLInputElement> { label: string; }
 const GoldInput: React.FC<GoldInputProps> = ({ label, ...props }) => (
   <div>
     <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">{label}</label>
-    <input {...props}
-      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
-      style={{
-        background: 'rgba(255,251,240,0.9)',
-        border: '1.5px solid rgba(251,191,36,0.35)',
-        boxShadow: 'inset 0 1px 3px rgba(180,120,0,0.06)',
-      }}
-      onFocus={e => {
-        e.currentTarget.style.border = '1.5px solid rgba(245,158,11,0.7)';
-        e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251,191,36,0.15)';
-      }}
-      onBlur={e => {
-        e.currentTarget.style.border = '1.5px solid rgba(251,191,36,0.35)';
-        e.currentTarget.style.boxShadow = 'inset 0 1px 3px rgba(180,120,0,0.06)';
-      }}
-    />
+    <input {...props} className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
+      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
+      onFocus={e=>{ e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)'; }}
+      onBlur={e=>{ e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)'; e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)'; }} />
   </div>
 );
 
-// --- Shimmer gold button --------------------------------------------------
-const GoldButton: React.FC<{
-  loading: boolean;
-  children: React.ReactNode;
-  className?: string;
-}> = ({ loading, children, className = 'w-full' }) => (
-  <button type="submit" disabled={loading}
-    className={`${className} py-3 rounded-2xl font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed animate-shimmer`}
-    style={{
-      background: 'linear-gradient(90deg, #fde68a 0%, #f59e0b 30%, #fbbf24 60%, #f59e0b 100%)',
-      backgroundSize: '200% auto',
-      boxShadow: '0 4px 16px rgba(245,158,11,0.35)',
-      color: '#451a03',
-    }}>
-    {loading ? (
-      <span className="flex items-center justify-center gap-2">
-        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-        </svg>
-        Please wait...
-      </span>
-    ) : children}
+const GoldButton: React.FC<{ loading: boolean; children: React.ReactNode; className?: string; onClick?: () => void }> = ({ loading, children, className='w-full', onClick }) => (
+  <button type={onClick?'button':'submit'} disabled={loading} onClick={onClick}
+    className={`${className} py-3 rounded-2xl font-semibold text-sm transition-all active:scale-[0.97] hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed animate-shimmer`}
+    style={{ background:'linear-gradient(90deg,#fde68a 0%,#f59e0b 30%,#fbbf24 60%,#f59e0b 100%)',backgroundSize:'200% auto',boxShadow:'0 4px 16px rgba(245,158,11,0.35)',color:'#451a03' }}>
+    {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>Please wait...</span> : children}
   </button>
 );
 
-// --- Firebase error map --------------------------------------------------
+const BackButton: React.FC<{ onClick:()=>void }> = ({ onClick }) => (
+  <button type="button" onClick={onClick} className="px-5 py-3 rounded-2xl text-sm font-semibold transition-all hover:bg-amber-100 active:scale-[0.97]"
+    style={{ background:'rgba(253,243,212,0.8)',border:'1px solid rgba(251,191,36,0.4)',color:'#92400e' }}>← Back</button>
+);
+
 const friendlyError = (code: string): string =>
   ({
-    'auth/user-not-found':             'No account found with this email. Please sign up.',
-    'auth/wrong-password':             'Incorrect password. Please try again.',
-    'auth/invalid-credential':         'Incorrect email or password. Please check and try again.',
-    'auth/email-already-in-use':       'This email is already registered. Please sign in.',
-    'auth/invalid-email':              'Please enter a valid email address.',
-    'auth/weak-password':              'Password must be at least 6 characters.',
-    'auth/too-many-requests':          'Too many attempts. Please wait a few minutes.',
-    'auth/network-request-failed':     'Network error. Please check your connection.',
-    'auth/invalid-action-code':        'Magic link is invalid or expired. Request a new one.',
-    'auth/email-not-verified':         '📧 Email not verified. Please check your inbox and click the verification link before signing in.',
-    'No account found with this phone number.': 'No account found with this phone number.',
-    'Account has no email. Please sign in with your email instead.': 'Account has no email. Please sign in with your email instead.',
-    'EMAIL_NOT_VERIFIED':              '📧 Email not verified. Please check your inbox and click the verification link before signing in.',
-  } as Record<string, string>)[code] ?? code;
+    'auth/user-not-found':         'No account found with this email. Please sign up.',
+    'auth/wrong-password':         'Incorrect password. Please try again.',
+    'auth/invalid-credential':     'Incorrect email or password. Please check and try again.',
+    'auth/email-already-in-use':   'This email is already registered. Please sign in.',
+    'auth/invalid-email':          'Please enter a valid email address.',
+    'auth/weak-password':          'Password must be at least 6 characters.',
+    'auth/too-many-requests':      'Too many attempts. Please wait a few minutes.',
+    'auth/network-request-failed': 'Network error. Please check your connection.',
+    'auth/invalid-action-code':    'Magic link is invalid or expired. Request a new one.',
+    'auth/email-not-verified':     '📧 Email not verified. Please click the verification link in your inbox.',
+    'EMAIL_NOT_VERIFIED':          '📧 Email not verified. Please click the verification link in your inbox.',
+  } as Record<string,string>)[code] ?? code;
 
 export default AuthPage;

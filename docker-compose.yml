@@ -1,10 +1,10 @@
 version: '3.8'
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Bizmation — Docker Compose
-# Database: Supabase (hosted PostgreSQL — no local postgres container needed)
-# Copy .env.example files to .env in each app directory and fill in Supabase
-# credentials before running `docker-compose up`.
+# Bizmation — Docker Compose (local dev)
+# Database: Any PostgreSQL provider (Railway, Neon, local).
+# Copy .env.example files to .env in each app directory and fill in your
+# DATABASE_URL before running `docker-compose up`.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:

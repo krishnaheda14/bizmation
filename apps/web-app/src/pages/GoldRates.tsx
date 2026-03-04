@@ -103,7 +103,7 @@ export const GoldRates: React.FC = () => {
             <button
               onClick={fetchRates}
               disabled={loading}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-semibold rounded-xl hover:from-amber-600 hover:to-amber-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
               {loading ? 'Fetching...' : 'Refresh Rates'}
@@ -163,14 +163,14 @@ export const GoldRates: React.FC = () => {
         )}
 
         {/* Info Banner */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-8 shadow-lg">
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6 mb-8 shadow-lg">
           <div className="flex items-start gap-4">
-            <div className="p-3 bg-blue-600 rounded-lg">
+            <div className="p-3 bg-amber-500 rounded-lg">
               <TrendingUp className="text-white" size={24} />
             </div>
             <div className="flex-1">
-              <h3 className="font-bold text-blue-900 dark:text-blue-200 text-lg mb-3">Live Market Pricing</h3>
-              <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-800 dark:text-blue-300">
+              <h3 className="font-bold text-amber-900 dark:text-amber-200 text-lg mb-3">Live Market Pricing</h3>
+              <div className="grid md:grid-cols-2 gap-4 text-sm text-amber-800 dark:text-amber-300">
                 <div>
                   <p className="font-semibold mb-1">✓ Real-time international market data</p>
                   <p className="font-semibold mb-1">✓ Automatic USD → INR conversion</p>

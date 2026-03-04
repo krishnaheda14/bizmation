@@ -14,6 +14,7 @@ import { inventoryRouter } from './modules/inventory/inventory.controller';
 import { goldRateRouter } from './modules/gold-rate/gold-rate.controller';
 import { catalogRouter } from './modules/catalog/catalog.controller';
 import { partiesRouter } from './modules/parties/parties.controller';
+import { authRouter } from './modules/auth/auth.controller';
 import { CronJob } from 'cron';
 
 // Load environment variables
@@ -24,7 +25,19 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  // Allow Cloudflare Pages domains + localhost dev
+  origin: [
+    /\.pages\.dev$/,
+    /\.cloudflare\.workers\.dev$/,
+    /\.bizmation\.com$/,
+    /^http:\/\/localhost/,
+    /^http:\/\/127\.0\.0\.1/,
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -47,6 +60,7 @@ app.get('/health', async (req, res) => {
 });
 
 // Routes
+app.use('/api/auth', authRouter);
 app.use('/api/inventory', inventoryRouter(inventoryService));
 app.use('/api/gold-rates', goldRateRouter(goldRateService));
 app.use('/api/catalog', catalogRouter(db));

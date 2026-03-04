@@ -1,320 +1,497 @@
-# Jewelry Retail Platform
+﻿# Bizmation Gold
 
-A comprehensive, offline-first jewelry retail management system with AI-powered features, GST compliance, and mobile monitoring capabilities.
-
-## 🎯 Features
-
-- **Offline-First POS**: Works without internet, syncs when online
-- **GST Compliance**: Auto-calculation, e-invoicing, HSN codes
-- **AI-Powered Catalog**: Auto background removal, smart tagging
-- **AR Try-On**: Virtual jewelry try-on using device camera
-- **Mobile Dashboard**: Real-time monitoring for owners
-- **Gold Rate Integration**: Auto-updates from multiple sources
-- **Predictive Analytics**: Sales forecasting, dead stock identification
-
-## 🏗️ Architecture
-
-```
-jewelry-retail-platform/
-├── apps/
-│   ├── web-app/          # React PWA (POS System)
-│   ├── mobile-app/       # React Native (Owner Dashboard)
-│   └── backend/          # Node.js + Express API
-├── packages/
-│   ├── shared-types/     # TypeScript interfaces
-│   ├── sync-engine/      # Offline-first sync logic
-│   └── ai-models/        # TensorFlow.js models
-├── ai-services/          # Python FastAPI microservices
-└── infrastructure/       # Docker, K8s, monitoring configs
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js >= 18.0.0
-- npm >= 9.0.0
-- Docker & Docker Compose
-- Python 3.10+ (for AI services)
-
-### Installation
-
-1. **Clone and Install Dependencies**
-   ```bash
-   git clone <repository-url>
-   cd jewelry-retail-platform
-   npm install
-   ```
-
-2. **Setup Environment Variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-3. **Start Services with Docker**
-   ```bash
-   npm run docker:up
-   ```
-
-4. **Run Development Servers**
-   ```bash
-   # Start all services
-   npm run dev
-
-   # Or start individually
-   npm run dev:web      # Web app on http://localhost:5173
-   npm run dev:backend  # API on http://localhost:3000
-   npm run dev:mobile   # Mobile app (Expo)
-   ```
-
-## 📦 Package Structure
-
-### Apps
-
-- **web-app**: React + TypeScript + Vite PWA for POS
-- **mobile-app**: React Native + Expo for owner dashboard
-- **backend**: Node.js + Express REST API
-
-### Packages (Shared)
-
-- **shared-types**: Common TypeScript interfaces
-- **sync-engine**: Offline-first synchronization
-- **ai-models**: Client-side AI models
-
-### AI Services
-
-- **image-processing**: Background removal, auto-tagging
-- **ar-tryon**: Virtual try-on models
-- **predictive-analytics**: Sales forecasting
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend (Web) | React, TypeScript, Vite, TailwindCSS |
-| Frontend (Mobile) | React Native, Expo |
-| Backend | Node.js, Express, TypeScript |
-| Database | PostgreSQL, SQLite (offline) |
-| AI/ML | Python, FastAPI, TensorFlow.js, OpenCV |
-| Sync | WebSocket + REST with conflict resolution |
-| Cloud | AWS (free tier) / Docker |
-| Monitoring | ELK Stack, Prometheus, Grafana |
-| CI/CD | GitHub Actions, Docker |
-
-## 📱 Key Modules
-
-### Web App (POS)
-- Auth & User Management
-- Inventory Management (weight-based tracking)
-- GST-Compliant Billing
-- Customer Management
-- Reports & Analytics
-- Offline-First Data Storage
-
-### Mobile App (Dashboard)
-- Real-time Sales Monitoring
-- Stock Value & Alerts
-- Pending Payments
-- Gold Rate Updates
-- Push Notifications
-
-### Backend Services
-- Authentication & Authorization
-- Inventory CRUD
-- Billing & Invoicing
-- Sync Management
-- GST Validation
-- Gold Rate Fetching
-- AI Integration
-
-## 🤖 AI Features
-
-1. **Smart Catalog Management**
-   - Automatic background removal
-   - Product categorization and tagging
-   - Auto-generated descriptions
-
-2. **AR Virtual Try-On**
-   - Real-time jewelry overlay
-   - Works on mobile devices
-   - Uses MediaPipe + TensorFlow.js
-
-3. **Business Intelligence**
-   - Dead stock identification
-   - Sales forecasting
-   - Customer preference analysis
-   - Gold rate trend prediction
-
-## 🔒 Security & Compliance
-
-- Encrypted local storage (SQLite)
-- JWT-based authentication
-- Role-based access control
-- GST validation and e-invoicing
-- HSN code management
-- Hallmarking compliance
-- Audit logs
-
-## 📊 Database Schema
-
-Key entities:
-- `metal_lots`: Track gold/silver purchases by weight
-- `products`: Individual jewelry items
-- `transactions`: Sales and purchases
-- `customers`: Customer information
-- `invoices`: GST-compliant invoices
-- `sync_queue`: Offline operations queue
-
-## 🔄 Offline-First Architecture
-
-1. **Local Storage**: SQLite database on device
-2. **Operation Queue**: All operations queued locally
-3. **Conflict Resolution**: Timestamp-based merging
-4. **Automatic Sync**: Syncs when connection available
-5. **Data Export**: Always exportable (no vendor lock-in)
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-npm run test
-
-# Test specific workspace
-npm run test --workspace=apps/backend
-
-# E2E tests
-npm run test:e2e
-```
-
-## 📦 Deployment
-
-### 🎯 Quick Start (70 minutes to production!)
-
-Follow this simple checklist: **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** ⭐
-
-### 📚 Complete Production Guides
-
-| Guide | Description | Time |
-|-------|-------------|------|
-| **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** | ✅ Step-by-step checklist | 70 min |
-| **[PRODUCTION_DEPLOYMENT_COMPLETE.md](PRODUCTION_DEPLOYMENT_COMPLETE.md)** | 📖 Full architecture & setup  | Reference |
-| **[CLOUDFLARE_DEPLOYMENT.md](CLOUDFLARE_DEPLOYMENT.md)** | 🌐 Frontend deployment | 10 min |
-| **[BUILD_FIX_SUMMARY.md](BUILD_FIX_SUMMARY.md)** | 🔧 Build fixes applied | Reference |
-
-### 🆓 Free Tier Services (No Credit Card!)
-
-All services start **100% FREE** and scale as you grow:
-
-| Service | Provider | Free Tier | Scalability |
-|---------|----------|-----------|-------------|
-| **Frontend** | Cloudflare Pages | Unlimited bandwidth! | ✅ Auto-scales globally |
-| **Backend** | Railway | 500 hrs/month | ✅ $5/mo upgrade |
-| **Database** | Neon.tech | 10 GB PostgreSQL | ✅ Seamless scaling |
-| **Storage** | Cloudflare R2 | 10 GB, zero egress! | ✅ Pay per GB |
-| **AI Services** | Render.com | 750 hrs/month | ✅ $7/mo upgrade |
-
-**Total Cost:** $0/month → Scales to ~$30/mo for 500-2000 customers
-
-### 🎯 Architecture Overview
-
-```
-User → Cloudflare Pages (Frontend)
-         ↓ API
-       Railway (Backend) → Neon.tech (PostgreSQL)
-         ↓                 ↓
-       Render (AI)      Cloudflare R2 (Storage)
-```
-
-### 🔧 Gold Rates (No API Keys Needed!)
-
-We use **FREE public APIs**:
-- `data-asg.goldprice.org` - XAU/USD rates (gold prices)
-- `jsDelivr CDN` - USD to INR conversion
-
-✅ No registration  
-✅ No API keys  
-✅ Works out of the box!
-
-### 🤖 AI Recognition (All Open Source!)
-
-Models run **locally** on Render (no external  API costs):
-- **YOLOv8** - Object detection
-- **rembg (U^2-Net)** - Background removal
-- **ResNet50** - Classification
-- **OpenCV** - Color-based metal detection
-
-✅ No API keys  
-✅ No per-request costs  
-✅ Free on Render tier!
-
-### ⚙️ Environment Variables
-
-Example configuration files provided:
-- `.env` - Local development
-- `.env.cloudflare.example` - Frontend (Cloudflare Pages)
-- `.env.production.example` - Backend (Railway)
-- `.env.render.example` - AI Services
-
-### Web App (Cloudflare Pages) - Recommended ⭐
-
-```bash
-# Validate build locally
-./validate-deployment.ps1   # Windows
-./validate-deployment.sh    # Linux/Mac
-```
-
-**Cloudflare Pages Settings:**
-- Build command: `npm ci && npm run build:web`
-- Build output: `apps/web-app/dist`
-- Node version: `20`
-
-📖 **[Complete Guide](CLOUDFLARE_DEPLOYMENT.md)**
-
-### Backend & Full Stack
-
-See **[PRODUCTION_DEPLOYMENT_COMPLETE.md](PRODUCTION_DEPLOYMENT_COMPLETE.md)** for:
-- Backend API deployment (Railway)
-- PostgreSQL setup (Neon.tech)
-- File storage (Cloudflare R2)
-- AI services (Render.com)
-- Environment variable configuration
-- Custom domain setup
-- Security best practices
-- Monitoring & scaling
-
-### Local Development
-
-```bash
-# Install dependencies
-npm ci
-
-# Build workspace packages
-npm run build:packages
-
-# Start all services
-npm run dev
-```
-
-## 🐛 Monitoring & Debugging
-
-- **Error Tracking**: Sentry (free tier)
-- **Logs**: ELK Stack
-- **Metrics**: Prometheus + Grafana
-- **APM**: Custom middleware
-
-## 🤝 Contributing
-
-This is a proprietary project. Contact the development team for contribution guidelines.
-
-## 📄 License
-
-Proprietary - All rights reserved
-
-## 📞 Support
-
-For issues or questions, contact: support@jewelryplatform.com
+> Full-stack jewellery platform — live gold/silver rates, buy/sell, AutoPay SIP, KYC, customer portfolios, shop management, and a super-admin console.
 
 ---
 
-**Built with ❤️ for Indian Jewelry Retailers**
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Features](#features)
+4. [Tech Stack](#tech-stack)
+5. [Project Structure](#project-structure)
+6. [Environment Variables](#environment-variables)
+7. [Firebase Collections Schema](#firebase-collections-schema)
+8. [API Endpoints (Backend)](#api-endpoints)
+9. [Unique ID System](#unique-id-system)
+10. [Authentication](#authentication)
+11. [Phone OTP (Twilio)](#phone-otp-twilio)
+12. [Super Admin](#super-admin)
+13. [Railway Deployment (Backend)](#railway-deployment)
+14. [Cloudflare Pages (Frontend)](#cloudflare-pages)
+15. [Running Locally](#running-locally)
+16. [Docker](#docker)
+
+---
+
+## Overview
+
+Bizmation Gold lets jewellery shop owners onboard customers who can then buy and sell 24K gold and silver at live international market prices (XAU/USD x USD/INR). Shops are fully isolated — customers registered under one shop cannot see or interact with any other shop.
+
+---
+
+## Architecture
+
+```
++-------------------------------------+
+|         Cloudflare Pages            |
+|   React + Vite  (hash routing)      |
+|   apps/web-app/                     |
++----------------+--------------------+
+                 | REST
++----------------v--------------------+
+|         Railway  (Node.js)          |
+|   Express + TypeScript              |
+|   apps/backend/                     |
+|   PostgreSQL  (Railway plugin)      |
++----------------+--------------------+
+                 |
++----------------v--------------------+
+|         Firebase                    |
+|   Auth  (email/Google/magic link)   |
+|   Firestore  (real-time data)       |
++-------------------------------------+
+                 |
++----------------v--------------------+
+|         Twilio Verify               |
+|   Phone OTP authentication          |
++-------------------------------------+
+```
+
+**Data Sources**
+| Data | Source |
+|------|--------|
+| XAU/USD, XAG/USD spot | Swissquote public feed (via CORS proxy) |
+| USD/INR | `@fawazahmed0/currency-api` CDN |
+| Fallback rates | Same CDN (xau.json / xag.json) |
+| Charts | TradingView mini-widget embed |
+
+---
+
+## Features
+
+### Customer App
+- **Live gold & silver rates** — auto-refresh every 5 s, TradingView charts
+- **Buy gold/silver** — bottom-sheet UI with quick-select (0.5/1/2/5g) + slide-to-confirm
+- **Sell gold** — submit sell request with bank details
+- **AutoPay / SIP** — monthly recurring gold purchases via Razorpay subscription
+- **Portfolio page** — holdings cards, avg buy price, current market value, P&L %
+- **Orders / Transaction log** — filterable by BUY/SELL, search, invoice PDF download
+- **KYC** — document upload, status tracking
+- **Redemption** — redeem accumulated gold, track request status
+- **Referral** — referral link, commission tracking
+
+### Shop Owner App
+- **Dashboard** — overview stats
+- **Parties** — manage customers / suppliers
+- **Billing** — create invoices
+- **Inventory** — stock tracking
+- **Catalog** — product listing
+- **Schemes** — gold savings schemes
+- **Repairs** — repair job tracking
+- **Gold Rates** — live rate display for shop
+- **Redemption Requests** — view/approve customer redemptions
+- **Analytics** — sales and revenue charts
+
+### Super Admin Console (`/super-admin`)
+- View all registered shops with Biz IDs
+- View all customers across all shops with KYC status
+- Platform-level stats (total shops, customers, verified KYC, avg customers/shop)
+- Credentials: set `role: 'SUPER_ADMIN'` on Firebase user document
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Vite, TypeScript, Tailwind CSS |
+| Routing | Hash-based (`window.location.hash`) |
+| Backend | Node.js, Express, TypeScript |
+| Database | PostgreSQL (Railway plugin) via raw `pg` Pool |
+| Real-time DB | Firebase Firestore |
+| Auth | Firebase Auth (email/password, Google OAuth, magic link) + Twilio Verify (phone OTP) |
+| Payments | Razorpay (one-time + subscription AutoPay) |
+| CDN / Hosting | Cloudflare Pages (frontend), Railway (backend) |
+| Containerisation | Docker (multi-stage), `railway.toml` |
+
+---
+
+## Project Structure
+
+```
+.
+├── Dockerfile               # Root multi-stage Docker build for Railway
+├── railway.toml             # Railway deployment config
+├── docker-compose.yml       # Local PostgreSQL + backend
+├── package.json             # Workspace root
+│
+├── apps/
+│   ├── backend/             # Express API server
+│   │   └── src/
+│   │       ├── server.ts
+│   │       ├── modules/
+│   │       │   ├── auth/
+│   │       │   │   ├── auth.service.ts      # Twilio Verify OTP
+│   │       │   │   └── auth.controller.ts   # POST /api/auth/send-otp|verify-otp
+│   │       │   ├── catalog/
+│   │       │   ├── gold-rate/
+│   │       │   ├── inventory/
+│   │       │   └── parties/
+│   │       └── services/
+│   │           └── database/DatabaseService.ts   # pg Pool
+│   │
+│   └── web-app/             # React frontend (Cloudflare Pages)
+│       └── src/
+│           ├── context/
+│           │   ├── AuthContext.tsx    # Firebase auth + Twilio OTP helpers
+│           │   └── ThemeContext.tsx
+│           ├── components/
+│           │   └── Layout.tsx         # Shell nav
+│           ├── lib/
+│           │   ├── firebase.ts
+│           │   ├── goldPrices.ts      # fetchLiveMetalRates()
+│           │   └── razorpay.ts        # buyGold() / setupGoldAutoPay()
+│           ├── pages/
+│           │   ├── HomeLanding.tsx    # Buy/sell bottom-sheet + slide-to-confirm
+│           │   ├── CustomerPortfolio.tsx  # Holdings + avg price + P&L
+│           │   ├── Orders.tsx         # Transaction log + filter + invoice PDF
+│           │   ├── AuthPage.tsx       # 3-step signup + 3-mode login
+│           │   ├── SuperAdmin.tsx     # Super admin console
+│           │   └── ...
+│           └── utils/
+│               └── bizId.ts           # Unique ID generators
+│
+├── packages/
+│   ├── shared-types/        # Shared TypeScript types
+│   └── sync-engine/         # Offline sync utilities
+│
+└── docs/
+    ├── API.md
+    ├── DEPLOYMENT.md
+    └── QUICK_START_GUIDE.md
+```
+
+---
+
+## Environment Variables
+
+### Backend (`apps/backend/.env`)
+
+```env
+# PostgreSQL (Railway Postgres plugin inserts this automatically)
+DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<dbname>
+DB_POOL_MAX=10
+
+# JWT
+JWT_SECRET=your_jwt_secret_here
+
+# Twilio Verify (Phone OTP)
+TWILIO_ACCOUNT_SID=AC<your-account-sid>
+TWILIO_API_KEY_SID=SK<your-api-key-sid>
+TWILIO_API_KEY_SECRET=<your-api-key-secret>
+TWILIO_VERIFY_SERVICE_SID=VA<your-verify-service-sid>
+
+# Server
+PORT=3001
+NODE_ENV=production
+```
+
+### Frontend (`apps/web-app/.env`)
+
+```env
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+VITE_RAZORPAY_KEY_ID=rzp_live_...
+VITE_API_URL=https://your-railway-backend.up.railway.app
+```
+
+> **Security:** Never commit `.env` files. Set all secrets via Railway's Environment Variables dashboard and Cloudflare Pages environment settings.
+
+---
+
+## Firebase Collections Schema
+
+### `users/{uid}`
+```json
+{
+  "uid": "firebase-uid",
+  "name": "Customer Name",
+  "email": "customer@example.com",
+  "phone": "+919876543210",
+  "role": "CUSTOMER | SHOP_OWNER | SHOP_STAFF | SUPER_ADMIN",
+  "shopName": "Jewels Palace",
+  "shopId": "firestore-shop-doc-id",
+  "bizCustomerId": "BIZ-CUST-A3F7B2C1",
+  "bizShopId": "BIZ-SHOP-9D4E2A87",
+  "kycStatus": "PENDING | VERIFIED | REJECTED",
+  "createdAt": "serverTimestamp"
+}
+```
+
+### `shops/{shopId}`
+```json
+{
+  "name": "Jewels Palace",
+  "ownerUid": "firebase-uid",
+  "bizShopId": "BIZ-SHOP-9D4E2A87",
+  "city": "Mumbai",
+  "phone": "+9122...",
+  "createdAt": "serverTimestamp"
+}
+```
+
+### `goldOnlineOrders/{orderId}`
+```json
+{
+  "userId": "firebase-uid",
+  "type": "BUY | SELL",
+  "metal": "GOLD | SILVER",
+  "purity": 24,
+  "grams": 2.5,
+  "ratePerGram": 6200.50,
+  "totalAmountInr": 15501.25,
+  "razorpayPaymentId": "pay_...",
+  "status": "SUCCESS | PENDING | FAILED",
+  "createdAt": "serverTimestamp"
+}
+```
+
+### `redemptionRequests/{id}`
+```json
+{
+  "userId": "firebase-uid",
+  "shopId": "...",
+  "grams": 5,
+  "status": "PENDING | APPROVED | DISPATCHED | COMPLETED",
+  "requestedAt": "serverTimestamp"
+}
+```
+
+---
+
+## API Endpoints
+
+Base URL: `https://your-backend.up.railway.app/api`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/auth/send-otp` | Send Twilio phone OTP — body: `{ phone }` |
+| `POST` | `/auth/verify-otp` | Verify phone OTP — body: `{ phone, code }` |
+| `GET` | `/gold-rate` | Live gold rate from backend cache |
+| `GET/POST` | `/catalog` | Product catalog |
+| `GET/POST` | `/inventory` | Inventory management |
+| `GET/POST` | `/parties` | Parties (customers/suppliers) |
+
+---
+
+## Unique ID System
+
+All entities get a human-readable Biz ID generated by `apps/web-app/src/utils/bizId.ts`:
+
+| Entity | Format | Example |
+|--------|--------|---------|
+| Shop | `BIZ-SHOP-XXXXXXXX` | `BIZ-SHOP-9D4E2A87` |
+| Customer | `BIZ-CUST-XXXXXXXX` | `BIZ-CUST-A3F7B2C1` |
+| Order | `BIZ-ORD-XXXXXXXXXXXXXXXXXXX` | timestamp + random suffix |
+| Product | `BIZ-PROD-XXXXXXXX` | |
+| Session | `BIZ-SES-XXXXXXXXXXXXX` | |
+
+IDs are generated client-side on document creation and stored in Firestore alongside Firebase UIDs.
+
+---
+
+## Authentication
+
+### Login Modes (AuthPage)
+1. **Password** — email + password via Firebase Auth
+2. **Magic Link** — passwordless email link (Firebase `sendSignInLinkToEmail`)
+3. **Phone OTP** — Twilio Verify SMS → verify code → Firebase sign-in
+
+### Sign-Up Flow (3 steps)
+1. **Role** — select CUSTOMER or SHOP_OWNER
+2. **Details** — name, email, phone, shop name
+   - If CUSTOMER: Firestore validates the shop name exists before proceeding. If not found, the user is shown: _"Shop not found. Please ask your shop owner for the exact shop name."_
+   - Phone uniqueness is checked against existing Firestore users before account creation
+3. **Password** — set password, agree to terms
+
+### Role-based routing
+| Role | Default route |
+|------|--------------|
+| `CUSTOMER` | `#/home` |
+| `SHOP_OWNER` | `#/dashboard` |
+| `SHOP_STAFF` | `#/dashboard` |
+| `SUPER_ADMIN` | `#/super-admin` |
+
+### Shop isolation
+- Customer queries always include `shopId` / `ownerUid` filter
+- Shop owners only see their own `shops/{shopId}` document
+- Only `SUPER_ADMIN` can query across all shops
+
+---
+
+## Phone OTP (Twilio)
+
+### One-time setup
+1. Create a Twilio account at https://console.twilio.com
+2. Go to **Verify → Services → Create new service** — copy `VA...` SID
+3. Go to **Account → API Keys → Create API Key** — copy `SK...` SID and secret
+4. Add to Railway environment variables (see below)
+
+### Environment variables needed
+```
+TWILIO_ACCOUNT_SID         AC... (from Twilio dashboard homepage)
+TWILIO_API_KEY_SID         SK...
+TWILIO_API_KEY_SECRET      ...
+TWILIO_VERIFY_SERVICE_SID  VA...
+```
+
+### OTP flow
+```
+User enters phone
+      |
+POST /api/auth/send-otp { phone }
+      |
+Backend calls Twilio Verify → SMS sent to user
+      |
+User enters 6-digit code
+      |
+POST /api/auth/verify-otp { phone, code }
+      |
+Backend calls Twilio verificationChecks.create()
+      |
+{ valid: true } → frontend completes sign-in
+```
+
+---
+
+## Super Admin
+
+### Setup (one-time, manual)
+1. In Firebase Auth console, create a user: `admin@bizmation.com`
+2. In Firestore, create document `users/<uid>`:
+   ```json
+   {
+     "uid": "<firebase-uid>",
+     "name": "Super Admin",
+     "email": "admin@bizmation.com",
+     "role": "SUPER_ADMIN"
+   }
+   ```
+3. Use a strong password — e.g., `BizAdmin@2026!Gold`
+4. On login, the app auto-redirects to `/#/super-admin`
+
+### What Super Admin can view
+- All registered shops — name, Biz ID, city, owner UID
+- All customers — name, Biz ID, shop name, KYC status badge
+- Platform stats — total shops, customers, verified KYC count, avg customers per shop
+
+---
+
+## Railway Deployment
+
+### First deploy
+```bash
+npm install -g @railway/cli
+railway login
+railway link        # link to your Railway project
+railway up          # deploy using root Dockerfile
+```
+
+Railway auto-detects `railway.toml` and uses the root `Dockerfile`.
+
+### Dockerfile stages
+1. `deps` — install all workspace packages
+2. `build-shared` — compile `packages/shared-types`
+3. `builder` — compile `apps/backend` (TypeScript → CommonJS)
+4. `production` — minimal Node image, runs `node dist/server.js`
+
+### Required Railway env vars
+```
+DATABASE_URL              (auto-set by Railway Postgres plugin)
+TWILIO_ACCOUNT_SID
+TWILIO_API_KEY_SID
+TWILIO_API_KEY_SECRET
+TWILIO_VERIFY_SERVICE_SID
+JWT_SECRET                (generate: openssl rand -base64 64)
+PORT=3001
+NODE_ENV=production
+```
+
+---
+
+## Cloudflare Pages
+
+### Pages dashboard build settings
+| Setting | Value |
+|---------|-------|
+| Framework preset | Vite |
+| Build command | `cd apps/web-app && npm run build` |
+| Build output directory | `apps/web-app/dist` |
+| Root directory | _(project root)_ |
+
+### Environment variables (Pages → Settings → Environment Variables)
+```
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_RAZORPAY_KEY_ID
+VITE_API_URL    (your Railway backend URL)
+```
+
+---
+
+## Running Locally
+
+### Prerequisites
+- Node.js 18+
+- npm (workspaces)
+
+### Install all packages
+```bash
+npm install
+```
+
+### Backend
+```bash
+cp apps/backend/.env.example apps/backend/.env
+# Edit apps/backend/.env with your DATABASE_URL and Twilio vars
+npm run dev --workspace=apps/backend
+```
+
+### Frontend
+```bash
+cp apps/web-app/.env.example apps/web-app/.env
+# Edit apps/web-app/.env with Firebase config and VITE_API_URL=http://localhost:3001
+npm run dev --workspace=apps/web-app
+```
+
+Frontend: http://localhost:5173
+
+---
+
+## Docker
+
+### Local development (backend + PostgreSQL)
+```bash
+docker compose up -d
+```
+
+### Build production image
+```bash
+docker build -t bizmation-backend .
+docker run -p 3001:3001 --env-file apps/backend/.env bizmation-backend
+```
+
+---
+
+*Built for Indian jewellery businesses. For support: support@bizmation.com*
