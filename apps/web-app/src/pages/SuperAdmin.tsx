@@ -4,7 +4,7 @@
  * Shows: all registered shops, all customers, platform-level stats
  */
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,6 +45,7 @@ export function SuperAdmin() {
   const [customers, setCust]    = useState<CustomerRow[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
+  const [loadErr, setLoadErr]   = useState('');
 
   // Guard — should never render for non-super-admin
   if (userProfile?.role !== 'SUPER_ADMIN') {
@@ -69,6 +70,7 @@ export function SuperAdmin() {
 
   async function loadData() {
     setLoading(true);
+    setLoadErr('');
     try {
       // Load all shops
       const shopsSnap = await getDocs(query(collection(db, 'shops'), orderBy('name')));
@@ -78,19 +80,16 @@ export function SuperAdmin() {
       }));
       setShops(shopList);
 
-      // Load all users (customers + owners)
+      // Load all users — SUPER_ADMIN has read access via Firestore rules.
+      // We read shopName directly from the user profile (stored during sign-up)
+      // rather than doing N individual shop lookups.
       const usersSnap = await getDocs(collection(db, 'users'));
-      const custList: CustomerRow[] = [];
+      console.log('[SuperAdmin] Loaded', usersSnap.docs.length, 'user docs');
 
+      const custList: CustomerRow[] = [];
       for (const ud of usersSnap.docs) {
         const data = ud.data();
         if (data.role === 'CUSTOMER') {
-          // Try to get shopName from the shop the customer belongs to
-          let shopName = '';
-          if (data.shopId) {
-            const shopDoc = await getDoc(doc(db, 'shops', data.shopId));
-            if (shopDoc.exists()) shopName = shopDoc.data().name ?? '';
-          }
           custList.push({
             id: ud.id,
             name: data.name ?? '',
@@ -98,15 +97,18 @@ export function SuperAdmin() {
             phone: data.phone ?? '',
             bizCustomerId: data.bizCustomerId ?? '',
             shopId: data.shopId ?? '',
-            shopName,
+            // shopName is stored directly on the user profile (lowercase)
+            shopName: data.shopName ?? '',
             createdAt: data.createdAt ?? '',
             kycStatus: data.kycStatus ?? 'PENDING',
           });
         }
       }
+      console.log('[SuperAdmin] Found', custList.length, 'customers');
       setCust(custList);
-    } catch (err) {
-      console.error('SuperAdmin load error:', err);
+    } catch (err: any) {
+      console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
+      setLoadErr(err?.message ?? 'Failed to load data. Check Firestore rules are deployed.');
     } finally {
       setLoading(false);
     }
@@ -170,6 +172,15 @@ export function SuperAdmin() {
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <div className="w-10 h-10 rounded-full border-4 border-amber-400 border-t-transparent animate-spin" />
             <p className="text-amber-700 text-sm">Loading platform data…</p>
+          </div>
+        ) : loadErr ? (
+          <div className="rounded-2xl p-6 bg-red-50 border border-red-200 text-red-700 text-sm">
+            <p className="font-semibold mb-1">Failed to load data</p>
+            <p className="font-mono text-xs">{loadErr}</p>
+            <p className="mt-2 text-xs text-red-500">Make sure Firestore rules are deployed:<br />
+              <code className="bg-red-100 px-1 rounded">firebase deploy --only firestore:rules</code>
+            </p>
+            <button onClick={loadData} className="mt-3 px-4 py-1.5 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 text-xs font-semibold transition-colors">Retry</button>
           </div>
         ) : (
           <>

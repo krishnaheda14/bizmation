@@ -38,6 +38,55 @@ const Sparkle: React.FC<{ size: number; style?: React.CSSProperties }> = ({ size
   </svg>
 );
 
+// ── Indian States ────────────────────────────────────────────────────────────
+const INDIAN_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh',
+  'Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka',
+  'Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram',
+  'Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana',
+  'Tripura','Uttar Pradesh','Uttarakhand','West Bengal',
+  'Andaman & Nicobar Islands','Chandigarh','Delhi','Jammu & Kashmir',
+  'Ladakh','Lakshadweep','Puducherry',
+];
+
+const CITIES_BY_STATE: Record<string, string[]> = {
+  'Maharashtra':      ['Mumbai','Pune','Nagpur','Nashik','Aurangabad','Ahilyanagar','Solapur','Thane','Navi Mumbai','Kolhapur','Sangli','Latur','Jalgaon','Akola','Dhule','Amravati','Chandrapur','Nanded','Satara','Ratnagiri'],
+  'Delhi':            ['New Delhi','Central Delhi','North Delhi','South Delhi','East Delhi','West Delhi','Dwarka','Rohini','Noida (NCR)'],
+  'Gujarat':          ['Ahmedabad','Surat','Vadodara','Rajkot','Bhavnagar','Jamnagar','Gandhinagar','Anand','Bharuch','Morbi'],
+  'Karnataka':        ['Bangalore','Mysore','Hubli','Mangalore','Belgaum','Davanagere','Bellary','Shimoga','Tumkur','Udupi'],
+  'Tamil Nadu':       ['Chennai','Coimbatore','Madurai','Tiruchirappalli','Salem','Tirunelveli','Vellore','Erode','Tiruppur','Dindigul'],
+  'Rajasthan':        ['Jaipur','Jodhpur','Udaipur','Ajmer','Kota','Bikaner','Alwar','Bhilwara','Sikar','Tonk'],
+  'Uttar Pradesh':    ['Lucknow','Kanpur','Agra','Varanasi','Allahabad (Prayagraj)','Meerut','Noida','Ghaziabad','Bareilly','Aligarh','Gorakhpur','Mathura'],
+  'West Bengal':      ['Kolkata','Howrah','Asansol','Siliguri','Durgapur','Bardhaman','Malda','Kharagpur'],
+  'Madhya Pradesh':   ['Bhopal','Indore','Jabalpur','Gwalior','Ujjain','Sagar','Dewas','Satna','Rewa'],
+  'Andhra Pradesh':   ['Visakhapatnam','Vijayawada','Guntur','Nellore','Kurnool','Rajahmundry','Tirupati','Kakinada'],
+  'Telangana':        ['Hyderabad','Warangal','Nizamabad','Karimnagar','Ramagundam','Khammam','Secunderabad'],
+  'Kerala':           ['Thiruvananthapuram','Kochi','Kozhikode','Kottayam','Thrissur','Palakkad','Malappuram','Kannur'],
+  'Punjab':           ['Ludhiana','Amritsar','Jalandhar','Patiala','Bathinda','Mohali','Pathankot','Hoshiarpur'],
+  'Haryana':          ['Faridabad','Gurgaon','Panipat','Ambala','Yamunanagar','Rohtak','Hisar','Karnal','Sonipat'],
+  'Bihar':            ['Patna','Gaya','Bhagalpur','Muzaffarpur','Purnia','Arrah','Begusarai','Munger'],
+  'Odisha':           ['Bhubaneswar','Cuttack','Rourkela','Brahmapur','Sambalpur','Puri','Balasore'],
+  'Jharkhand':        ['Ranchi','Jamshedpur','Dhanbad','Bokaro','Deoghar','Hazaribagh'],
+  'Assam':            ['Guwahati','Silchar','Dibrugarh','Jorhat','Nagaon','Tinsukia'],
+  'Chhattisgarh':     ['Raipur','Bhilai','Korba','Bilaspur','Durg','Rajnandgaon'],
+  'Himachal Pradesh': ['Shimla','Manali','Dharamshala','Solan','Mandi','Kullu'],
+  'Uttarakhand':      ['Dehradun','Haridwar','Roorkee','Haldwani','Kashipur','Rishikesh','Mussoorie'],
+  'Goa':              ['Panaji','Margao','Vasco da Gama','Mapusa','Ponda'],
+  'Chandigarh':       ['Chandigarh'],
+  'Jammu & Kashmir':  ['Srinagar','Jammu','Sopore','Baramulla','Kathua','Anantnag'],
+  'Ladakh':           ['Leh','Kargil'],
+  'Puducherry':       ['Puducherry','Karaikal','Mahe'],
+  'Tripura':          ['Agartala','Dharmanagar','Udaipur'],
+  'Manipur':          ['Imphal','Thoubal','Bishnupur'],
+  'Meghalaya':        ['Shillong','Tura','Nongpoh'],
+  'Nagaland':         ['Kohima','Dimapur','Mokokchung'],
+  'Mizoram':          ['Aizawl','Lunglei','Champhai'],
+  'Sikkim':           ['Gangtok','Namchi','Gyalshing'],
+  'Arunachal Pradesh':['Itanagar','Naharlagun','Pasighat'],
+  'Andaman & Nicobar Islands': ['Port Blair'],
+  'Lakshadweep':      ['Kavaratti'],
+};
+
 type Tab       = 'login' | 'signup';
 type LoginMode = 'password' | 'otp' | 'phone-otp';
 type OtpStep   = 'input' | 'sent';
@@ -68,6 +117,9 @@ const AuthPage: React.FC = () => {
   const [phoneOtpStep, setPhoneOtpStep] = useState<PhoneOtpStep>('phone');
   const [phoneOtpNumber, setPhoneOtpNumber] = useState('+91');
   const [phoneOtpCode, setPhoneOtpCode]     = useState('');
+  // phoneRaw: just the 10-digit number the user types (without +91)
+  // form.phone is always set to '+91' + phoneRaw
+  const [phoneRaw, setPhoneRaw] = useState('');
   const [signupStep, setSignupStep] = useState<1|2|3>(1);
   const [error,      setError]      = useState('');
   const [info,       setInfo]       = useState('');
@@ -153,6 +205,16 @@ const AuthPage: React.FC = () => {
     if (form.password.length < 6)        { setError('Password must be at least 6 characters.'); return; }
     if (form.password !== confirmPass)   { setError('Passwords do not match.'); return; }
     if (!form.shopName.trim())           { setError('Please enter the shop / business name.'); return; }
+    // Phone validation: must be exactly 10 digits (after +91 prefix)
+    const phoneDigits = phoneRaw.replace(/\D/g, '');
+    if (phoneDigits.length !== 10) {
+      setError('Please enter a valid 10-digit mobile number (do not include +91).');
+      return;
+    }
+    if (['0','1','2','3','4','5'].includes(phoneDigits[0])) {
+      setError('Mobile number must start with 6, 7, 8 or 9.');
+      return;
+    }
 
     // For CUSTOMER role: validate that the shop exists in Firestore
     if (form.role === 'CUSTOMER') {
@@ -401,17 +463,81 @@ const AuthPage: React.FC = () => {
                     <button type="button" tabIndex={-1} onClick={()=>setShowPass(v=>!v)} className="absolute right-4 bottom-3 text-amber-400 hover:text-amber-600 text-xs font-medium transition-colors">{showPass?'Hide':'Show'}</button>
                   </div>
                   <GoldInput label="Confirm Password" type={showPass?'text':'password'} value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} required placeholder="Repeat password" />
-                  <GoldInput label="Mobile Number" type="tel" value={form.phone} onChange={setF('phone')} required placeholder="+91 98765 43210" />
-                  <GoldInput label={form.role==='OWNER'?'Shop / Business Name *':'Name of your Gold Shop *'} value={form.shopName} onChange={setF('shopName')} required placeholder={form.role==='OWNER'?'e.g. Lakshmi Gold Palace':'e.g. Bizmation Gold, Ahilyanagar'} />
+                  {/* ── Split phone input: +91 fixed prefix + 10-digit number ── */}
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Mobile Number</label>
+                    <div className="flex gap-2">
+                      <div className="flex items-center px-3.5 py-2.5 rounded-2xl text-sm font-bold text-amber-800 select-none cursor-default"
+                        style={{ background:'rgba(253,243,212,0.8)',border:'1.5px solid rgba(251,191,36,0.35)',minWidth:'60px' }}>
+                        +91
+                      </div>
+                      <input
+                        type="tel" inputMode="numeric" maxLength={10}
+                        value={phoneRaw}
+                        onChange={e => {
+                          const digits = e.target.value.replace(/\D/g,'').slice(0,10);
+                          setPhoneRaw(digits);
+                          setForm(f => ({ ...f, phone: '+91' + digits }));
+                        }}
+                        required placeholder="98765 43210"
+                        className="flex-1 px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
+                        style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
+                        onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
+                        onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
+                      />
+                    </div>
+                    <p className="text-[10px] text-amber-400 mt-1 pl-1">10-digit number without 0 or +91</p>
+                  </div>
+                  {/* ── Shop name forced to lowercase for standardisation ── */}
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">
+                      {form.role==='OWNER'?'Shop / Business Name *':'Name of your Gold Shop *'}
+                    </label>
+                    <input
+                      type="text" required
+                      value={form.shopName}
+                      onChange={e => setForm(f => ({ ...f, shopName: e.target.value.toLowerCase() }))}
+                      placeholder={form.role==='OWNER'?'e.g. lakshmi gold palace':'e.g. bizmation gold'}
+                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
+                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
+                      onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
+                      onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
+                    />
+                    <p className="text-[10px] text-amber-400 mt-1 pl-1">Stored in lowercase — must match exactly across all users of this shop</p>
+                  </div>
                   <GoldButton loading={false}>Continue →</GoldButton>
                 </form>
               )}
 
               {signupStep === 2 && (
                 <form onSubmit={goStep3} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <GoldInput label="City" value={form.city} onChange={setF('city')} required placeholder="Mumbai" />
-                    <GoldInput label="State" value={form.state} onChange={setF('state')} required placeholder="Maharashtra" />
+                  {/* ── State dropdown ── */}
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">State *</label>
+                    <select
+                      value={form.state}
+                      onChange={e => setForm(f => ({ ...f, state: e.target.value, city: '' }))}
+                      required
+                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none"
+                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
+                      <option value="">Select state</option>
+                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  {/* ── City dropdown (dependent on state) ── */}
+                  <div>
+                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">City *</label>
+                    <select
+                      value={form.city}
+                      onChange={setF('city')}
+                      required
+                      disabled={!form.state}
+                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none disabled:opacity-50"
+                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
+                      <option value="">{form.state ? 'Select city' : 'Select state first'}</option>
+                      {(CITIES_BY_STATE[form.state] ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+                      {form.state && <option value="Other">Other (not listed)</option>}
+                    </select>
                   </div>
                   <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
                   <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
@@ -452,11 +578,11 @@ const AuthPage: React.FC = () => {
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(254,252,232,0.9)',border:'1px solid rgba(251,191,36,0.3)' }}>
                     {form.role==='OWNER'
-                      ? 'PAN, Aadhaar & GST are mandatory for shop owners for regulatory compliance.'
-                      : 'PAN & Aadhaar required per Indian regulations for gold purchases above ₹50,000. Data is encrypted.'}
+                      ? 'GST number is required for shop owners for regulatory compliance. PAN & Aadhaar are optional.'
+                      : 'PAN & Aadhaar are optional but required for gold purchases above ₹50,000 per RBI regulations. Data is encrypted.'}
                   </div>
-                  <GoldInput label={form.role==='OWNER'?'PAN Number *':'PAN Number (optional)'} value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} required={form.role==='OWNER'} />
-                  <GoldInput label="Aadhaar Last 4 Digits" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} required={form.role==='OWNER'} />
+                  <GoldInput label="PAN Number (optional)" value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} />
+                  <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
                   {form.role==='OWNER' && <GoldInput label="GST Number *" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="27AABCU9603R1ZM" maxLength={15} required />}
                   <p className="text-[11px] text-stone-400 leading-relaxed px-1">By creating an account you agree to our Terms of Service and Privacy Policy. Data stored securely for KYC and tax compliance (India).</p>
                   <div className="flex gap-3">

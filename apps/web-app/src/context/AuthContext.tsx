@@ -159,6 +159,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Send verification email
     await sendEmailVerification(createdUser);
 
+    // ── CRITICAL: force-refresh the auth ID token so Firestore receives
+    // valid credentials immediately. Without this there is a brief race
+    // where the token hasn't propagated and Firestore returns permission-denied.
+    await createdUser.getIdToken(true);
+    console.log('[signUp] Auth token refreshed, writing Firestore profile for', createdUser.uid);
+
     // Write full profile to Firestore
     const profile: UserProfile = {
       uid:                        createdUser.uid,
@@ -171,11 +177,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       state:                      data.state,
       country:                    data.country,
       dateOfBirth:                data.dateOfBirth,
-      panNumber:                  data.panNumber.toUpperCase(),
-      aadhaarLast4:               data.aadhaarLast4,
+      panNumber:                  (data.panNumber || '').trim().toUpperCase(),
+      aadhaarLast4:               (data.aadhaarLast4 || '').trim(),
       kycStatus:                  'PENDING',
       role:                       data.role ?? 'CUSTOMER',
-      ...(data.shopName ? { shopName: data.shopName.trim() } : {}),
+      // shopName stored lowercase for consistent cross-user querying
+      ...(data.shopName ? { shopName: data.shopName.trim().toLowerCase() } : {}),
       ...(data.gstNumber ? { gstNumber: data.gstNumber.trim().toUpperCase() } : {}),
       phoneVerified:              false,
       totalGoldPurchasedGrams:    0,
@@ -185,7 +192,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt:                  serverTimestamp(),
     };
 
-    await setDoc(doc(db, 'users', createdUser.uid), profile);
+    try {
+      await setDoc(doc(db, 'users', createdUser.uid), profile);
+      console.log('[signUp] Firestore profile written OK for', createdUser.uid);
+    } catch (fsErr: any) {
+      console.error('[signUp] Firestore setDoc FAILED:', fsErr?.code, fsErr?.message);
+      console.error('[signUp] This is usually caused by Firestore Security Rules not being deployed.');
+      console.error('[signUp] Deploy rules with: firebase deploy --only firestore:rules');
+      throw new Error('Account setup failed: ' + (fsErr?.message ?? 'permission-denied. Deploy Firestore rules and try again.'));
+    }
 
     // Attempt to create/sync record in backend DB
     (async () => {
@@ -248,11 +263,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: serverTimestamp(),
         });
       } else if (profile.role === 'CUSTOMER' && profile.shopName) {
-        // Find shop by name and add customer under its customers subcollection
+        // shopName is already lowercase — find shop by its lowercase name
         const shopQuery = query(collection(db, 'shops'), where('name', '==', profile.shopName), limit(1));
         const shopSnap = await getDocs(shopQuery);
         if (!shopSnap.empty) {
           const shopDoc = shopSnap.docs[0];
+          console.log('[signUp] Linking customer to shop', shopDoc.id, shopDoc.data().name);
+          // Store shopId in user profile for fast lookups later
+          await updateDoc(doc(db, 'users', createdUser.uid), {
+            shopId: shopDoc.id,
+            updatedAt: serverTimestamp(),
+          });
+          // Create sub-doc under the shop
           const custRef = doc(db, `shops/${shopDoc.id}/customers`, createdUser.uid);
           await setDoc(custRef, {
             uid: createdUser.uid,
@@ -263,6 +285,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
+          console.log('[signUp] Customer sub-doc created under shop', shopDoc.id);
+        } else {
+          console.warn('[signUp] No shop found with name:', profile.shopName, '(customer will not be linked)');
         }
       }
     } catch (err) {

@@ -96,14 +96,14 @@ export function partiesRouter(db: DatabaseService): Router {
       let shopId: string | null = null;
       if (payload.shopName) {
         const shopRes = await db.query('SELECT id FROM shops WHERE name ILIKE $1 LIMIT 1', [`%${payload.shopName}%`]);
-        if (shopRes.rowCount > 0) shopId = shopRes.rows[0].id;
+        if ((shopRes.rowCount ?? 0) > 0) shopId = shopRes.rows[0].id;
       }
 
       // Deduplicate by email or phone if available
       if (payload.email || payload.phone) {
         const dupSql = `SELECT * FROM customers WHERE (email = $1 AND email IS NOT NULL) OR (phone = $2 AND phone IS NOT NULL) LIMIT 1`;
         const dupRes = await db.query(dupSql, [payload.email || null, payload.phone || null]);
-        if (dupRes.rowCount > 0) {
+        if ((dupRes.rowCount ?? 0) > 0) {
           // Return existing row to make the operation idempotent
           return res.status(200).json({ success: true, data: dupRes.rows[0], message: 'already_exists' });
         }

@@ -1,6 +1,19 @@
 # Railway Deployment Guide — Bizmation Backend
 
-This guide deploys the `apps/backend` Node.js + TypeScript service to **Railway** so the gold-rates API is always live.
+This guide deploys **only the `apps/backend` Node.js service** to Railway.  
+Railway uses your GitHub repo for source control, but you can point it at just the backend sub-folder — **no other part of your codebase is built or deployed**.
+
+---
+
+## What Gets Deployed vs. What Stays Private
+
+| Part | Where it deploys |
+|------|-----------------|
+| `apps/backend/` | **Railway** (Node.js API server) |
+| `apps/web-app/` | **Cloudflare Pages** (static frontend) |
+| Everything else | **Nowhere** — stays in your repo only |
+
+Railway and Cloudflare Pages each only build their specified directory. The rest of your repo code is never executed on any server.
 
 ---
 
@@ -9,104 +22,133 @@ This guide deploys the `apps/backend` Node.js + TypeScript service to **Railway*
 | Item | Details |
 |------|---------|
 | Railway account | Free tier at [railway.app](https://railway.app) |
-| GitHub repo | Code must be pushed to a GitHub remote |
-| Supabase project | Already running (get URL + service role key from Supabase → Settings → API) |
+| GitHub repo | Code pushed to GitHub (already done) |
+| Supabase project | Running (get URL + service role key from Supabase → Settings → API) |
 
 ---
 
-## Step 1 — Push Code to GitHub
-
-If not already done:
-
-```bash
-git add .
-git commit -m "chore: prepare for Railway deployment"
-git remote add origin https://github.com/YOUR_USERNAME/bizmation.git
-git push -u origin main
-```
-
----
-
-## Step 2 — Create a New Railway Project
+## Step 1 — Create a New Railway Project
 
 1. Go to **[railway.app](https://railway.app)** and sign in.
 2. Click **"New Project"** → **"Deploy from GitHub repo"**.
 3. Authorise Railway to access your GitHub account if prompted.
 4. Select your **bizmation** repository.
-5. Railway will auto-detect the repo — click **"Add variables"** (you'll do this next).
 
 ---
 
-## Step 3 — Set the Root Directory
+## Step 2 — Point Railway at the Backend Only
 
-By default Railway tries to build the repo root. You need to point it at the backend sub-folder.
+This is the key step that makes Railway ignore everything except `apps/backend/`:
 
-1. In your Railway service, go to **Settings → Build**.
+1. In your Railway service → **Settings → Build**.
 2. Set **Root Directory** to:
    ```
    apps/backend
    ```
-3. Railway will now run all build commands from `apps/backend/`.
+3. Set **Build Command** to:
+   ```
+   npm install && npm run build
+   ```
+4. Set **Start Command** to:
+   ```
+   node dist/server.js
+   ```
+
+Railway will now **only read files inside `apps/backend/`** for building and running. Your frontend code, docs, and everything else is untouched.
 
 ---
 
-## Step 4 — Configure the Dockerfile
+## Step 3 — Create and Commit a Dockerfile (Recommended)
 
-Railway auto-detects the `Dockerfile` at `infrastructure/docker/backend.Dockerfile`.  
-You need to tell Railway which Dockerfile to use:
+Copy the existing Dockerfile into `apps/backend/` so Railway finds it automatically:
 
-1. In **Settings → Build**, set **Dockerfile Path** to:
-   ```
-   ../../infrastructure/docker/backend.Dockerfile
-   ```
-   *(relative to the root directory set in Step 3)*
+```bash
+# Run this once from your project root
+copy infrastructure\docker\backend.Dockerfile apps\backend\Dockerfile
+git add apps/backend/Dockerfile
+git commit -m "chore: add Railway Dockerfile for backend"
+git push
+```
 
-   **Or** (easier) copy the Dockerfile into `apps/backend/`:
-   ```bash
-   cp infrastructure/docker/backend.Dockerfile apps/backend/Dockerfile
-   git add apps/backend/Dockerfile
-   git commit -m "chore: copy Dockerfile for Railway"
-   git push
-   ```
-   Then Railway will find it automatically.
+Then in Railway → Settings → Build → set **Dockerfile Path** to `Dockerfile` (relative to root directory).
 
 ---
 
-## Step 5 — Set Environment Variables
+## Step 4 — Set Environment Variables
 
-In Railway → your service → **Variables**, add:
+In Railway → your service → **Variables**, add these (Railway keeps them secret — never in code):
 
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `NODE_ENV` | `production` | |
-| `PORT` | `3000` | Railway auto-injects `PORT`; keep in sync |
-| `SUPABASE_URL` | `https://xxxx.supabase.co` | From Supabase → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Service role key (keep secret) |
+| `PORT` | `3000` | Railway injects this automatically |
+| `SUPABASE_URL` | `https://xxxx.supabase.co` | Supabase → Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Service role key — keep secret |
+| `TWILIO_ACCOUNT_SID` | `ACxxxxxxx` | From Twilio Console |
+| `TWILIO_AUTH_TOKEN` | `xxxxxxx` | **Simplest auth — use this** |
+| `TWILIO_VERIFY_SERVICE_SID` | `VAxxxxxxx` | Twilio → Verify → Services |
 | `GOLD_RATE_TTL_SECONDS` | `300` | 5-minute cache |
 
-> **Tip**: You can bulk-import from a `.env` file via Railway's "Raw Editor" paste.
+> **Twilio setup**: Go to [Twilio Console](https://console.twilio.com) → get Account SID and Auth Token from the dashboard. Then go to **Verify → Services → Create Service** — copy the Service SID (starts with `VA`).
 
 ---
 
-## Step 6 — Deploy
+## Step 5 — Deploy
 
-1. Click **"Deploy"** (or push a new commit — Railway auto-deploys on every push to `main`).
-2. Watch the build logs in **Deployments**.  
-   Expected output:
-   ```
-   > tsc --build
-   > node dist/server.js
-   Server running on port 3000
-   Gold rate cron started (every 5 minutes)
-   ```
-3. Railway assigns a public URL like:  
-   `https://bizmation-backend-production.up.railway.app`
+Railway auto-deploys on every `git push main`. The first deploy happens automatically after you connect the repo.
+
+Watch the build logs in **Deployments**. Expected output:
+```
+> tsc --build
+> node dist/server.js
+Server running on port 3000
+[Twilio] Initialising with AccountSID + AuthToken auth
+Gold rate cron started (every 5 minutes)
+```
+
+Railway assigns a public URL like:
+`https://bizmation-backend-production.up.railway.app`
 
 ---
 
-## Step 7 — Verify the API
+## Step 6 — Set `VITE_API_URL` in Cloudflare Pages
 
-Open the Railway URL in a browser or run:
+1. **Cloudflare Dashboard → Pages** → your web-app project → **Settings → Environment Variables**.
+2. Add for the **Production** environment:
+   ```
+   VITE_API_URL = https://YOUR_RAILWAY_URL
+   ```
+   (No trailing slash. Copy from Railway → Settings → Domains.)
+3. Trigger a new Pages deployment (push any commit or click Retry).
+
+The frontend Phone OTP will now reach Railway. The browser console will show:
+```
+[sendPhoneOtp] VITE_API_URL env value : https://bizmation-backend-xxx.up.railway.app
+[sendPhoneOtp] Full URL               : https://bizmation-backend-xxx.up.railway.app/api/auth/send-otp
+```
+
+---
+
+## Step 7 — Deploy Firestore Rules (Critical — Do This First)
+
+The Firestore rules file at `infrastructure/firestore/firestore.rules` must be deployed to Firebase or account creation will fail with permission-denied.
+
+**Option A — Firebase CLI (recommended):**
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use --add          # select your Firebase project
+firebase deploy --only firestore:rules
+```
+
+**Option B — Firebase Console (manual):**
+1. Go to [Firebase Console](https://console.firebase.google.com) → your project → **Firestore Database → Rules**.
+2. Copy-paste the entire contents of `infrastructure/firestore/firestore.rules`.
+3. Click **Publish**.
+
+---
+
+## Step 8 — Verify the API
 
 ```bash
 # Health check
@@ -115,64 +157,11 @@ curl https://YOUR_RAILWAY_URL/health
 # Current gold rate
 curl "https://YOUR_RAILWAY_URL/api/gold-rates/current?metalType=GOLD&purity=24"
 
-# Force reconcile from Swissquote
-curl -X POST https://YOUR_RAILWAY_URL/api/gold-rates/reconcile
+# Test OTP send (replace with real number)
+curl -X POST https://YOUR_RAILWAY_URL/api/auth/send-otp \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"+919876543210"}'
 ```
-
-Expected response from `/api/gold-rates/current`:
-```json
-{
-  "success": true,
-  "data": {
-    "metalType": "GOLD",
-    "purity": "24",
-    "pricePerGram": 7245.50,
-    "currency": "INR",
-    "updatedAt": "2025-01-15T09:30:00.000Z"
-  }
-}
-```
-
----
-
-## Step 8 — Connect Frontend (Cloudflare Pages)
-
-1. Go to **Cloudflare Pages** → your web-app project → **Settings → Environment Variables**.
-2. Add (for **Production** environment):
-   ```
-   VITE_API_URL = https://YOUR_RAILWAY_URL
-   ```
-3. Trigger a new Pages deployment (push any commit or click "Retry deployment").
-4. The frontend will now call your always-live Railway backend instead of localhost.
-
----
-
-## Step 9 — Custom Domain (Optional)
-
-1. In Railway → Settings → **Domains** → "Add Custom Domain".
-2. Enter e.g. `api.yourdomain.com`.
-3. Add the CNAME record in your DNS provider as shown.
-4. Update `VITE_API_URL` in Cloudflare Pages to use the custom domain.
-
----
-
-## Automatic Redeploys
-
-Railway redeploys automatically on every `git push` to `main`.  
-To configure a different branch: Railway → Settings → **Source → Branch**.
-
----
-
-## Free Tier Limits (Railway Hobby Plan — $5/month credit)
-
-| Resource | Limit |
-|----------|-------|
-| Memory | 512 MB |
-| CPU | 1 vCPU shared |
-| Bandwidth | 100 GB/month |
-| Sleep | **No** — always-on (unlike Render free tier) |
-
-The backend is lightweight (Node.js + cron), so it comfortably fits within free credits.
 
 ---
 
@@ -180,27 +169,22 @@ The backend is lightweight (Node.js + cron), so it comfortably fits within free 
 
 | Symptom | Fix |
 |---------|-----|
-| Build fails: `cannot find tsconfig.json` | Confirm Root Directory is `apps/backend` in Step 3 |
-| `SUPABASE_URL` not found at runtime | Check env vars are set in Railway Variables (not just local `.env`) |
-| Port binding error | Railway injects `PORT` automatically; do **not** hard-code 3000 in server.ts (use `process.env.PORT \|\| 3000`) |
-| Gold rates not updating | Check cron logs in Railway → Deployments → Logs; POST `/api/gold-rates/reconcile` to force refresh |
-| CORS error from frontend | Add your Cloudflare Pages domain to the CORS allow-list in `apps/backend/src/server.ts` |
+| Build fails: `cannot find tsconfig.json` | Confirm Root Directory is `apps/backend` in Step 2 |
+| `SUPABASE_URL` not found at runtime | Check env vars are set in Railway Variables, not local `.env` |
+| Port binding error | Do **not** hard-code 3000 — use `process.env.PORT \|\| 3000` |
+| OTP returns 500 "credentials not configured" | Add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` to Railway Variables |
+| Account creation fails with permission-denied | Deploy Firestore rules (Step 7 above) |
+| CORS error from frontend | Railway service → Variables → ensure `NODE_ENV=production` is set |
 
 ---
 
-## CORS Allow-List Update
+## Free Tier Note (Railway Hobby — $5/month credit)
 
-In `apps/backend/src/server.ts`, update the CORS origin to allow your Cloudflare domain:
+| Resource | Limit |
+|----------|-------|
+| Memory | 512 MB |
+| CPU | 1 vCPU shared |
+| Sleep | **No** — always-on (unlike Render free tier) |
 
-```typescript
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://YOUR_APP.pages.dev',       // Cloudflare Pages
-    'https://your-custom-domain.com',   // optional custom domain
-  ],
-  credentials: true,
-}));
-```
+The backend (Node.js + cron + Twilio calls) comfortably fits within free credits.
 
-Commit and push — Railway redeploys automatically.

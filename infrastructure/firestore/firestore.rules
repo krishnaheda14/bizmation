@@ -7,34 +7,51 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function myProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    // Null-safe profile fetch — returns data map or null if doc missing.
+    // Using exists() first avoids a failed get() call that would throw and deny.
+    function safeProfile() {
+      let ref = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(ref) ? get(ref).data : null;
+    }
+
+    function isSuperAdmin() {
+      let p = safeProfile();
+      return isAuth() && p != null && p.role == 'SUPER_ADMIN';
     }
 
     function isOwnerOrStaff() {
-      return isAuth() && myProfile().role in ['OWNER', 'STAFF'];
+      let p = safeProfile();
+      return isAuth() && p != null && p.role in ['OWNER', 'STAFF'];
     }
 
-    function sameShop(shopName) {
-      return isAuth() && myProfile().shopName == shopName;
+    function callerShopName() {
+      let p = safeProfile();
+      return p != null ? p.shopName : '';
     }
 
     // ── /users/{uid} ─────────────────────────────────────────────────────────
-    // Users can read/write their own doc.
-    // Owners/staff can read any customer whose shopName matches theirs.
+    // Owners/staff can read customers in their own shop.
+    // SUPER_ADMIN can read/update any user.
+    // Users can read/update their own doc.
     match /users/{uid} {
       allow read: if isAuth() && (
         request.auth.uid == uid
-        || (isOwnerOrStaff() && resource.data.shopName == myProfile().shopName)
+        || isSuperAdmin()
+        || (isOwnerOrStaff() && resource.data.shopName == callerShopName())
       );
+      // allow create: user MUST be authenticated and writing their OWN document.
+      // getIdToken(true) in AuthContext guarantees the token is fresh at this point.
       allow create: if isAuth() && request.auth.uid == uid;
-      allow update: if isAuth() && request.auth.uid == uid;
+      allow update: if isAuth() && (
+        request.auth.uid == uid
+        || isSuperAdmin()
+      );
       allow delete: if false; // no self-deletion via client
     }
 
     // ── /shops/{shopId} ──────────────────────────────────────────────────────
-    // Any authenticated user can read shops (to find their shop by name).
-    // Only the ownerUid matching this doc can create/update/delete it.
+    // Any authenticated user can read shops (needed so customers can find their shop).
+    // Only the owner (uid == ownerUid or uid == shopId) can create/update.
     match /shops/{shopId} {
       allow read: if isAuth();
       allow create: if isAuth() && (
@@ -44,39 +61,41 @@ service cloud.firestore {
       allow update: if isAuth() && (
         request.auth.uid == resource.data.ownerUid
         || request.auth.uid == shopId
+        || isSuperAdmin()
       );
       allow delete: if false;
 
       // ── /shops/{shopId}/customers/{customerId} ────────────────────────────
-      // Shop owners/staff can read all customers under their shop.
-      // A customer can read their own sub-doc.
-      // Customers/owners can create sub-docs (during sign-up sync).
+      // SUPER_ADMIN can read all. Owners/staff can read customers in their shop.
+      // A customer can read their own sub-doc. Anyone authenticated can create
+      // (needed during customer sign-up before the shop owner is involved).
       match /customers/{customerId} {
         allow read: if isAuth() && (
           request.auth.uid == customerId
+          || isSuperAdmin()
           || (isOwnerOrStaff() && get(/databases/$(database)/documents/shops/$(shopId)).data.ownerUid == request.auth.uid)
-          || (isOwnerOrStaff() && myProfile().shopName == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
+          || (isOwnerOrStaff() && callerShopName() == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
         );
         allow create: if isAuth();
         allow update: if isAuth() && (
           request.auth.uid == customerId
-          || (isOwnerOrStaff() && myProfile().shopName == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
+          || isSuperAdmin()
+          || (isOwnerOrStaff() && callerShopName() == get(/databases/$(database)/documents/shops/$(shopId)).data.name)
         );
         allow delete: if false;
       }
     }
 
     // ── /goldOnlineOrders/{id} ───────────────────────────────────────────────
-    // Customers can create orders and read their own orders.
-    // Owners/staff can read orders where the customer belongs to their shop.
     match /goldOnlineOrders/{id} {
       allow create: if isAuth();
       allow read: if isAuth() && (
         resource.data.userId == request.auth.uid
+        || isSuperAdmin()
         || (
           isOwnerOrStaff()
           && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == myProfile().shopName
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
         )
       );
       allow update: if isAuth() && resource.data.userId == request.auth.uid;
@@ -88,15 +107,35 @@ service cloud.firestore {
       allow create: if isAuth();
       allow read: if isAuth() && (
         resource.data.userId == request.auth.uid
+        || isSuperAdmin()
         || (
           isOwnerOrStaff()
           && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == myProfile().shopName
+          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
         )
       );
       allow update: if isAuth() && resource.data.userId == request.auth.uid;
       allow delete: if false;
     }
+
+    // ── /razorpayOrders/{id} ─────────────────────────────────────────────────
+    match /razorpayOrders/{id} {
+      allow create: if isAuth();
+      allow read:   if isAuth() && (
+        resource.data.userId == request.auth.uid
+        || isSuperAdmin()
+      );
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ── Catch-all: deny everything else ─────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
 
     // ── /razorpayOrders/{id} ─────────────────────────────────────────────────
     match /razorpayOrders/{id} {
