@@ -7,11 +7,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import {
+import type {
   Product,
   Customer,
   TransactionItem,
   GoldRate,
+} from '@jewelry-platform/shared-types';
+import {
   PaymentMethod,
   MetalType,
 } from '@jewelry-platform/shared-types';

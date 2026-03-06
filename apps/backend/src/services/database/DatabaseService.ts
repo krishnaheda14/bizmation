@@ -72,9 +72,23 @@ export class DatabaseService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.query('SELECT NOW()');
+      const res = await this.query('SELECT NOW()');
+      console.log('[DatabaseService][healthCheck] SELECT NOW result:', res?.rows?.[0]);
       return true;
-    } catch {
+    } catch (err: any) {
+      console.error('[DatabaseService][healthCheck] FAILED:', err?.message || err, err?.stack || 'no-stack');
+      try {
+        // Attempt direct connection to provide more diagnostics
+        const client = await this.pool.connect();
+        try {
+          const r = await client.query('SELECT version(), current_database()');
+          console.log('[DatabaseService][healthCheck] direct client ok:', r.rows[0]);
+        } finally {
+          client.release();
+        }
+      } catch (connErr: any) {
+        console.error('[DatabaseService][healthCheck] direct connect FAILED:', connErr?.message || connErr, connErr?.stack || 'no-stack');
+      }
       return false;
     }
   }

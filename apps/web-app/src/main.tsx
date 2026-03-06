@@ -103,8 +103,6 @@ function App() {
         return <HomeLanding />;
       case '/dashboard':
         return <Dashboard />;
-      case '/dashboard':
-        return <Dashboard />;
       case '/parties':
         return <Parties />;
       case '/analytics':
