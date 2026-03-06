@@ -179,8 +179,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Build Firestore profile object
     const profile: UserProfile = {
       uid:                        createdUser.uid,
-      bizCustomerId:              data.role === 'CUSTOMER' ? generateCustomerId() : undefined,
-      bizShopId:                  data.role === 'OWNER' ? generateShopId() : undefined,
+      ...(data.role === 'CUSTOMER' ? { bizCustomerId: generateCustomerId() } : {}),
+      ...(data.role === 'OWNER' ? { bizShopId: generateShopId() } : {}),
       name:                       data.name,
       email:                      data.email,
       phone:                      data.phone,
