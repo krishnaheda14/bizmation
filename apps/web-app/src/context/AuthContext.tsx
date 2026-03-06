@@ -210,11 +210,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, 'users', createdUser.uid), profile);
       onProgress?.('save-profile', 'done');
     } catch (fsErr: any) {
+      // Gather additional auth/token diagnostics when permission issues occur
+      let tokenDiag: Record<string, any> | null = null;
+      try {
+        const idr = await createdUser.getIdTokenResult();
+        tokenDiag = {
+          uid: createdUser.uid,
+          authTime: idr.authTime,
+          issuedAtTime: idr.issuedAtTime,
+          expirationTime: idr.expirationTime,
+          signInProvider: idr.signInProvider,
+          claims: idr.claims,
+        };
+      } catch (tErr) {
+        tokenDiag = { errorGettingIdTokenResult: (tErr as any)?.message ?? String(tErr) };
+      }
+
       const detail = fsErr?.code === 'permission-denied'
         ? 'Firestore permission denied — rules may not be deployed. Run: firebase deploy --only firestore:rules'
         : (fsErr?.message ?? 'Unknown error');
-      onProgress?.('save-profile', 'error', detail);
-      console.error('[signUp] Firestore profile write failed:', fsErr?.code, fsErr?.message);
+
+      onProgress?.('save-profile', 'error', detail + (tokenDiag ? ` | tokenDiag: ${JSON.stringify(tokenDiag)}` : ''));
+      console.error('[signUp] Firestore profile write failed:', fsErr?.code, fsErr?.message, fsErr);
+      console.error('[signUp] Token diagnostic:', tokenDiag);
       await firebaseSignOut(auth).catch(() => {});
       throw new Error('Failed to save profile: ' + (fsErr?.message ?? 'permission-denied'));
     }
