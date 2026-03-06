@@ -192,14 +192,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt:                  serverTimestamp(),
     };
 
+    // Enhanced debugging + retry: sometimes the auth token hasn't fully propagated
+    // to Firestore backend immediately after account creation. Capture token
+    // info and retry a few times before failing so we can observe behavior in logs.
+    const maxAttempts = 3;
+    let attempt = 0;
+    let lastError: any = null;
+    const tokenInfo = { authCurrentUid: auth.currentUser?.uid ?? null };
     try {
-      await setDoc(doc(db, 'users', createdUser.uid), profile);
-      console.log('[signUp] Firestore profile written OK for', createdUser.uid);
-    } catch (fsErr: any) {
-      console.error('[signUp] Firestore setDoc FAILED:', fsErr?.code, fsErr?.message);
-      console.error('[signUp] This is usually caused by Firestore Security Rules not being deployed.');
+      const token = await createdUser.getIdToken();
+      tokenInfo['tokenLength'] = token ? token.length : 0;
+    } catch (e) {
+      tokenInfo['tokenError'] = (e as any)?.message ?? String(e);
+    }
+    console.log('[signUp] Debug token info before setDoc:', tokenInfo);
+
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      try {
+        console.log(`[signUp] Attempt ${attempt} - writing Firestore profile for`, createdUser.uid);
+        await setDoc(doc(db, 'users', createdUser.uid), profile);
+        console.log('[signUp] Firestore profile written OK for', createdUser.uid, 'on attempt', attempt);
+        lastError = null;
+        break;
+      } catch (fsErr: any) {
+        lastError = fsErr;
+        console.error(`[signUp] Firestore setDoc FAILED (attempt ${attempt}):`, fsErr?.code, fsErr?.message, fsErr);
+        // If permission-denied, wait a bit and retry — otherwise break immediately
+        if (fsErr?.code === 'permission-denied') {
+          console.warn('[signUp] permission-denied received — retrying after 1000ms');
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (lastError) {
+      console.error('[signUp] Final failure writing Firestore profile after retries:', lastError?.code, lastError?.message, lastError);
+      console.error('[signUp] This is usually caused by Firestore Security Rules or the authenticated token not being accepted.');
       console.error('[signUp] Deploy rules with: firebase deploy --only firestore:rules');
-      throw new Error('Account setup failed: ' + (fsErr?.message ?? 'permission-denied. Deploy Firestore rules and try again.'));
+      throw new Error('Account setup failed: ' + (lastError?.message ?? 'permission-denied. Deploy Firestore rules and try again.'));
     }
 
     // Attempt to create/sync record in backend DB
