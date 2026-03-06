@@ -198,7 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const maxAttempts = 3;
     let attempt = 0;
     let lastError: any = null;
-    const tokenInfo = { authCurrentUid: auth.currentUser?.uid ?? null };
+    const tokenInfo: Record<string, any> = { authCurrentUid: auth.currentUser?.uid ?? null };
     try {
       const token = await createdUser.getIdToken();
       tokenInfo['tokenLength'] = token ? token.length : 0;
