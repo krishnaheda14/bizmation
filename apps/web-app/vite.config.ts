@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -46,7 +50,11 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': '/src',
+      '@': path.resolve(__dirname, 'src'),
+      // Point Vite directly at the TS source so Rollup gets proper ESM named exports
+      // (the shared-types dist is built as CommonJS for the Node backend and would
+      // otherwise cause "MetalType is not exported" Rollup errors).
+      '@jewelry-platform/shared-types': path.resolve(__dirname, '../../packages/shared-types/src/index.ts'),
     },
   },
   server: {
