@@ -91,6 +91,8 @@ type Tab       = 'login' | 'signup';
 type LoginMode = 'password' | 'otp' | 'phone-otp';
 type OtpStep   = 'input' | 'sent';
 type PhoneOtpStep = 'phone' | 'code' | 'done';
+type ProgressStatus = 'pending' | 'running' | 'done' | 'error';
+type ProgressStep   = { id: string; label: string; status: ProgressStatus; detail?: string };
 
 interface ExtSignUpData {
   name: string; email: string; password: string; phone: string;
@@ -126,6 +128,7 @@ const AuthPage: React.FC = () => {
   const [loading,    setLoading]    = useState(false);
   const [showPass,   setShowPass]   = useState(false);
   const [accountCreated, setAccountCreated] = useState('');
+  const [signupProgress, setSignupProgress] = useState<ProgressStep[]>([]);
 
   const [lpEmail,    setLpEmail]    = useState('');
   const [lpPassword, setLpPassword] = useState('');
@@ -133,7 +136,7 @@ const AuthPage: React.FC = () => {
   const [form,       setForm]       = useState<ExtSignUpData>(blankForm());
   const [confirmPass, setConfirmPass] = useState('');
 
-  const clearMsgs = () => { setError(''); setInfo(''); };
+  const clearMsgs = () => { setError(''); setInfo(''); setSignupProgress([]); };
   const setF = (key: keyof ExtSignUpData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(f => ({ ...f, [key]: e.target.value }));
@@ -251,13 +254,32 @@ const AuthPage: React.FC = () => {
       if (!form.gstNumber.trim())    { setError('GST number is required for shop owners.'); return; }
       if (!form.aadhaarLast4.trim()) { setError('Aadhaar last 4 digits are required.'); return; }
     }
+    // Build progress steps for visual feedback during signup
+    const steps: ProgressStep[] = [
+      { id: 'create-auth',  label: 'Creating your account',      status: 'pending' },
+      { id: 'verify-email', label: 'Sending verification email', status: 'pending' },
+      { id: 'save-profile', label: 'Saving profile to database', status: 'pending' },
+      ...(form.role === 'OWNER'
+        ? [{ id: 'setup-shop', label: 'Setting up your shop',      status: 'pending' as ProgressStatus }]
+        : form.shopName.trim()
+        ? [{ id: 'link-shop',  label: 'Linking you to your shop',  status: 'pending' as ProgressStatus }]
+        : []),
+    ];
+    setSignupProgress(steps);
     setLoading(true);
     try {
-      await signUp({ ...form } as any);
+      await signUp({ ...form } as any, (stepId, status, detail) => {
+        setSignupProgress(prev => prev.map(s => s.id === stepId ? { ...s, status, detail } : s));
+      });
       setAccountCreated(form.email);
       setForm(blankForm()); setConfirmPass(''); setSignupStep(1);
-    } catch (e: any) { setError(friendlyError(e?.code ?? e?.message)); }
-    finally { setLoading(false); }
+      setSignupProgress([]);
+    } catch (e: any) {
+      setError(friendlyError(e?.code ?? e?.message));
+      // Keep signupProgress visible so the user can see which step failed
+    } finally {
+      setLoading(false);
+    }
   };
 
   const stepLabels = ['Account Type & Basics', 'Personal Details', 'KYC & Compliance'];
@@ -589,6 +611,9 @@ const AuthPage: React.FC = () => {
                     <BackButton onClick={()=>setSignupStep(2)} />
                     <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>
                   </div>
+                  {signupProgress.length > 0 && (
+                    <SignupProgressPanel steps={signupProgress} onDismiss={() => setSignupProgress([])} />
+                  )}
                 </form>
               )}
             </div>
@@ -625,8 +650,60 @@ const BackButton: React.FC<{ onClick:()=>void }> = ({ onClick }) => (
     style={{ background:'rgba(253,243,212,0.8)',border:'1px solid rgba(251,191,36,0.4)',color:'#92400e' }}>← Back</button>
 );
 
-const friendlyError = (code: string): string =>
-  ({
+// ── Signup progress panel ────────────────────────────────────────────────────
+const SignupProgressPanel: React.FC<{ steps: ProgressStep[]; onDismiss: () => void }> = ({ steps, onDismiss }) => {
+  const hasError = steps.some(s => s.status === 'error');
+  return (
+    <div className="rounded-2xl p-4 space-y-2.5" style={{ background:'rgba(253,243,212,0.6)',border:'1px solid rgba(251,191,36,0.25)' }}>
+      <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Account Setup Progress</p>
+      {steps.map(step => (
+        <div key={step.id} className="flex items-start gap-2.5">
+          <div className="flex-shrink-0 mt-0.5 w-4 h-4">
+            {step.status === 'pending' && (
+              <div className="w-4 h-4 rounded-full border-2" style={{ borderColor:'rgba(251,191,36,0.3)' }} />
+            )}
+            {step.status === 'running' && (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" style={{ color:'#f59e0b' }}>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            )}
+            {step.status === 'done' && (
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="#16a34a">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            )}
+            {step.status === 'error' && (
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="#dc2626">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-xs font-medium leading-tight ${
+              step.status === 'error'   ? 'text-red-700' :
+              step.status === 'done'    ? 'text-green-700' :
+              step.status === 'running' ? 'text-amber-800' :
+              'text-amber-400'
+            }`}>{step.label}</p>
+            {step.detail && step.status === 'error' && (
+              <p className="text-[9px] text-red-500 mt-0.5 break-words leading-snug">{step.detail}</p>
+            )}
+          </div>
+        </div>
+      ))}
+      {hasError && (
+        <button type="button" onClick={onDismiss}
+          className="mt-1 w-full text-[10px] text-amber-500 hover:text-amber-700 underline underline-offset-2 transition-colors text-center">
+          Dismiss and try again
+        </button>
+      )}
+    </div>
+  );
+};
+
+const friendlyError = (code: string): string => {
+  const map: Record<string, string> = {
     'auth/user-not-found':         'No account found with this email. Please sign up.',
     'auth/wrong-password':         'Incorrect password. Please try again.',
     'auth/invalid-credential':     'Incorrect email or password. Please check and try again.',
@@ -638,6 +715,13 @@ const friendlyError = (code: string): string =>
     'auth/invalid-action-code':    'Magic link is invalid or expired. Request a new one.',
     'auth/email-not-verified':     '📧 Email not verified. Please click the verification link in your inbox.',
     'EMAIL_NOT_VERIFIED':          '📧 Email not verified. Please click the verification link in your inbox.',
-  } as Record<string,string>)[code] ?? code;
+    'permission-denied':           'Database permission denied — please try again in a moment.',
+  };
+  if (map[code]) return map[code];
+  if (code?.includes('permission-denied') || code?.includes('Missing or insufficient permissions')) {
+    return 'Database permission denied — please try again. If it keeps failing, contact support.';
+  }
+  return code;
+};
 
 export default AuthPage;

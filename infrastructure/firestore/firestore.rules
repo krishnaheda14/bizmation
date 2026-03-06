@@ -50,10 +50,10 @@ service cloud.firestore {
     }
 
     // ── /shops/{shopId} ──────────────────────────────────────────────────────
-    // Any authenticated user can read shops (needed so customers can find their shop).
-    // Only the owner (uid == ownerUid or uid == shopId) can create/update.
+    // Shops are a public directory — anyone (including unauthenticated users)
+    // needs to read shops to validate shop names during account creation.
     match /shops/{shopId} {
-      allow read: if isAuth();
+      allow read: if true;
       allow create: if isAuth() && (
         request.auth.uid == request.resource.data.ownerUid
         || request.auth.uid == shopId
@@ -126,6 +126,19 @@ service cloud.firestore {
         || isSuperAdmin()
       );
       allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ── /phoneIndex/{phone} ──────────────────────────────────────────────────
+    // Maps E.164 phone numbers → { email, uid } for phone-based sign-in.
+    // Public reads are intentional: the key IS the phone number, so only someone
+    // who already knows the phone can look up the linked email.
+    match /phoneIndex/{phone} {
+      allow read: if true;
+      allow create: if isAuth()
+        && request.resource.data.keys().hasAll(['email', 'uid'])
+        && request.auth.uid == request.resource.data.uid;
+      allow update: if isAuth() && request.auth.uid == resource.data.uid;
       allow delete: if false;
     }
 

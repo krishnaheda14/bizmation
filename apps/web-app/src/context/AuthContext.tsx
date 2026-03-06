@@ -84,7 +84,7 @@ interface AuthContextType {
   currentUser: User | null;
   userProfile: UserProfile | null;
   loadingAuth: boolean;
-  signUp: (data: SignUpData) => Promise<void>;
+  signUp: (data: SignUpData, onProgress?: (stepId: string, status: 'running' | 'done' | 'error', detail?: string) => void) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithPhonePassword: (phone: string, password: string) => Promise<void>;
   sendOtp: (email: string) => Promise<void>;
@@ -142,30 +142,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [loadProfile]);
 
   // ── Sign Up ──────────────────────────────────────────────────────────────
-  const signUp = async (data: SignUpData) => {
-    // ── Duplicate phone check ─────────────────────────────────────────────
-    if (data.phone && data.phone.length > 4) {
-      const phoneQ = query(collection(db, 'users'), where('phone', '==', data.phone.trim()), limit(1));
-      const phoneSnap = await getDocs(phoneQ);
-      if (!phoneSnap.empty) throw new Error('A user with this phone number already exists. Please sign in.');
+  const signUp = async (
+    data: SignUpData,
+    onProgress?: (stepId: string, status: 'running' | 'done' | 'error', detail?: string) => void,
+  ) => {
+    // ── Step 1: Create Firebase Auth account ──────────────────────────────
+    // IMPORTANT: we create the auth user FIRST so all subsequent Firestore
+    // operations run as an authenticated user and pass security rules.
+    onProgress?.('create-auth', 'running');
+    let createdUser: User;
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      createdUser = cred.user;
+    } catch (err: any) {
+      onProgress?.('create-auth', 'error', err?.message);
+      throw err;
     }
+    onProgress?.('create-auth', 'done');
 
-    const cred = await createUserWithEmailAndPassword(auth, data.email, data.password);
-    const createdUser = cred.user;
+    // Force-refresh token so Firestore immediately recognises this user
+    await createdUser.getIdToken(true);
 
     // Set display name in Firebase Auth
     await updateProfile(createdUser, { displayName: data.name });
 
-    // Send verification email
-    await sendEmailVerification(createdUser);
+    // ── Step 2: Send email verification ───────────────────────────────────
+    onProgress?.('verify-email', 'running');
+    try {
+      await sendEmailVerification(createdUser);
+      onProgress?.('verify-email', 'done');
+    } catch (err: any) {
+      console.warn('[signUp] sendEmailVerification failed (non-fatal):', err?.message);
+      onProgress?.('verify-email', 'done'); // treat as non-fatal
+    }
 
-    // ── CRITICAL: force-refresh the auth ID token so Firestore receives
-    // valid credentials immediately. Without this there is a brief race
-    // where the token hasn't propagated and Firestore returns permission-denied.
-    await createdUser.getIdToken(true);
-    console.log('[signUp] Auth token refreshed, writing Firestore profile for', createdUser.uid);
-
-    // Write full profile to Firestore
+    // Build Firestore profile object
     const profile: UserProfile = {
       uid:                        createdUser.uid,
       bizCustomerId:              data.role === 'CUSTOMER' ? generateCustomerId() : undefined,
@@ -192,54 +203,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt:                  serverTimestamp(),
     };
 
-    // Enhanced debugging + retry: sometimes the auth token hasn't fully propagated
-    // to Firestore backend immediately after account creation. Capture token
-    // info and retry a few times before failing so we can observe behavior in logs.
-    const maxAttempts = 3;
-    let attempt = 0;
-    let lastError: any = null;
-    const tokenInfo: Record<string, any> = { authCurrentUid: auth.currentUser?.uid ?? null };
+    // ── Step 3: Save profile to Firestore ─────────────────────────────────
+    // User is now authenticated, so security rules allow this write.
+    onProgress?.('save-profile', 'running');
     try {
-      const token = await createdUser.getIdToken();
-      tokenInfo['tokenLength'] = token ? token.length : 0;
-    } catch (e) {
-      tokenInfo['tokenError'] = (e as any)?.message ?? String(e);
-    }
-    console.log('[signUp] Debug token info before setDoc:', tokenInfo);
-
-    while (attempt < maxAttempts) {
-      attempt += 1;
-      try {
-        console.log(`[signUp] Attempt ${attempt} - writing Firestore profile for`, createdUser.uid);
-        await setDoc(doc(db, 'users', createdUser.uid), profile);
-        console.log('[signUp] Firestore profile written OK for', createdUser.uid, 'on attempt', attempt);
-        lastError = null;
-        break;
-      } catch (fsErr: any) {
-        lastError = fsErr;
-        console.error(`[signUp] Firestore setDoc FAILED (attempt ${attempt}):`, fsErr?.code, fsErr?.message, fsErr);
-        // If permission-denied, wait a bit and retry — otherwise break immediately
-        if (fsErr?.code === 'permission-denied') {
-          console.warn('[signUp] permission-denied received — retrying after 1000ms');
-          await new Promise((r) => setTimeout(r, 1000));
-          continue;
-        }
-        break;
-      }
+      await setDoc(doc(db, 'users', createdUser.uid), profile);
+      onProgress?.('save-profile', 'done');
+    } catch (fsErr: any) {
+      const detail = fsErr?.code === 'permission-denied'
+        ? 'Firestore permission denied — rules may not be deployed. Run: firebase deploy --only firestore:rules'
+        : (fsErr?.message ?? 'Unknown error');
+      onProgress?.('save-profile', 'error', detail);
+      console.error('[signUp] Firestore profile write failed:', fsErr?.code, fsErr?.message);
+      await firebaseSignOut(auth).catch(() => {});
+      throw new Error('Failed to save profile: ' + (fsErr?.message ?? 'permission-denied'));
     }
 
-    if (lastError) {
-      console.error('[signUp] Final failure writing Firestore profile after retries:', lastError?.code, lastError?.message, lastError);
-      console.error('[signUp] This is usually caused by Firestore Security Rules or the authenticated token not being accepted.');
-      console.error('[signUp] Deploy rules with: firebase deploy --only firestore:rules');
-      throw new Error('Account setup failed: ' + (lastError?.message ?? 'permission-denied. Deploy Firestore rules and try again.'));
+    // Write phone → email index for phone-based sign-in (non-blocking, best-effort)
+    // phoneIndex has public reads so phone-login works without auth
+    if (data.phone && data.phone.trim().length > 4) {
+      setDoc(doc(db, 'phoneIndex', data.phone.trim()), {
+        email:     data.email,
+        uid:       createdUser.uid,
+        updatedAt: serverTimestamp(),
+      }).catch((e: any) => console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
     }
 
-    // Attempt to create/sync record in backend DB
+    // Attempt to create/sync record in backend DB (non-blocking — never stalls signup)
     (async () => {
       try {
         if (profile.role === 'OWNER') {
-          // Create a shop/wholesaler row for owners
           await fetch('/api/parties', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -270,64 +263,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       } catch (err) {
-        console.warn('[AuthContext] Failed to sync to backend', err);
+        console.warn('[AuthContext] Backend party sync failed (non-fatal):', err);
       }
     })();
 
-    // Also ensure Firestore has a shops document for owners and register customer under shop
+    // ── Step 4: Shop / customer Firestore setup ───────────────────────────
     try {
       if (profile.role === 'OWNER') {
+        onProgress?.('setup-shop', 'running');
         const shopRef = doc(db, 'shops', createdUser.uid);
         await setDoc(shopRef, {
-          id: createdUser.uid,
-          bizShopId: profile.bizShopId ?? generateShopId(),
-          name: profile.shopName || profile.name,
-          ownerUid: createdUser.uid,
-          ownerName: profile.name,
-          email: profile.email || null,
-          phone: profile.phone || null,
-          city: profile.city || null,
-          state: profile.state || null,
-          country: profile.country || null,
-          panNumber: profile.panNumber || null,
-          gstNumber: (profile as any).gstNumber || null,
+          id:          createdUser.uid,
+          bizShopId:   profile.bizShopId ?? generateShopId(),
+          name:        profile.shopName || profile.name,
+          ownerUid:    createdUser.uid,
+          ownerName:   profile.name,
+          email:       profile.email || null,
+          phone:       profile.phone || null,
+          city:        profile.city || null,
+          state:       profile.state || null,
+          country:     profile.country || null,
+          panNumber:   profile.panNumber || null,
+          gstNumber:   (profile as any).gstNumber || null,
           aadhaarLast4: profile.aadhaarLast4 || null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          createdAt:   serverTimestamp(),
+          updatedAt:   serverTimestamp(),
         });
+        onProgress?.('setup-shop', 'done');
       } else if (profile.role === 'CUSTOMER' && profile.shopName) {
-        // shopName is already lowercase — find shop by its lowercase name
+        onProgress?.('link-shop', 'running');
+        // shops allow read: if true, so this works even before full authentication
         const shopQuery = query(collection(db, 'shops'), where('name', '==', profile.shopName), limit(1));
-        const shopSnap = await getDocs(shopQuery);
+        const shopSnap  = await getDocs(shopQuery);
         if (!shopSnap.empty) {
           const shopDoc = shopSnap.docs[0];
-          console.log('[signUp] Linking customer to shop', shopDoc.id, shopDoc.data().name);
           // Store shopId in user profile for fast lookups later
           await updateDoc(doc(db, 'users', createdUser.uid), {
-            shopId: shopDoc.id,
+            shopId:    shopDoc.id,
             updatedAt: serverTimestamp(),
           });
-          // Create sub-doc under the shop
-          const custRef = doc(db, `shops/${shopDoc.id}/customers`, createdUser.uid);
-          await setDoc(custRef, {
-            uid: createdUser.uid,
+          // Create customer sub-doc under the shop
+          await setDoc(doc(db, `shops/${shopDoc.id}/customers`, createdUser.uid), {
+            uid:          createdUser.uid,
             bizCustomerId: profile.bizCustomerId ?? generateCustomerId(),
-            name: profile.name,
-            email: profile.email || null,
-            phone: profile.phone || null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            name:         profile.name,
+            email:        profile.email || null,
+            phone:        profile.phone || null,
+            createdAt:    serverTimestamp(),
+            updatedAt:    serverTimestamp(),
           });
-          console.log('[signUp] Customer sub-doc created under shop', shopDoc.id);
+          onProgress?.('link-shop', 'done');
         } else {
-          console.warn('[signUp] No shop found with name:', profile.shopName, '(customer will not be linked)');
+          onProgress?.('link-shop', 'error', `Shop "${profile.shopName}" not found — check spelling with your shop owner.`);
+          console.warn('[signUp] No shop found with name:', profile.shopName);
         }
       }
-    } catch (err) {
-      console.warn('[AuthContext] Failed to create shop/customer in Firestore', err);
+    } catch (err: any) {
+      const stepId = profile.role === 'OWNER' ? 'setup-shop' : 'link-shop';
+      onProgress?.(stepId, 'error', err?.message);
+      console.warn('[AuthContext] Shop/customer setup failed (non-fatal):', err?.message);
     }
 
-    // Sign the user OUT immediately so they must verify their email before using the app
+    // Sign the user OUT — they must verify email before using the app
     await firebaseSignOut(auth);
   };
 
@@ -338,23 +335,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ── Sign In with Phone + Password ────────────────────────────────────────
-  // Looks up the user's email from Firestore by phone number, then signs in.
+  // Reads the phoneIndex collection (public reads — no auth required) to find
+  // the email linked to this phone number, then signs in with email + password.
   const signInWithPhonePassword = async (phone: string, password: string) => {
     const normalised = phone.trim();
-    const q = query(
-      collection(db, 'users'),
-      where('phone', '==', normalised),
-      limit(1),
-    );
-    const snap = await getDocs(q);
-    if (snap.empty) {
-      throw new Error('No account found with this phone number.');
+    // phoneIndex is a public collection — getDoc works without authentication
+    const indexSnap = await getDoc(doc(db, 'phoneIndex', normalised));
+    if (!indexSnap.exists()) {
+      throw new Error('No account found with this phone number. Please sign in with your email or create an account.');
     }
-    const profileData = snap.docs[0].data() as UserProfile;
-    if (!profileData.email) {
-      throw new Error('Account has no email. Please sign in with your email instead.');
+    const email = indexSnap.data()?.email as string | undefined;
+    if (!email) {
+      throw new Error('Phone account has no linked email. Please sign in with your email instead.');
     }
-    await signIn(profileData.email, password);
+    await signIn(email, password);
   };
 
   // ── Send Email OTP (magic link) ──────────────────────────────────────────
