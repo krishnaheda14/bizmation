@@ -137,18 +137,3 @@ service cloud.firestore {
 }
 
 
-    // ── /razorpayOrders/{id} ─────────────────────────────────────────────────
-    match /razorpayOrders/{id} {
-      allow create: if isAuth();
-      allow read:   if isAuth() && resource.data.userId == request.auth.uid;
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
-      allow delete: if false;
-    }
-
-    // ── Catch-all: deny everything else ─────────────────────────────────────
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-

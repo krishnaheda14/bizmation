@@ -14,27 +14,36 @@
 FROM node:20-alpine AS deps
 WORKDIR /repo
 
-# Copy root workspace manifest first (for layer caching)
+# Copy root workspace manifest + root tsconfig first (for layer caching).
+# tsconfig.json MUST be here so packages/shared-types/tsconfig.json can
+# resolve `extends: "../../tsconfig.json"` during the build-shared stage.
 COPY package*.json ./
+COPY tsconfig.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY apps/backend/package.json            ./apps/backend/
 
 # Install all workspace deps (includes shared-types resolution)
 RUN npm install --legacy-peer-deps
 
+RUN echo "[deps] node $(node -v) | npm $(npm -v) | root tsconfig: $(test -f tsconfig.json && echo OK || echo MISSING)"
+
 # ── Stage 2: Build shared-types ───────────────────────────────────────────────
+# deps stage already has tsconfig.json at /repo/tsconfig.json
 FROM deps AS build-shared
 COPY packages/shared-types ./packages/shared-types/
+RUN echo "[build-shared] tsconfig.json present: $(test -f tsconfig.json && echo YES || echo NO — build will fail)"
 # Run the shared-types build (tsc -b --force)
 RUN cd packages/shared-types && npm run build
+RUN echo "[build-shared] shared-types dist: $(ls packages/shared-types/dist 2>/dev/null || echo EMPTY)"
 
 # ── Stage 3: Build backend ────────────────────────────────────────────────────
+# tsconfig.json was already copied in deps stage, so no additional COPY needed.
 FROM build-shared AS builder
-COPY tsconfig.json         ./tsconfig.json
 COPY apps/backend/src      ./apps/backend/src/
 COPY apps/backend/tsconfig.json ./apps/backend/tsconfig.json
-
+RUN echo "[builder] compiling backend..."
 RUN cd apps/backend && npm run build
+RUN echo "[builder] backend dist: $(ls apps/backend/dist 2>/dev/null || echo EMPTY)"
 
 # ── Stage 4: Production image ─────────────────────────────────────────────────
 FROM node:20-alpine AS production
