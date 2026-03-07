@@ -111,7 +111,29 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number }>
 }
 
 export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
-  // First try backend API as single source of truth. If backend is available
+  // First try Cloudflare Worker (pre-cached, refreshed every 5 min by Cron Trigger).
+  // This is the fastest path and works even when the Railway backend is down.
+  const WORKER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOLD_WORKER_URL)
+    ? ((import.meta as any).env.VITE_GOLD_WORKER_URL as string).replace(/\/$/, '')
+    : '';
+
+  if (WORKER_URL) {
+    try {
+      const workerRes = await fetchJSON(`${WORKER_URL}/gold-rates`, 5000);
+      const cached = workerRes?.data;
+      if (cached?.rates && Array.isArray(cached.rates) && cached.rates.length >= 4) {
+        return cached.rates.map((r: MetalRate) => ({
+          ...r,
+          effectiveDate: cached.fetchedAt ?? new Date().toISOString(),
+          source: `Worker (${cached.source ?? 'KV cache'})`,
+        }));
+      }
+    } catch {
+      // Worker unreachable — fall through to backend / CDN
+    }
+  }
+
+  // Next try backend API as source of truth. If backend is available
   // and returns recent values, use it. Otherwise fall back to CDN/Swissquote.
   const now = new Date().toISOString();
   try {

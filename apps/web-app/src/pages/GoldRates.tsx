@@ -28,6 +28,7 @@ export const GoldRates: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false); // Hidden by default
   const [errorLog, setErrorLog] = useState<string[]>([]);
+  const [sourceLabel, setSourceLabel] = useState<string>('Unknown');
 
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -45,8 +46,20 @@ export const GoldRates: React.FC = () => {
 
   useEffect(() => {
     addDebugLog('🔧 GoldRates component mounted');
-    addDebugLog('🌍 Fetching from FREE public APIs (no backend needed)');
+    const workerUrl = import.meta.env.VITE_GOLD_WORKER_URL;
+    if (workerUrl) {
+      addDebugLog(`⚡ Cloudflare Worker configured: ${workerUrl}`);
+    } else {
+      addDebugLog('🌍 No Worker URL set — fetching from CDN/backend');
+    }
     fetchRates();
+
+    // Auto-refresh every 5 minutes (matches Cloudflare Worker cron interval)
+    const interval = setInterval(() => {
+      addDebugLog('🔄 Auto-refresh triggered (5-min interval)');
+      fetchRates();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchRates = async () => {
@@ -55,8 +68,11 @@ export const GoldRates: React.FC = () => {
     try {
       const allRates = await fetchLiveMetalRates();
       setRates(allRates as GoldRate[]);
+      const src = (allRates && allRates[0] && (allRates[0] as any).source) ? String((allRates[0] as any).source) : 'Unknown';
+      setSourceLabel(src);
       setLastUpdated(new Date().toLocaleString());
       addDebugLog(`✅ Fetched ${allRates.length} rates successfully`);
+      addDebugLog(`Source detected: ${src}`);
       allRates.forEach((rate) => {
         const unit = rate.metalType === 'GOLD' ? '10g' : '1kg';
         addDebugLog(`  ✅ ${rate.metalType}-${rate.purity}K: ₹${rate.displayRate.toFixed(2)}/${unit}`);
@@ -88,7 +104,10 @@ export const GoldRates: React.FC = () => {
               Live Precious Metal Rates
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
-              {lastUpdated ? `Last updated: ${lastUpdated}` : 'Real-time international market prices with 9% import duty'}
+                {lastUpdated ? `Last updated: ${lastUpdated}` : 'Real-time international market prices with 9% import duty'}
+                <span className="ml-3 inline-block align-middle">
+                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Source: {sourceLabel}</span>
+                </span>
             </p>
           </div>
           <div className="flex gap-3">

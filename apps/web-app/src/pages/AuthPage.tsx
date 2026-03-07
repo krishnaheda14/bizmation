@@ -129,6 +129,13 @@ const AuthPage: React.FC = () => {
   const [showPass,   setShowPass]   = useState(false);
   const [accountCreated, setAccountCreated] = useState('');
   const [signupProgress, setSignupProgress] = useState<ProgressStep[]>([]);
+  const [otpDebugLog, setOtpDebugLog] = useState<string[]>([]);
+  const [showOtpDebug, setShowOtpDebug] = useState(false);
+
+  const addOtpLog = (msg: string) => {
+    const ts = new Date().toLocaleTimeString();
+    setOtpDebugLog(prev => [`[${ts}] ${msg}`, ...prev].slice(0, 20));
+  };
 
   const [lpEmail,    setLpEmail]    = useState('');
   const [lpPassword, setLpPassword] = useState('');
@@ -178,23 +185,43 @@ const AuthPage: React.FC = () => {
 
   const handleSendPhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
+    setOtpDebugLog([]);
+    const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+    addOtpLog(`📡 Sending OTP to: ${phoneOtpNumber.trim()}`);
+    addOtpLog(`🔧 VITE_API_URL = ${apiUrl || '⚠️ NOT SET — phone OTP requires backend'}`);
+    if (!apiUrl) {
+      addOtpLog('❌ VITE_API_URL is missing. Set it in Cloudflare Pages → Settings → Environment Variables → VITE_API_URL=https://your-backend.railway.app');
+      setShowOtpDebug(true);
+    }
     try {
       await sendPhoneOtp(phoneOtpNumber.trim());
+      addOtpLog('✅ OTP sent successfully via backend');
       setPhoneOtpStep('code');
       setInfo('OTP sent to ' + phoneOtpNumber);
-    } catch (e: any) { setError(e?.message ?? 'Failed to send OTP.'); }
+    } catch (e: any) {
+      addOtpLog(`❌ Error: ${e?.message ?? 'Unknown error'}`);
+      setShowOtpDebug(true);
+      setError(e?.message ?? 'Failed to send OTP.');
+    }
     finally { setLoading(false); }
   };
 
   const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
+    addOtpLog(`🔍 Verifying OTP code for ${phoneOtpNumber.trim()}`);
     try {
       const { valid } = await verifyPhoneOtp(phoneOtpNumber.trim(), phoneOtpCode.trim());
-      if (!valid) { setError('Invalid or expired OTP. Please try again.'); return; }
+      if (!valid) {
+        addOtpLog('❌ OTP invalid or expired');
+        setError('Invalid or expired OTP. Please try again.');
+        return;
+      }
+      addOtpLog('✅ OTP verified — signing in...');
       // OTP verified — now sign in using phone+password lookup
       // Since phone-only users may not have a password, try email lookup
       await signInWithPhonePassword(phoneOtpNumber.trim(), '');
     } catch (e: any) {
+      addOtpLog(`⚠️ Post-verify sign-in: ${e?.message}`);
       // signInWithPhonePassword may fail if no password — tell user to use email login
       setError('Phone verified. Please sign in with your email and password.');
       setLoginMode('password');
@@ -302,7 +329,8 @@ const AuthPage: React.FC = () => {
             <h2 className="text-2xl font-black text-amber-900 mb-2">Account Created!</h2>
             <p className="text-sm text-amber-700 mb-2">Verification email sent to</p>
             <p className="font-bold text-amber-800 text-sm mb-4 break-all">{accountCreated}</p>
-            <p className="text-xs text-amber-600 mb-6">Please verify your email before signing in.</p>
+            <p className="text-sm font-semibold text-amber-800 mb-1">Please login to continue.</p>
+            <p className="text-xs text-amber-600 mb-6">Check your email and verify your address first, then sign in below.</p>
             <div className="flex gap-3 mb-6 text-amber-400">
               {[16,12,20,12,16].map((sz,i) => (
                 <svg key={i} width={sz} height={sz} viewBox="0 0 24 24" fill="url(#acg)" className="animate-sparkle" style={{animationDelay:`${i*0.3}s`}}>
@@ -410,8 +438,33 @@ const AuthPage: React.FC = () => {
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
                     Enter your registered mobile number. We'll send a 6-digit OTP to verify your identity.
                   </div>
+                  {/* ── Backend config status warning ── */}
+                  {!import.meta.env.VITE_API_URL && (
+                    <div className="rounded-2xl px-4 py-3 text-xs border" style={{ background:'#fff5f5',borderColor:'#fecaca',color:'#b91c1c' }}>
+                      <p className="font-bold mb-1">⚠ Backend URL not configured</p>
+                      <p>Phone OTP requires the backend server. Set <code className="bg-red-100 px-1 rounded">VITE_API_URL</code> to your Railway/backend URL in Cloudflare Pages → Settings → Environment Variables.</p>
+                    </div>
+                  )}
+                  {import.meta.env.VITE_API_URL && (
+                    <div className="rounded-2xl px-3 py-2 text-[10px] text-green-700" style={{ background:'#f0fdf4',border:'1px solid #bbf7d0' }}>
+                      ✓ Backend: <span className="font-mono">{import.meta.env.VITE_API_URL}</span>
+                    </div>
+                  )}
                   <GoldInput label="Mobile Number" type="tel" value={phoneOtpNumber} onChange={e=>setPhoneOtpNumber(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
                   <GoldButton loading={loading}>Send OTP</GoldButton>
+                  {/* ── Debug log panel ── */}
+                  {otpDebugLog.length > 0 && (
+                    <div>
+                      <button type="button" onClick={()=>setShowOtpDebug(v=>!v)} className="text-[10px] text-amber-400 underline underline-offset-2 w-full text-left">
+                        {showOtpDebug ? '▲ Hide' : '▼ Show'} debug log ({otpDebugLog.length} entries)
+                      </button>
+                      {showOtpDebug && (
+                        <div className="mt-1.5 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-[9px] leading-relaxed" style={{ background:'#1e1e1e',color:'#d4d4d4' }}>
+                          {otpDebugLog.map((l,i) => <div key={i}>{l}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </form>
               ) : phoneOtpStep === 'code' ? (
                 <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">

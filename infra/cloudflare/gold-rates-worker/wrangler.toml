@@ -1,0 +1,10 @@
+name = "gold-rates-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "GOLD_RATES_KV"
+id      = "d9535d928c4f4e1a8da0ee8573e0a4b3"
