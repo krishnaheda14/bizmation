@@ -108,6 +108,25 @@ const ACTION_CODE_URL = `${window.location.origin}${window.location.pathname}#/a
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
+  // Normalize phone input to E.164-like format used across the app (best-effort)
+  function normalizePhone(raw: string): string {
+    if (!raw) return raw;
+    let s = String(raw).trim();
+    // keep leading + if present, remove all other non-digits
+    if (s.startsWith('+')) {
+      s = '+' + s.slice(1).replace(/\D/g, '');
+      return s;
+    }
+    // remove non-digits
+    s = s.replace(/\D/g, '');
+    // if 10 digits → assume Indian local number, add +91
+    if (s.length === 10) return '+91' + s;
+    // if already starts with 91 and 12 digits, add +
+    if (s.length === 12 && s.startsWith('91')) return '+' + s;
+    // fallback: prefix + if missing
+    return s.startsWith('+') ? s : ('+' + s);
+  }
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser]         = useState<User | null>(null);
   const [userProfile, setUserProfile]         = useState<UserProfile | null>(null);
@@ -240,11 +259,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Write phone → email index for phone-based sign-in (non-blocking, best-effort)
     // phoneIndex has public reads so phone-login works without auth
     if (data.phone && data.phone.trim().length > 4) {
-      setDoc(doc(db, 'phoneIndex', data.phone.trim()), {
-        email:     data.email,
-        uid:       createdUser.uid,
-        updatedAt: serverTimestamp(),
-      }).catch((e: any) => console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
+      try {
+        const normalizedPhone = normalizePhone(data.phone);
+        setDoc(doc(db, 'phoneIndex', normalizedPhone), {
+          email:     data.email,
+          uid:       createdUser.uid,
+          updatedAt: serverTimestamp(),
+        }).catch((e: any) => console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
+      } catch (e) {
+        console.warn('[signUp] phone normalization failed:', e);
+      }
     }
 
     // Attempt to create/sync record in backend DB (non-blocking — never stalls signup)
@@ -356,9 +380,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Reads the phoneIndex collection (public reads — no auth required) to find
   // the email linked to this phone number, then signs in with email + password.
   const signInWithPhonePassword = async (phone: string, password: string) => {
-    const normalised = phone.trim();
+    const normalised = normalizePhone(phone);
     // phoneIndex is a public collection — getDoc works without authentication
-    const indexSnap = await getDoc(doc(db, 'phoneIndex', normalised));
+    let indexSnap = await getDoc(doc(db, 'phoneIndex', normalised));
+    if (!indexSnap.exists()) {
+      // Fallback: try raw trimmed value (legacy entries may be stored without normalization)
+      const legacyKey = phone.trim();
+      if (legacyKey !== normalised) {
+        indexSnap = await getDoc(doc(db, 'phoneIndex', legacyKey));
+      }
+    }
     if (!indexSnap.exists()) {
       throw new Error('No account found with this phone number. Please sign in with your email or create an account.');
     }
@@ -382,6 +413,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Phone OTP via Twilio Verify (backend API) ─────────────────────────────
   const sendPhoneOtp = async (phone: string): Promise<void> => {
     const apiBase = (import.meta.env.VITE_API_URL as string) || '';
+    const normalizedPhone = normalizePhone(phone);
     const url    = `${apiBase}/api/auth/send-otp`;
 
     // ── Debug: log everything so we can trace failures ───────────────────
@@ -389,7 +421,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
     console.log('Resolved apiBase       :', apiBase);
     console.log('Full URL               :', url);
-    console.log('Phone sent             :', phone);
+    console.log('Phone sent (raw)       :', phone);
+    console.log('Phone sent (normalized):', normalizedPhone);
     if (!apiBase) {
       console.warn(
         '⚠  VITE_API_URL is NOT set.\n'
@@ -404,7 +437,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       res = await fetch(url, {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ phone }),
+        body   : JSON.stringify({ phone: normalizedPhone }),
       });
     } catch (fetchErr: any) {
       console.error('[sendPhoneOtp] Network error (fetch threw):', fetchErr);
@@ -432,12 +465,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const verifyPhoneOtp = async (phone: string, code: string): Promise<{ valid: boolean }> => {
     const apiBase = (import.meta.env.VITE_API_URL as string) || '';
+    const normalizedPhone = normalizePhone(phone);
     const url    = `${apiBase}/api/auth/verify-otp`;
 
     console.group('[verifyPhoneOtp]');
     console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
     console.log('Full URL               :', url);
-    console.log('Phone                  :', phone);
+    console.log('Phone (raw)            :', phone);
+    console.log('Phone (normalized)     :', normalizedPhone);
     console.groupEnd();
 
     let res: Response;
@@ -445,7 +480,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       res = await fetch(url, {
         method : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify({ phone, code }),
+        body   : JSON.stringify({ phone: normalizedPhone, code }),
       });
     } catch (fetchErr: any) {
       console.error('[verifyPhoneOtp] Network error:', fetchErr);

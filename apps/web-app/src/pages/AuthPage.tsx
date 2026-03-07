@@ -459,7 +459,7 @@ const AuthPage: React.FC = () => {
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
                     Enter the 6-digit OTP sent to <strong>{phoneOtpNumber}</strong>.
                   </div>
-                  <GoldInput label="6-Digit OTP" type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={phoneOtpCode} onChange={e=>setPhoneOtpCode(e.target.value.replace(/\D/g,''))} required autoFocus placeholder="------" />
+                  <GoldInput label="OTP (4-6 digits)" type="text" inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} value={phoneOtpCode} onChange={e=>setPhoneOtpCode(e.target.value.replace(/\D/g,''))} required autoFocus placeholder="----" />
                   <GoldButton loading={loading}>Verify OTP</GoldButton>
                   <button type="button" onClick={()=>{setPhoneOtpStep('phone');setPhoneOtpCode('');clearMsgs();}} className="w-full text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong number? Go back</button>
                 </form>

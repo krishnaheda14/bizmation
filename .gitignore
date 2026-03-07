@@ -54,3 +54,7 @@ ENV/
 *.key
 *.mobileprovision
 *.orig.*
+
+# Ignore compiled JS artifacts accidentally placed in source
+/apps/web-app/src/**/*.js
+/apps/web-app/src/**/*.js.map
