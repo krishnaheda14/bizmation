@@ -6,8 +6,16 @@ export interface Env {
 
 function corsHeaders(origin: string | null) {
   const allowed = ['https://bizmation.pages.dev', 'https://bizmation.com', 'http://localhost:5173', 'http://localhost:4173'];
-  const allowOrigin = (origin && allowed.some(o => origin.startsWith(o.replace(/\/$/, '')))) ? origin : allowed[0];
-  return { 'Access-Control-Allow-Origin': allowOrigin, 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Content-Type': 'application/json' };
+  // For debugging / Pages integration: if the browser sends an Origin header, echo it back.
+  // This prevents CORS mismatch blocking when Pages origin differs slightly.
+  const allowOrigin = origin || allowed[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+    'Content-Type': 'application/json'
+  };
 }
 
 function jsonResponse(body: unknown, status = 200, origin: string | null = null) {

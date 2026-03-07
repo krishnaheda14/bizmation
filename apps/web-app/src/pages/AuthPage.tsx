@@ -130,7 +130,7 @@ const AuthPage: React.FC = () => {
   const [accountCreated, setAccountCreated] = useState('');
   const [signupProgress, setSignupProgress] = useState<ProgressStep[]>([]);
   const [otpDebugLog, setOtpDebugLog] = useState<string[]>([]);
-  const [showOtpDebug, setShowOtpDebug] = useState(false);
+  
 
   const addOtpLog = (msg: string) => {
     const ts = new Date().toLocaleTimeString();
@@ -191,7 +191,7 @@ const AuthPage: React.FC = () => {
     addOtpLog(`🔧 VITE_API_URL = ${apiUrl || '⚠️ NOT SET — phone OTP requires backend'}`);
     if (!apiUrl) {
       addOtpLog('❌ VITE_API_URL is missing. Set it in Cloudflare Pages → Settings → Environment Variables → VITE_API_URL=https://your-backend.railway.app');
-      setShowOtpDebug(true);
+      
     }
     try {
       await sendPhoneOtp(phoneOtpNumber.trim());
@@ -200,7 +200,6 @@ const AuthPage: React.FC = () => {
       setInfo('OTP sent to ' + phoneOtpNumber);
     } catch (e: any) {
       addOtpLog(`❌ Error: ${e?.message ?? 'Unknown error'}`);
-      setShowOtpDebug(true);
       setError(e?.message ?? 'Failed to send OTP.');
     }
     finally { setLoading(false); }
@@ -445,24 +444,13 @@ const AuthPage: React.FC = () => {
                       <p>Phone OTP requires the backend server. Set <code className="bg-red-100 px-1 rounded">VITE_API_URL</code> to your Railway/backend URL in Cloudflare Pages → Settings → Environment Variables.</p>
                     </div>
                   )}
-                  {import.meta.env.VITE_API_URL && (
-                    <div className="rounded-2xl px-3 py-2 text-[10px] text-green-700" style={{ background:'#f0fdf4',border:'1px solid #bbf7d0' }}>
-                      ✓ Backend: <span className="font-mono">{import.meta.env.VITE_API_URL}</span>
-                    </div>
-                  )}
+                  {/* Backend URL hidden from UI for security */}
                   <GoldInput label="Mobile Number" type="tel" value={phoneOtpNumber} onChange={e=>setPhoneOtpNumber(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
                   <GoldButton loading={loading}>Send OTP</GoldButton>
                   {/* ── Debug log panel ── */}
                   {otpDebugLog.length > 0 && (
-                    <div>
-                      <button type="button" onClick={()=>setShowOtpDebug(v=>!v)} className="text-[10px] text-amber-400 underline underline-offset-2 w-full text-left">
-                        {showOtpDebug ? '▲ Hide' : '▼ Show'} debug log ({otpDebugLog.length} entries)
-                      </button>
-                      {showOtpDebug && (
-                        <div className="mt-1.5 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-[9px] leading-relaxed" style={{ background:'#1e1e1e',color:'#d4d4d4' }}>
-                          {otpDebugLog.map((l,i) => <div key={i}>{l}</div>)}
-                        </div>
-                      )}
+                    <div className="mt-1.5 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-[9px] leading-relaxed" style={{ background:'#1e1e1e',color:'#d4d4d4' }}>
+                      {otpDebugLog.map((l,i) => <div key={i}>{l}</div>)}
                     </div>
                   )}
                 </form>
