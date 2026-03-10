@@ -49,7 +49,24 @@ export const HomeLanding: React.FC = () => {
     const [priceFeed, setPriceFeed] = useState<any>(null);
     const fetchDetailedFeed = useCallback(async () => {
       try {
-        // Fetch CDN rates with cache-bust to avoid stale CDN/browser cache
+        const WORKER_URL = ((import.meta as any).env?.VITE_GOLD_WORKER_URL ?? '').replace(/\/$/, '');
+        if (WORKER_URL) {
+          const res = await fetch(`${WORKER_URL}/gold-rates`, { cache: 'no-store' }).then(r => r.json());
+          const d = res?.data;
+          if (d?.xauUsd) {
+            setPriceFeed({
+              xauInr:    d.xauInr,
+              xagInr:    d.xagInr,
+              xauUsd:    d.xauUsd,
+              xagUsd:    d.xagUsd,
+              usdInr:    d.usdToInr,
+              source:    d.source,
+              fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
+            });
+            return;
+          }
+        }
+        // CDN fallback for debug feed
         const bust = `?_=${Date.now()}`;
         const [xauData, xagData, usdData] = await Promise.all([
           fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' }).then(r => r.json()),
@@ -59,25 +76,7 @@ export const HomeLanding: React.FC = () => {
         const xauInr = xauData?.xau?.inr;
         const xagInr = xagData?.xag?.inr;
         const usdInr = usdData?.usd?.inr;
-        // Fallback: fetch Swissquote XAU/USD, XAG/USD
-        let xauUsd = null, xagUsd = null;
-        const parseSQ = (data: any) => {
-          for (const platform of data as any[]) {
-            const profiles: any[] = platform.spreadProfilePrices || [];
-            const standard = profiles.find((p: any) => p.spreadProfile === 'standard');
-            if (standard?.bid != null && standard?.ask != null) return (standard.bid + standard.ask) / 2;
-          }
-          const first = (data as any[])[0]?.spreadProfilePrices?.[0];
-          if (first?.bid != null && first?.ask != null) return (first.bid + first.ask) / 2;
-          return null;
-        };
-        try {
-          const sqXau = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD') + `&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
-          const sqXag = await fetch('https://corsproxy.io/?url=' + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD') + `&_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json());
-          xauUsd = parseSQ(sqXau);
-          xagUsd = parseSQ(sqXag);
-        } catch (e) {}
-        setPriceFeed({ xauInr, xagInr, usdInr, xauUsd, xagUsd, fetchedAt: new Date().toLocaleTimeString('en-IN') });
+        setPriceFeed({ xauInr, xagInr, xauUsd: usdInr ? xauInr / usdInr : null, xagUsd: usdInr ? xagInr / usdInr : null, usdInr, source: 'fawazahmed0-CDN (fallback)', fetchedAt: new Date().toLocaleTimeString('en-IN') });
       } catch (e) {
         setPriceFeed(null);
       }
@@ -85,7 +84,7 @@ export const HomeLanding: React.FC = () => {
 
     useEffect(() => {
       fetchDetailedFeed();
-      const interval = setInterval(fetchDetailedFeed, 5000);
+      const interval = setInterval(fetchDetailedFeed, 5 * 60 * 1000); // refresh every 5 min (match worker cron)
       return () => clearInterval(interval);
     }, [fetchDetailedFeed]);
   const { currentUser, userProfile } = useAuth();
@@ -115,7 +114,7 @@ export const HomeLanding: React.FC = () => {
   const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
   const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500' });
   const [sellForm, setSellForm] = useState<SellFormData>({
-    grams: '', purity: '24', bank: '', account: '', ifsc: '',
+    grams: '', purity: '999', bank: '', account: '', ifsc: '',
   });
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -160,13 +159,14 @@ export const HomeLanding: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockedRate]);
-  const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
-  const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 24);
-  // Buy prices: 24K rate minus 1.75% — displayed as the effective buy price (not shown in UI)
+  // Use the highest purity (999) as the reference for buy prices
+  const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
+  const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 999);
+  // Buy prices: 999 rate minus 1.75% — effective buy price (not shown in UI)
   const goldBuyPrice = gold24 ? Math.round(gold24.ratePerGram * 0.9825 * 100) / 100 : 0;
   const silverBuyPrice = silver24 ? Math.round(silver24.ratePerGram * 0.9825 * 100) / 100 : 0;
-  // Only show 24K categories (backend uses custom categories). Filtered view for potential lists.
-  const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 24) || (r.metalType === 'SILVER' && r.purity === 24));
+  // Live rates table: show 999 grade only
+  const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 999) || (r.metalType === 'SILVER' && r.purity === 999));
 
   const loadRates = useCallback(async () => {
     setLoading(true);
@@ -318,7 +318,7 @@ export const HomeLanding: React.FC = () => {
 
     setModal({ type: null });
     setSuccessMsg(`Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${custPhone || 'your registered number'} within 24 hours.`);
-    setSellForm({ grams: '', purity: '24', bank: '', account: '', ifsc: '' });
+    setSellForm({ grams: '', purity: '999', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
 
     // ── Write sell request to Firestore ──────────────────────────────────
@@ -475,7 +475,7 @@ export const HomeLanding: React.FC = () => {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-yellow-100">
                         <Coins size={20} />
-                        <span className="font-bold tracking-wide text-sm uppercase">Gold 24K</span>
+                        <span className="font-bold tracking-wide text-sm uppercase">Gold 24K (999)</span>
                       </div>
                     <span className="text-yellow-100 text-xs font-medium bg-white/20 px-2.5 py-1 rounded-full">per 10g</span>
                   </div>
@@ -502,7 +502,7 @@ export const HomeLanding: React.FC = () => {
               {/* Silver */}
               <div className="bg-white/70 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide">Silver 24K / 1kg</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide">Silver 999 / 1kg</p>
                   <button
                     onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
                     className="flex items-center gap-1 px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-full text-xs font-bold transition-colors"
@@ -534,6 +534,27 @@ export const HomeLanding: React.FC = () => {
                   Refresh
                 </button>
               </div>
+
+              {/* Price debug mini-panel — shows raw market data from worker */}
+              {priceFeed && (
+                <div className="bg-black/5 dark:bg-white/5 border border-amber-200/50 dark:border-yellow-900/30 rounded-xl px-4 py-3 text-xs font-mono space-y-1">
+                  <div className="flex justify-between text-amber-800/70 dark:text-gray-400">
+                    <span>XAU/USD</span>
+                    <span className="font-bold text-amber-900 dark:text-yellow-300">${priceFeed.xauUsd ? priceFeed.xauUsd.toFixed(2) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600/70 dark:text-gray-500">
+                    <span>XAG/USD</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300">${priceFeed.xagUsd ? priceFeed.xagUsd.toFixed(4) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700/70 dark:text-emerald-400/70">
+                    <span>USD/INR</span>
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300">₹{priceFeed.usdInr ? Number(priceFeed.usdInr).toFixed(2) : '—'}</span>
+                  </div>
+                  <div className="border-t border-amber-200/40 dark:border-gray-700 pt-1 text-amber-700/50 dark:text-gray-600 text-[10px]">
+                    Source: {priceFeed.source} · {priceFeed.fetchedAt}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -723,7 +744,7 @@ export const HomeLanding: React.FC = () => {
                 ) : filteredRates.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-10 text-center text-amber-700/60 dark:text-gray-500 text-sm">
-                      No 24K rates available. Click Refresh.
+                      No live rates available. Click Refresh.
                     </td>
                   </tr>
                 ) : (
@@ -940,9 +961,9 @@ export const HomeLanding: React.FC = () => {
             <div>
               <label className="fieldLabel">Gold Purity</label>
               <select value={sellForm.purity} onChange={(e) => setSellForm((f) => ({ ...f, purity: e.target.value }))} className="fieldInput">
-                <option value="24">24K (999)</option>
-                <option value="22">22K (916)</option>
-                <option value="18">18K (750)</option>
+                <option value="999">24K (999)</option>
+                <option value="916">22K (916)</option>
+                <option value="750">18K (750)</option>
               </select>
             </div>
             <div>

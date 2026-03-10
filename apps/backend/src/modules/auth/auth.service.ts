@@ -16,6 +16,7 @@
  */
 
 import twilio from 'twilio';
+import { getAdminAuth, getAdminFirestore } from '../../lib/firebaseAdmin';
 
 const accountSid       = process.env.TWILIO_ACCOUNT_SID;
 const apiKeySid        = process.env.TWILIO_API_KEY_SID;
@@ -79,7 +80,7 @@ export async function sendOtp(phone: string): Promise<{ sent: boolean; message: 
     const verification = await getClient().verify.v2
       .services(verifyServiceSid)
       .verifications
-      .create({ to: normalized, channel: 'sms' });
+      .create({ to: normalized, channel: 'sms', customFriendlyName: 'Bizmation' });
 
     console.log('[Twilio/sendOtp] Verification status:', verification.status, '| SID:', verification.sid);
     return {
@@ -137,4 +138,46 @@ function normalizePhone(phone: string): string {
 /** Mask phone for logs/messages: +91*****6789 */
 function masked(phone: string): string {
   return phone.slice(0, 3) + '*'.repeat(Math.max(0, phone.length - 7)) + phone.slice(-4);
+}
+
+/**
+ * Verify OTP via Twilio, then look up the user in Firestore phoneIndex and
+ * return a Firebase custom token so the client can call signInWithCustomToken().
+ */
+export async function verifyOtpAndCreateFirebaseToken(
+  phone: string,
+  code: string,
+): Promise<{ valid: boolean; customToken?: string; email?: string }> {
+  // 1. Verify the OTP with Twilio
+  const { valid } = await verifyOtp(phone, code);
+  if (!valid) return { valid: false };
+
+  // 2. Look up Firebase UID from Firestore phoneIndex
+  const normalized = normalizePhone(phone);
+  let uid: string | undefined;
+  let email: string | undefined;
+  try {
+    const snap = await getAdminFirestore()
+      .collection('phoneIndex')
+      .doc(normalized)
+      .get();
+    if (snap.exists) {
+      uid   = snap.data()?.uid   as string | undefined;
+      email = snap.data()?.email as string | undefined;
+    }
+  } catch (err: any) {
+    console.error('[verifyOtpAndCreateFirebaseToken] Firestore lookup failed:', err?.message);
+    throw new Error('Account lookup failed. Please try again.');
+  }
+
+  if (!uid) {
+    throw new Error(
+      'No Bizmation account is linked to this phone number. ' +
+      'Please create an account first.'
+    );
+  }
+
+  // 3. Issue a Firebase custom token for the found UID
+  const customToken = await getAdminAuth().createCustomToken(uid);
+  return { valid: true, customToken, email };
 }

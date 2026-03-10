@@ -88,7 +88,7 @@ const CITIES_BY_STATE: Record<string, string[]> = {
 };
 
 type Tab       = 'login' | 'signup';
-type LoginMode = 'password' | 'otp' | 'phone-otp';
+type LoginMode = 'password' | 'otp';
 type OtpStep   = 'input' | 'sent';
 type PhoneOtpStep = 'phone' | 'code' | 'done';
 type ProgressStatus = 'pending' | 'running' | 'done' | 'error';
@@ -111,7 +111,7 @@ const blankForm = (): ExtSignUpData => ({
 });
 
 const AuthPage: React.FC = () => {
-  const { signIn, signUp, sendOtp, verifyOtp, signInWithGoogle, sendPhoneOtp, verifyPhoneOtp, signInWithPhonePassword } = useAuth();
+  const { signIn, signUp, sendOtp, verifyOtp, signInWithGoogle, sendPhoneOtp, verifyPhoneOtp, verifyPhoneOtpAndLogin, signInWithPhonePassword } = useAuth();
 
   const [tab,        setTab]        = useState<Tab>('login');
   const [loginMode,  setLoginMode]  = useState<LoginMode>('password');
@@ -186,11 +186,11 @@ const AuthPage: React.FC = () => {
   const handleSendPhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs(); setLoading(true);
     setOtpDebugLog([]);
-    const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+    const workerUrl = import.meta.env.VITE_TWILIO_WORKER_URL as string | undefined;
     addOtpLog(`📡 Sending OTP to: ${phoneOtpNumber.trim()}`);
-    addOtpLog(`🔧 VITE_API_URL = ${apiUrl || '⚠️ NOT SET — phone OTP requires backend'}`);
-    if (!apiUrl) {
-      addOtpLog('❌ VITE_API_URL is missing. Set it in Cloudflare Pages → Settings → Environment Variables → VITE_API_URL=https://your-backend.railway.app');
+    addOtpLog(`🔧 VITE_TWILIO_WORKER_URL = ${workerUrl || '⚠️ NOT SET — add it in Cloudflare Pages → Settings → Environment Variables'}`);
+    if (!workerUrl) {
+      addOtpLog('❌ VITE_TWILIO_WORKER_URL is missing. Set it to your deployed Twilio Worker URL (e.g. https://twilio-otp-worker.xxx.workers.dev)');
       
     }
     try {
@@ -209,21 +209,13 @@ const AuthPage: React.FC = () => {
     e.preventDefault(); clearMsgs(); setLoading(true);
     addOtpLog(`🔍 Verifying OTP code for ${phoneOtpNumber.trim()}`);
     try {
-      const { valid } = await verifyPhoneOtp(phoneOtpNumber.trim(), phoneOtpCode.trim());
-      if (!valid) {
-        addOtpLog('❌ OTP invalid or expired');
-        setError('Invalid or expired OTP. Please try again.');
-        return;
-      }
-      addOtpLog('✅ OTP verified — signing in...');
-      // OTP verified — now sign in using phone+password lookup
-      // Since phone-only users may not have a password, try email lookup
-      await signInWithPhonePassword(phoneOtpNumber.trim(), '');
+      await verifyPhoneOtpAndLogin(phoneOtpNumber.trim(), phoneOtpCode.trim());
+      addOtpLog('✅ OTP verified — signed in!');
+      setPhoneOtpStep('done');
+      setInfo('Signed in successfully!');
     } catch (e: any) {
-      addOtpLog(`⚠️ Post-verify sign-in: ${e?.message}`);
-      // signInWithPhonePassword may fail if no password — tell user to use email login
-      setError('Phone verified. Please sign in with your email and password.');
-      setLoginMode('password');
+      addOtpLog(`❌ Error: ${e?.message}`);
+      setError(e?.message ?? 'Invalid or expired OTP. Please try again.');
     } finally { setLoading(false); }
   };
 
@@ -392,11 +384,10 @@ const AuthPage: React.FC = () => {
 
               <div className="flex gap-1.5 p-1 mb-6 rounded-2xl" style={{ background:'rgba(253,243,212,0.8)',border:'1px solid rgba(251,191,36,0.25)' }}>
                 {([
-                  { mode: 'password'  as LoginMode, Icon: Lock,       label: 'Password'   },
-                  { mode: 'otp'       as LoginMode, Icon: Mail,       label: 'Magic Link' },
-                  { mode: 'phone-otp' as LoginMode, Icon: Smartphone, label: 'Phone OTP'  },
+                  { mode: 'password'  as LoginMode, Icon: Lock, label: 'Password' },
+                  { mode: 'otp'       as LoginMode, Icon: Mail, label: 'Magic Link' },
                 ] as { mode: LoginMode; Icon: React.FC<any>; label: string }[]).map(({ mode, Icon, label }) => (
-                  <button key={mode} onClick={() => { setLoginMode(mode); setOtpStep('input'); setPhoneOtpStep('phone'); clearMsgs(); }}
+                  <button key={mode} onClick={() => { setLoginMode(mode); setOtpStep('input'); clearMsgs(); }}
                     className="flex-1 py-2 rounded-xl text-xs font-semibold tracking-wide transition-all flex flex-col items-center gap-0.5"
                     style={loginMode===mode ? { background:'linear-gradient(135deg,#fde68a,#f59e0b)',color:'#451a03' } : { color:'#92400e' }}>
                     <Icon size={13} />
@@ -405,7 +396,7 @@ const AuthPage: React.FC = () => {
                 ))}
               </div>
 
-              {loginMode === 'password' ? (
+              {loginMode === 'password' && (
                 <form onSubmit={handlePasswordLogin} className="space-y-4">
                   <GoldInput label="Email Address" type="email" value={lpEmail} onChange={e=>setLpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
                   <div className="relative">
@@ -415,62 +406,27 @@ const AuthPage: React.FC = () => {
                   <GoldButton loading={loading}>Sign In</GoldButton>
                   <p className="text-center text-xs text-amber-500 mt-1">New here? <button type="button" onClick={()=>setTab('signup')} className="text-amber-700 font-semibold underline underline-offset-2 hover:text-amber-900 transition-colors">Create an account</button></p>
                 </form>
-              ) : loginMode === 'otp' ? otpStep === 'input' ? (
-                <form onSubmit={handleSendOtp} className="space-y-4">
-                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
-                    Enter your email and we will send a secure magic link. Click it to sign in instantly — no password needed.
-                  </div>
-                  <GoldInput label="Email Address" type="email" value={otpEmail} onChange={e=>setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
-                  <GoldButton loading={loading}>Send Magic Link</GoldButton>
-                </form>
-              ) : (
-                <div className="text-center py-6 space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto animate-float">
-                  <Mail size={32} className="text-amber-500" />
-                </div>
-                  <h3 className="font-display text-xl font-semibold text-amber-900">Check your inbox</h3>
-                  <p className="text-sm text-amber-600 leading-relaxed">We sent a magic link to<br /><strong className="text-amber-800">{otpEmail}</strong></p>
-                  <button onClick={()=>{setOtpStep('input');clearMsgs();}} className="text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong email? Try again</button>
-                </div>
-              ) : phoneOtpStep === 'phone' ? (
-                <form onSubmit={handleSendPhoneOtp} className="space-y-4">
-                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
-                    Enter your registered mobile number. We'll send a 6-digit OTP to verify your identity.
-                  </div>
-                  {/* ── Backend config status warning ── */}
-                  {!import.meta.env.VITE_API_URL && (
-                    <div className="rounded-2xl px-4 py-3 text-xs border" style={{ background:'#fff5f5',borderColor:'#fecaca',color:'#b91c1c' }}>
-                      <p className="font-bold mb-1">⚠ Backend URL not configured</p>
-                      <p>Phone OTP requires the backend server. Set <code className="bg-red-100 px-1 rounded">VITE_API_URL</code> to your Railway/backend URL in Cloudflare Pages → Settings → Environment Variables.</p>
+              )}
+
+              {loginMode === 'otp' && (
+                otpStep === 'input' ? (
+                  <form onSubmit={handleSendOtp} className="space-y-4">
+                    <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                      Enter your email and we will send a secure magic link. Click it to sign in instantly — no password needed.
                     </div>
-                  )}
-                  {/* Backend URL hidden from UI for security */}
-                  <GoldInput label="Mobile Number" type="tel" value={phoneOtpNumber} onChange={e=>setPhoneOtpNumber(e.target.value)} required autoFocus placeholder="+91 98765 43210" />
-                  <GoldButton loading={loading}>Send OTP</GoldButton>
-                  {/* ── Debug log panel ── */}
-                  {otpDebugLog.length > 0 && (
-                    <div className="mt-1.5 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-[9px] leading-relaxed" style={{ background:'#1e1e1e',color:'#d4d4d4' }}>
-                      {otpDebugLog.map((l,i) => <div key={i}>{l}</div>)}
+                    <GoldInput label="Email Address" type="email" value={otpEmail} onChange={e=>setOtpEmail(e.target.value)} required autoFocus placeholder="you@example.com" />
+                    <GoldButton loading={loading}>Send Magic Link</GoldButton>
+                  </form>
+                ) : (
+                  <div className="text-center py-6 space-y-4">
+                    <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto animate-float">
+                      <Mail size={32} className="text-amber-500" />
                     </div>
-                  )}
-                </form>
-              ) : phoneOtpStep === 'code' ? (
-                <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
-                  <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
-                    Enter the 6-digit OTP sent to <strong>{phoneOtpNumber}</strong>.
+                    <h3 className="font-display text-xl font-semibold text-amber-900">Check your inbox</h3>
+                    <p className="text-sm text-amber-600 leading-relaxed">We sent a magic link to<br /><strong className="text-amber-800">{otpEmail}</strong></p>
+                    <button onClick={()=>{setOtpStep('input');clearMsgs();}} className="text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong email? Try again</button>
                   </div>
-                  <GoldInput label="OTP (4-6 digits)" type="text" inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} value={phoneOtpCode} onChange={e=>setPhoneOtpCode(e.target.value.replace(/\D/g,''))} required autoFocus placeholder="----" />
-                  <GoldButton loading={loading}>Verify OTP</GoldButton>
-                  <button type="button" onClick={()=>{setPhoneOtpStep('phone');setPhoneOtpCode('');clearMsgs();}} className="w-full text-xs text-amber-500 underline underline-offset-2 hover:text-amber-700 transition-colors">Wrong number? Go back</button>
-                </form>
-              ) : (
-                <div className="text-center py-6 space-y-3">
-                  <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-                  <svg viewBox="0 0 36 36" className="w-8 h-8"><path d="M6 18 l8 8 l16 -16" fill="none" stroke="#16a34a" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </div>
-                  <h3 className="font-display text-xl font-semibold text-amber-900">Phone Verified</h3>
-                  <p className="text-sm text-amber-600">Signing you in…</p>
-                </div>
+                )
               )}
             </div>
           )}

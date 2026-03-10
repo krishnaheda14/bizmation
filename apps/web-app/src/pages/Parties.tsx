@@ -158,7 +158,7 @@ export const Parties: React.FC = () => {
 
       // Fetch backend rates (single source of truth). We'll compare backend 24K with Swissquote-derived 24K.
       const backendRates = await fetchLiveMetalRates().catch(() => null);
-      const backendGold24 = backendRates?.find((r: any) => r.metalType === 'GOLD' && r.purity === 24)?.ratePerGram;
+      const backendGold24 = backendRates?.find((r: any) => r.metalType === 'GOLD' && r.purity === 999)?.ratePerGram;
 
       // If both backend and Swissquote-derived exist, compare and auto-sync if they differ significantly
       const mismatchThresholdPercent = 0.5; // 0.5% allowed diff

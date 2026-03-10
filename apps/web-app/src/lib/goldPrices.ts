@@ -2,22 +2,76 @@
  * Shared Gold / Silver Price Fetching Utility
  *
  * Flow (most accurate to least):
- *   1. Backend /api/gold-rates/current  — Swissquote real-time + exchangerate.fun USD/INR
- *   2. CDN fawazahmed0 XAU/XAG/INR     — direct INR daily rate, no proxy needed
- *   3. Swissquote via corsproxy         — real-time USD + exchangerate.fun USD/INR
+ *   1. Cloudflare Worker (KV cache, refreshed every 5 min by Cron Trigger)
+ *   2. Backend /api/gold-rates/current  — Swissquote real-time
+ *   3. CDN fawazahmed0 XAU/XAG/INR     — direct INR daily rate
+ *   4. Swissquote via corsproxy         — real-time USD + fawazahmed0 USD/INR
+ *
+ * Purity grades returned:
+ *   GOLD  — 999 (24K), 995 (24K), 916 (22K), 750 (18K)   displayRate = per 10g
+ *   SILVER — 999 only (5% handling surcharge silently included) displayRate = per 1kg
  */
 
 export interface MetalRate {
   metalType: 'GOLD' | 'SILVER';
-  purity: 24 | 22 | 18;
+  /** Numeric purity: 999, 995, 916, 750 for gold; 999 for silver */
+  purity: number;
+  /** Human-readable label e.g. "24K (999)", "22K (916)", "999" */
+  purityLabel?: string;
   ratePerGram: number;
-  displayRate: number; // per 10g for gold, per 1kg for silver
+  /** Per 10g for gold; per 1kg for silver */
+  displayRate: number;
   effectiveDate: string;
   source: string;
 }
 
+/** Full market-data snapshot returned by the Cloudflare Worker */
+export interface WorkerData {
+  rates: MetalRate[];
+  fetchedAt: string;
+  source: string;
+  /** XAU (gold) in INR per troy oz */
+  xauInr: number;
+  /** XAG (silver) in INR per troy oz */
+  xagInr: number;
+  /** XAU (gold) in USD per troy oz */
+  xauUsd: number;
+  /** XAG (silver) in USD per troy oz */
+  xagUsd: number;
+  /** USD → INR conversion rate used */
+  usdToInr: number;
+}
+
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY   = 1.09;
+/**
+ * Silver surcharge applied silently on top of import duty.
+ * Not shown in the public UI — only visible to super-admin and in this file.
+ */
+const SILVER_SURCHARGE = 1.05;
+
+/**
+ * Build the 5-rate array (4 gold purities + 1 silver 999) from raw spot prices.
+ * Mirrors the worker's buildRates() exactly.
+ *   Gold base = spot_per_gram_995 = (xauInr / TROY_OZ) * IMPORT_DUTY
+ *   999 = base × (999/995)   |   916 = base × (916/995)   |   750 = base × (750/995)
+ *   Silver 999 = silver_base × SILVER_SURCHARGE
+ */
+function buildRatesFromSpot(xauInr: number, xagInr: number, source: string): MetalRate[] {
+  const now = new Date().toISOString();
+  const base995 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+  const gold999 = base995 * (999 / 995);
+  const gold916 = base995 * (916 / 995);
+  const gold750 = base995 * (750 / 995);
+  const silver999 = ((xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY) * SILVER_SURCHARGE;
+  return [
+    { metalType: 'GOLD',   purity: 999, purityLabel: '24K (999)', ratePerGram: gold999,  displayRate: gold999  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 995, purityLabel: '24K (995)', ratePerGram: base995,  displayRate: base995  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 916, purityLabel: '22K (916)', ratePerGram: gold916,  displayRate: gold916  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 750, purityLabel: '18K (750)', ratePerGram: gold750,  displayRate: gold750  * 10,    effectiveDate: now, source },
+    { metalType: 'SILVER', purity: 999, purityLabel: '999',       ratePerGram: silver999, displayRate: silver999 * 1000, effectiveDate: now, source },
+  ];
+}
 
 // ── Primary API (fawazahmed0 / jsdelivr CDN): XAU and XAG rates in INR ──────
 // xau.inr = INR per 1 troy oz of gold
@@ -111,8 +165,7 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number }>
 }
 
 export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
-  // First try Cloudflare Worker (pre-cached, refreshed every 5 min by Cron Trigger).
-  // This is the fastest path and works even when the Railway backend is down.
+  // ── 1. Cloudflare Worker (fastest, KV-cached, refreshed every 5 min) ──────
   const WORKER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOLD_WORKER_URL)
     ? ((import.meta as any).env.VITE_GOLD_WORKER_URL as string).replace(/\/$/, '')
     : '';
@@ -120,12 +173,12 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
   if (WORKER_URL) {
     try {
       const workerRes = await fetchJSON(`${WORKER_URL}/gold-rates`, 5000);
-      const cached = workerRes?.data;
-      if (cached?.rates && Array.isArray(cached.rates) && cached.rates.length >= 4) {
-        return cached.rates.map((r: MetalRate) => ({
+      const data = workerRes?.data;
+      if (data?.rates && Array.isArray(data.rates) && data.rates.length >= 4) {
+        return (data.rates as MetalRate[]).map((r) => ({
           ...r,
-          effectiveDate: cached.fetchedAt ?? new Date().toISOString(),
-          source: `Worker (${cached.source ?? 'KV cache'})`,
+          effectiveDate: data.fetchedAt ?? new Date().toISOString(),
+          source: `Worker (${data.source ?? 'KV cache'})`,
         }));
       }
     } catch {
@@ -133,71 +186,44 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
     }
   }
 
-  // Next try backend API as source of truth. If backend is available
-  // and returns recent values, use it. Otherwise fall back to CDN/Swissquote.
-  const now = new Date().toISOString();
-  try {
-    const bust = `?_=${Date.now()}`;
-    const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_URL) ? (import.meta as any).env.VITE_API_URL as string : '';
-    const backendFetch = async (metal: 'GOLD' | 'SILVER', purity: number) => {
-      const path = `/api/gold-rates/current?metalType=${encodeURIComponent(metal)}&purity=${encodeURIComponent(String(purity))}` + bust;
-      const url = API_BASE ? (API_BASE.replace(/\/$/, '') + path) : path;
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = await res.json();
-      if (!body?.success || !body?.data) throw new Error('Invalid backend response');
-      const r = body.data;
-      return {
-        metalType: metal,
-        purity,
-        ratePerGram: Number(r.ratePerGram || r.rate_per_gram || 0),
-        displayRate: Number(r.ratePerGram || r.rate_per_gram || 0) * (metal === 'GOLD' ? 10 : 1000),
-        effectiveDate: r.effectiveDate || r.effective_date || now,
-        source: r.source || 'BACKEND',
-      } as MetalRate;
-    };
-
-    // Parallel fetches for common rates
-    const [g24, g22, g18, s24, s22, s18] = await Promise.all([
-      backendFetch('GOLD', 24),
-      backendFetch('GOLD', 22),
-      backendFetch('GOLD', 18),
-      backendFetch('SILVER', 24),
-      backendFetch('SILVER', 22),
-      backendFetch('SILVER', 18),
-    ]);
-    return [g24, g22, g18, s24, s22, s18];
-  } catch (backendErr) {
-    // Backend unavailable or returned bad data — fall back to original logic
-  }
-
-  // --- Fallback: use CDN / Swissquote as before ---
+  // ── 2. CDN / Swissquote fallback ─────────────────────────────────────────
   let xauInr: number;
   let xagInr: number;
   let src = 'Live International Market';
-  let xagInrSwiss = 7890.99; // Use fixed Swissquote × USD/INR value for silver
 
   try {
     ({ xauInr, xagInr } = await fetchViaCDN());
-    src = 'Live International Market';
   } catch {
-    // Try Swissquote fallback
     ({ xauInr, xagInr } = await fetchViaSwissquote());
-    src = 'Live International Market';
+    src = 'Live International Market (Swissquote)';
   }
 
-  const gold24 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
-  // Force silver to use Swissquote × USD/INR value
-  const silver24 = (xagInrSwiss / TROY_OZ_GRAMS) * IMPORT_DUTY;
+  return buildRatesFromSpot(xauInr, xagInr, src);
+}
 
-  return [
-    // Gold
-    { metalType: 'GOLD', purity: 24, ratePerGram: gold24, displayRate: gold24 * 10, effectiveDate: now, source: src },
-    { metalType: 'GOLD', purity: 22, ratePerGram: (gold24 * 22) / 24, displayRate: ((gold24 * 22) / 24) * 10, effectiveDate: now, source: src },
-    { metalType: 'GOLD', purity: 18, ratePerGram: (gold24 * 18) / 24, displayRate: ((gold24 * 18) / 24) * 10, effectiveDate: now, source: src },
-    // Silver (always use Swissquote × USD/INR value)
-    { metalType: 'SILVER', purity: 24, ratePerGram: silver24, displayRate: silver24 * 1000, effectiveDate: now, source: 'Swissquote × USD/INR' },
-    { metalType: 'SILVER', purity: 22, ratePerGram: (silver24 * 22) / 24, displayRate: ((silver24 * 22) / 24) * 1000, effectiveDate: now, source: 'Swissquote × USD/INR' },
-    { metalType: 'SILVER', purity: 18, ratePerGram: (silver24 * 18) / 24, displayRate: ((silver24 * 18) / 24) * 1000, effectiveDate: now, source: 'Swissquote × USD/INR' },
-  ];
+/**
+ * Fetch full market-data snapshot from the Cloudflare Worker.
+ * Returns null if the worker is unavailable or not configured.
+ * Used by GoldRates page and debug panels to display raw XAU/USD, XAG/USD, USD/INR values.
+ */
+export async function fetchWorkerData(): Promise<WorkerData | null> {
+  const WORKER_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOLD_WORKER_URL)
+    ? ((import.meta as any).env.VITE_GOLD_WORKER_URL as string).replace(/\/$/, '')
+    : '';
+  if (!WORKER_URL) return null;
+  try {
+    const res = await fetchJSON(`${WORKER_URL}/gold-rates`, 6000);
+    const data: WorkerData = res?.data;
+    if (!data?.rates?.length) return null;
+    return {
+      ...data,
+      rates: (data.rates as MetalRate[]).map((r) => ({
+        ...r,
+        effectiveDate: data.fetchedAt ?? new Date().toISOString(),
+        source: `Worker (${data.source ?? 'KV cache'})`,
+      })),
+    };
+  } catch {
+    return null;
+  }
 }

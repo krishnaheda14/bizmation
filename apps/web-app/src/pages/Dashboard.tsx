@@ -41,9 +41,8 @@ export const Dashboard: React.FC = () => {
   const fetchGoldRate = async () => {
     try {
       const rates = await fetchLiveMetalRates();
-        const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 24);
-        if (gold24) setGoldRate(gold24.ratePerGram);
-        if (gold24) setGoldRate(gold24.ratePerGram);
+        const gold999 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
+        if (gold999) setGoldRate(gold999.ratePerGram);
     } catch (error) {
       console.error('Failed to fetch gold rate:', error);
     } finally {
@@ -67,7 +66,7 @@ export const Dashboard: React.FC = () => {
       color: 'bg-amber-500',
     },
     {
-      title: 'Gold Rate (22K)',
+      title: 'Gold Rate (24K/999)',
       value: loading ? '...' : `₹${goldRate.toFixed(2)}`,
       change: 'per gram',
       icon: <TrendingUp size={24} />,

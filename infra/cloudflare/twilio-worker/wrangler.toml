@@ -1,3 +1,16 @@
 name = "twilio-otp-worker"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+
+# ── Secrets (set via: wrangler secret put <NAME>) ──────────────────────────
+# Twilio:
+#   wrangler secret put TWILIO_ACCOUNT_SID
+#   wrangler secret put TWILIO_AUTH_TOKEN
+#   wrangler secret put TWILIO_VERIFY_SERVICE_SID
+#
+# Firebase service account (for phone-login custom token):
+#   wrangler secret put FIREBASE_PROJECT_ID
+#   wrangler secret put FIREBASE_CLIENT_EMAIL
+#   wrangler secret put FIREBASE_PRIVATE_KEY
+#     → paste the full private_key value from your service account JSON
+#       (including -----BEGIN PRIVATE KEY----- lines)

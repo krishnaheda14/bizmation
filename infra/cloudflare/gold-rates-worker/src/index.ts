@@ -4,20 +4,31 @@ export interface Env {
 
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY = 1.09;
+/**
+ * Silver 5% surcharge: covers handling, storage and assay charges.
+ * This surcharge is NOT shown as a label in the public UI.
+ * The displayed silver 999 price already includes it.
+ * Visible only to super-admin and in this source file.
+ */
+const SILVER_SURCHARGE = 1.05;
 
 const CDN_XAU_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json';
-const CDN_XAU_MIRROR = 'https://latest.currency-api.pages.dev/v1/currencies/xau.json';
+const CDN_XAU_MIRROR  = 'https://latest.currency-api.pages.dev/v1/currencies/xau.json';
 const CDN_XAG_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json';
-const CDN_XAG_MIRROR = 'https://latest.currency-api.pages.dev/v1/currencies/xag.json';
+const CDN_XAG_MIRROR  = 'https://latest.currency-api.pages.dev/v1/currencies/xag.json';
+const USD_TO_INR_URL  = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
 
 const SWISSQUOTE_XAU = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD';
 const SWISSQUOTE_XAG = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD';
-const USD_TO_INR_URL = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
 
 interface MetalRate {
   metalType: 'GOLD' | 'SILVER';
-  purity: 24 | 22 | 18;
+  /** Numeric purity: 999, 995, 916, 750 for gold; 999 for silver */
+  purity: number;
+  /** Human-readable label: "24K (999)", "24K (995)", "22K (916)", "18K (750)", "999" */
+  purityLabel: string;
   ratePerGram: number;
+  /** Per 10g for gold; per 1kg for silver */
   displayRate: number;
   effectiveDate: string;
   source: string;
@@ -27,9 +38,16 @@ interface CachedRates {
   rates: MetalRate[];
   fetchedAt: string;
   source: string;
+  /** XAU (gold) in INR per troy oz */
   xauInr: number;
+  /** XAG (silver) in INR per troy oz */
   xagInr: number;
-  usdToInr?: number;
+  /** XAU (gold) in USD per troy oz */
+  xauUsd: number;
+  /** XAG (silver) in USD per troy oz */
+  xagUsd: number;
+  /** USD → INR conversion rate used */
+  usdToInr: number;
 }
 
 async function fetchJSON(url: string, timeoutMs = 8000): Promise<any> {
@@ -62,20 +80,23 @@ function parseSwissquoteMid(data: any[]): number {
   throw new Error('Could not parse bid/ask from Swissquote');
 }
 
-async function fetchViaCDN(): Promise<{ xauInr: number; xagInr: number; source: string }> {
+async function fetchViaCDN(): Promise<{ xauInr: number; xagInr: number; xauUsd: number; xagUsd: number; usdToInr: number; source: string }> {
   const bust = `?_=${Date.now()}`;
-  const [xauData, xagData] = await Promise.all([
+  const [xauData, xagData, usdData] = await Promise.all([
     fetchWithFallback(CDN_XAU_PRIMARY + bust, CDN_XAU_MIRROR + bust),
     fetchWithFallback(CDN_XAG_PRIMARY + bust, CDN_XAG_MIRROR + bust),
+    fetchJSON(USD_TO_INR_URL + bust),
   ]);
   const xauInr: number = xauData?.xau?.inr;
   const xagInr: number = xagData?.xag?.inr;
+  const usdToInr: number = Number(usdData?.usd?.inr);
   if (!xauInr || isNaN(xauInr) || xauInr < 1000) throw new Error(`Invalid XAU→INR from CDN: ${xauInr}`);
   if (!xagInr || isNaN(xagInr) || xagInr < 1) throw new Error(`Invalid XAG→INR from CDN: ${xagInr}`);
-  return { xauInr, xagInr, source: 'fawazahmed0-CDN' };
+  if (!isFinite(usdToInr) || usdToInr <= 0) throw new Error(`Invalid USD→INR from CDN: ${usdToInr}`);
+  return { xauInr, xagInr, xauUsd: xauInr / usdToInr, xagUsd: xagInr / usdToInr, usdToInr, source: 'fawazahmed0-CDN' };
 }
 
-async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; usdToInr: number; source: string }> {
+async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; xauUsd: number; xagUsd: number; usdToInr: number; source: string }> {
   const bust = `?_=${Date.now()}`;
   const [xauData, xagData, usdData] = await Promise.all([
     fetchJSON(SWISSQUOTE_XAU + bust),
@@ -86,39 +107,60 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; u
   const xagUsd = parseSwissquoteMid(xagData);
   const usdToInr: number = Number(usdData?.usd?.inr);
   if (!isFinite(usdToInr) || usdToInr <= 0) throw new Error('No valid USD→INR rate');
-  return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, usdToInr, source: 'Swissquote+fawazahmed0' };
+  return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, xauUsd, xagUsd, usdToInr, source: 'Swissquote+fawazahmed0' };
 }
 
+/**
+ * Build display rates from raw spot prices.
+ *
+ * Gold purity grades (Indian market):
+ *   999 (24K) = spot_base × (999/995)  — highest purity, 0.4% premium over 995
+ *   995 (24K) = spot_base              — most liquid physical bar/coin purity (the market reference)
+ *   916 (22K) = spot_base × (916/995)  — hallmark jewellery standard
+ *   750 (18K) = spot_base × (750/995)  — fashion/designer jewellery
+ *
+ * Silver:
+ *   999 only — includes SILVER_SURCHARGE (5% extra handling/assay charge).
+ *   The surcharge is silently applied; the final per-gram/per-kg price is shown.
+ *
+ * displayRate: per 10g for gold, per 1kg for silver.
+ */
 function buildRates(xauInr: number, xagInr: number, source: string, now: string): MetalRate[] {
-  const gold24 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
-  const silver24 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+  // Spot price → per gram for 995 purity (most common Indian physical bar)
+  const base995 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+  const gold999 = base995 * (999 / 995);
+  const gold916 = base995 * (916 / 995);
+  const gold750 = base995 * (750 / 995);
+
+  // Silver 999 with 5% surcharge (not shown as label in public UI)
+  const silver999 = ((xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY) * SILVER_SURCHARGE;
+
   return [
-    { metalType: 'GOLD', purity: 24, ratePerGram: gold24, displayRate: gold24 * 10, effectiveDate: now, source },
-    { metalType: 'GOLD', purity: 22, ratePerGram: (gold24 * 22) / 24, displayRate: ((gold24 * 22) / 24) * 10, effectiveDate: now, source },
-    { metalType: 'GOLD', purity: 18, ratePerGram: (gold24 * 18) / 24, displayRate: ((gold24 * 18) / 24) * 10, effectiveDate: now, source },
-    { metalType: 'SILVER', purity: 24, ratePerGram: silver24, displayRate: silver24 * 1000, effectiveDate: now, source },
-    { metalType: 'SILVER', purity: 22, ratePerGram: (silver24 * 22) / 24, displayRate: ((silver24 * 22) / 24) * 1000, effectiveDate: now, source },
-    { metalType: 'SILVER', purity: 18, ratePerGram: (silver24 * 18) / 24, displayRate: ((silver24 * 18) / 24) * 1000, effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 999, purityLabel: '24K (999)', ratePerGram: gold999,  displayRate: gold999  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 995, purityLabel: '24K (995)', ratePerGram: base995,  displayRate: base995  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 916, purityLabel: '22K (916)', ratePerGram: gold916,  displayRate: gold916  * 10,    effectiveDate: now, source },
+    { metalType: 'GOLD',   purity: 750, purityLabel: '18K (750)', ratePerGram: gold750,  displayRate: gold750  * 10,    effectiveDate: now, source },
+    { metalType: 'SILVER', purity: 999, purityLabel: '999',       ratePerGram: silver999, displayRate: silver999 * 1000, effectiveDate: now, source },
   ];
 }
 
 async function fetchAndCacheRates(env: Env): Promise<CachedRates> {
   const now = new Date().toISOString();
-  let xauInr: number, xagInr: number, usdToInr: number | undefined, source: string;
-  try { ({ xauInr, xagInr, source } = await fetchViaCDN()); }
+  let xauInr: number, xagInr: number, xauUsd: number, xagUsd: number, usdToInr: number, source: string;
+  try { ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaCDN()); }
   catch (cdnErr) {
     console.error('[Worker] CDN fetch failed, trying Swissquote:', cdnErr);
-    try { ({ xauInr, xagInr, usdToInr, source } = await fetchViaSwissquote()); }
+    try { ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaSwissquote()); }
     catch (swissErr) { console.error('[Worker] Swissquote fetch also failed:', swissErr); throw new Error(`All price sources failed.`); }
   }
   const rates = buildRates(xauInr, xagInr, source, now);
-  const cached: CachedRates = { rates, fetchedAt: now, source, xauInr, xagInr, usdToInr };
+  const cached: CachedRates = { rates, fetchedAt: now, source, xauInr, xagInr, xauUsd, xagUsd, usdToInr };
   try {
     if (!env.GOLD_RATES_KV) throw new Error('GOLD_RATES_KV binding not found');
     await env.GOLD_RATES_KV.put('gold_rates_cache', JSON.stringify(cached), { expirationTtl: 600 });
-    console.log(`[Worker] Rates cached at ${now}. XAU/INR: ${xauInr.toFixed(2)}, XAG/INR: ${xagInr.toFixed(2)}, Source: ${source}`);
+    console.log(`[Worker] Cached at ${now} | XAU/USD: ${xauUsd.toFixed(2)} | XAG/USD: ${xagUsd.toFixed(4)} | USD/INR: ${usdToInr.toFixed(2)} | Source: ${source}`);
   } catch (kvErr) {
-    console.warn('[Worker] Could not write to KV (running without KV?):', kvErr?.message || kvErr);
+    console.warn('[Worker] Could not write to KV:', (kvErr as any)?.message || kvErr);
   }
   return cached;
 }

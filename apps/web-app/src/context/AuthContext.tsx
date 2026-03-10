@@ -23,6 +23,7 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithCustomToken,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
@@ -91,6 +92,7 @@ interface AuthContextType {
   verifyOtp: () => Promise<{ success: boolean; email: string | null }>;
   sendPhoneOtp: (phone: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, code: string) => Promise<{ valid: boolean }>;
+  verifyPhoneOtpAndLogin: (phone: string, code: string) => Promise<{ valid: boolean }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -410,27 +412,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Save email locally so we can complete sign-in on the same device
     localStorage.setItem(OTP_EMAIL_KEY, email);
   };
-  // ── Phone OTP via Twilio Verify (backend API) ─────────────────────────────
-  const sendPhoneOtp = async (phone: string): Promise<void> => {
-    const apiBase = (import.meta.env.VITE_API_URL as string) || '';
-    const normalizedPhone = normalizePhone(phone);
-    const url    = `${apiBase}/api/auth/send-otp`;
-
-    // ── Debug: log everything so we can trace failures ───────────────────
-    console.group('[sendPhoneOtp]');
-    console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
-    console.log('Resolved apiBase       :', apiBase);
-    console.log('Full URL               :', url);
-    console.log('Phone sent (raw)       :', phone);
-    console.log('Phone sent (normalized):', normalizedPhone);
-    if (!apiBase) {
+  // ── Phone OTP via Twilio Worker (Cloudflare) ────────────────────────────
+  // All three functions below call the deployed Twilio Cloudflare Worker.
+  // Set VITE_TWILIO_WORKER_URL in Cloudflare Pages → Settings → Environment Variables
+  // Value: the URL of your deployed twilio-otp-worker, e.g.
+  //   https://twilio-otp-worker.<your-subdomain>.workers.dev
+  function twilioWorkerBase(): string {
+    const url = (import.meta.env.VITE_TWILIO_WORKER_URL as string) || '';
+    if (!url) {
       console.warn(
-        '⚠  VITE_API_URL is NOT set.\n'
-        + '   Add it to Cloudflare Pages → Settings → Environment Variables\n'
-        + '   Value: https://your-railway-app.up.railway.app'
+        '[OTP] VITE_TWILIO_WORKER_URL is not set.\n'
+        + '  Add it in Cloudflare Pages → Settings → Environment Variables\n'
+        + '  Value: https://twilio-otp-worker.<subdomain>.workers.dev'
       );
     }
-    console.groupEnd();
+    return url;
+  }
+
+  const sendPhoneOtp = async (phone: string): Promise<void> => {
+    const base = twilioWorkerBase();
+    const normalizedPhone = normalizePhone(phone);
+    const url = `${base}/api/auth/send-otp`;
+    console.log('[sendPhoneOtp] →', url, normalizedPhone);
 
     let res: Response;
     try {
@@ -440,40 +443,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body   : JSON.stringify({ phone: normalizedPhone }),
       });
     } catch (fetchErr: any) {
-      console.error('[sendPhoneOtp] Network error (fetch threw):', fetchErr);
-      console.error('  → This is usually caused by:');
-      console.error('    1. VITE_API_URL not set in Cloudflare Pages env vars');
-      console.error('    2. Railway backend is offline / not deployed');
-      console.error('    3. CORS policy on the Railway server blocking the request');
-      throw new Error(
-        `Network error calling ${url}. ` +
-        'Check: (1) VITE_API_URL is set in Cloudflare Pages, ' +
-        '(2) Railway backend is running, ' +
-        '(3) CORS is enabled on the backend.'
-      );
+      console.error('[sendPhoneOtp] Network error:', fetchErr);
+      throw new Error(`Network error calling Twilio Worker. Check VITE_TWILIO_WORKER_URL. (${fetchErr?.message})`);
     }
 
-    console.log('[sendPhoneOtp] HTTP status:', res.status, res.statusText);
     let json: any;
     try { json = await res.json(); } catch { json = {}; }
-    console.log('[sendPhoneOtp] Response body:', json);
-
-    if (!res.ok || !json.success) {
-      throw new Error(json.error || `Server returned ${res.status}`);
-    }
+    console.log('[sendPhoneOtp] status:', res.status, json);
+    if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
   };
 
   const verifyPhoneOtp = async (phone: string, code: string): Promise<{ valid: boolean }> => {
-    const apiBase = (import.meta.env.VITE_API_URL as string) || '';
+    const base = twilioWorkerBase();
     const normalizedPhone = normalizePhone(phone);
-    const url    = `${apiBase}/api/auth/verify-otp`;
-
-    console.group('[verifyPhoneOtp]');
-    console.log('VITE_API_URL env value :', import.meta.env.VITE_API_URL);
-    console.log('Full URL               :', url);
-    console.log('Phone (raw)            :', phone);
-    console.log('Phone (normalized)     :', normalizedPhone);
-    console.groupEnd();
+    const url = `${base}/api/auth/verify-otp`;
+    console.log('[verifyPhoneOtp] →', url);
 
     let res: Response;
     try {
@@ -483,19 +467,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body   : JSON.stringify({ phone: normalizedPhone, code }),
       });
     } catch (fetchErr: any) {
-      console.error('[verifyPhoneOtp] Network error:', fetchErr);
-      throw new Error('Network error — check VITE_API_URL and Railway deployment.');
+      throw new Error(`Network error calling Twilio Worker. (${fetchErr?.message})`);
     }
 
-    console.log('[verifyPhoneOtp] HTTP status:', res.status);
     let json: any;
     try { json = await res.json(); } catch { json = {}; }
-    console.log('[verifyPhoneOtp] Response body:', json);
-
-    if (!res.ok || !json.success) {
-      throw new Error(json.error || `Server returned ${res.status}`);
-    }
+    console.log('[verifyPhoneOtp] status:', res.status, json);
+    if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
     return { valid: json.valid ?? false };
+  };
+
+  // ── Phone OTP auto-login ──────────────────────────────────────────────────
+  // Calls /api/auth/phone-login on the Twilio Worker which:
+  //  1. Verifies OTP with Twilio
+  //  2. Looks up UID in Firestore phoneIndex (public read)
+  //  3. Returns a Firebase custom token → signInWithCustomToken logs the user in
+  const verifyPhoneOtpAndLogin = async (phone: string, code: string): Promise<{ valid: boolean }> => {
+    const base = twilioWorkerBase();
+    const normalizedPhone = normalizePhone(phone);
+    const url = `${base}/api/auth/phone-login`;
+    console.log('[verifyPhoneOtpAndLogin] →', url);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ phone: normalizedPhone, code }),
+      });
+    } catch (fetchErr: any) {
+      throw new Error(`Network error calling Twilio Worker. (${fetchErr?.message})`);
+    }
+
+    let json: any;
+    try { json = await res.json(); } catch { json = {}; }
+    console.log('[verifyPhoneOtpAndLogin] status:', res.status, json);
+    if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
+    if (!json.customToken) throw new Error('Phone login failed — no token received.');
+
+    await signInWithCustomToken(auth, json.customToken);
+    return { valid: true };
   };
 
     // ── Google Sign In ───────────────────────────────────────────────────────
@@ -631,6 +642,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       verifyOtp,
       sendPhoneOtp,
       verifyPhoneOtp,
+      verifyPhoneOtpAndLogin,
       signOut,
       refreshProfile,
       signInWithGoogle,
