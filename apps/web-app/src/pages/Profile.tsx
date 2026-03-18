@@ -155,7 +155,7 @@ export const Profile: React.FC = () => {
             }}
           >
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-            {saving ? 'Savingâ€¦' : 'Save Changes'}
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
 
@@ -164,20 +164,20 @@ export const Profile: React.FC = () => {
           <h2 className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-widest">KYC & Identity</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <ReadField label="PAN Number" icon={<CreditCard size={15} />}
-              value={userProfile.panNumber || 'â€”'} />
+              value={userProfile.panNumber || '-'} />
             <ReadField label="Aadhaar (last 4)" icon={<Fingerprint size={15} />}
-              value={userProfile.aadhaarLast4 ? `â€¢â€¢â€¢â€¢ ${userProfile.aadhaarLast4}` : 'â€”'} />
+              value={userProfile.aadhaarLast4 ? `**** ${userProfile.aadhaarLast4}` : '-'} />
             {isOwner && (
               <ReadField label="GST Number" icon={<Shield size={15} />}
-                value={(userProfile as any).gstNumber || 'â€”'} />
+                value={(userProfile as any).gstNumber || '-'} />
             )}
             {isOwner && (
               <ReadField label="Owner Code" icon={<Shield size={15} />}
-                value={(userProfile as any).ownerCode || 'â€”'} />
+                value={(userProfile as any).ownerCode || '-'} />
             )}
             {isOwner && (
               <ReadField label="Hallmark License" icon={<Shield size={15} />}
-                value={(userProfile as any).hallmarkLicenseNumber || 'â€”'} />
+                value={(userProfile as any).hallmarkLicenseNumber || '-'} />
             )}
           </div>
           <p className="text-xs text-stone-400 dark:text-gray-600 leading-relaxed">

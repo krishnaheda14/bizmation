@@ -62,8 +62,8 @@ const METAL_PURITIES: Record<'GOLD' | 'SILVER', number[]> = {
   SILVER: [999],
 };
 
-const fmtInr = (v: number) => '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
-const fmtG = (v: number) => (v || 0).toFixed(3) + 'g';
+const fmtInr = (v: number) => '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const fmtG = (v: number) => (v || 0).toFixed(4) + 'g';
 
 const purityLabel = (metal: 'GOLD' | 'SILVER', purity: number) => {
   if (metal === 'SILVER') return String(purity);

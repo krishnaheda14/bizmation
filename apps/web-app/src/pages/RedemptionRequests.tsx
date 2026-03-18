@@ -20,6 +20,7 @@ interface RedemptionRequest {
   customerName: string;
   customerEmail: string;
   customerUid: string;
+  requestType?: 'REDEEM' | 'SELL_TO_JEWELLER';
   shopName: string;
   metal: string;
   purity: string | number;
@@ -35,8 +36,8 @@ interface RedemptionRequest {
 
 type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED';
 
-const fmtInr = (v: number) => '₹' + (v || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-const fmtG   = (v: number) => (v || 0).toFixed(3) + 'g';
+const fmtInr = (v: number) => '₹' + (v || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const fmtG   = (v: number) => (v || 0).toFixed(4) + 'g';
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -205,6 +206,9 @@ export const RedemptionRequests: React.FC = () => {
                         {/* Details */}
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-stone-500 dark:text-gray-400 mt-1">
                           <span>{r.metal} {r.purity}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-gray-800 text-[10px] font-bold uppercase tracking-wide text-stone-600 dark:text-gray-300">
+                            {r.requestType === 'SELL_TO_JEWELLER' ? 'Sell To Jeweller' : 'Redeem'}
+                          </span>
                           <span className="font-bold text-stone-700 dark:text-gray-200">{fmtG(r.grams)}</span>
                           <span>@ {fmtInr(Number(r.redeemRatePerGram ?? r.ratePerGram ?? 0))}/g</span>
                           <span className="font-bold text-amber-700 dark:text-amber-400">{fmtInr(r.estimatedInr)}</span>

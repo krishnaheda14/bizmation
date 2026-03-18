@@ -124,11 +124,17 @@ export const HomeLanding: React.FC = () => {
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', purity: '999', bank: '', account: '', ifsc: '',
   });
+  const [redeemMode, setRedeemMode] = useState<'REDEEM' | 'SELL_TO_JEWELLER'>('REDEEM');
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [slideValue, setSlideValue] = useState(0);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
+  const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
+    totalValueInr: 0,
+    totalGainInr: 0,
+    totalGainPct: 0,
+  });
   // ── Price-lock countdown ──────────────────────────────────────────
   const LOCK_DURATION = 120; // seconds
   const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
@@ -219,12 +225,47 @@ export const HomeLanding: React.FC = () => {
         totalGoldGrams,
         totalSilverGrams,
       });
+
+      const holdings: Record<string, { grams: number; invested: number }> = {};
+      for (const o of all as any[]) {
+        const metal = String(o.metal ?? '').toUpperCase();
+        if (!['GOLD', 'SILVER'].includes(metal)) continue;
+        const purityRaw = Number(o.purity) || 0;
+        const purity = metal === 'GOLD' ? normalizeGoldPurity(purityRaw) : purityRaw;
+        const key = `${metal}_${purity}`;
+        if (!holdings[key]) holdings[key] = { grams: 0, invested: 0 };
+        const grams = Number(o.grams) || 0;
+        const amount = Number(o.totalAmountInr) || 0;
+        if ((o.type ?? '').toUpperCase() === 'BUY' && (o.status ?? '').toUpperCase() === 'SUCCESS') {
+          holdings[key].grams += grams;
+          holdings[key].invested += amount;
+        }
+        if ((o.type ?? '').toUpperCase() === 'SELL' && (o.status ?? '').toUpperCase() !== 'REJECTED') {
+          holdings[key].grams -= grams;
+          holdings[key].invested -= amount;
+        }
+      }
+
+      const totalInvested = Object.values(holdings).reduce((s, h) => s + Math.max(0, h.invested), 0);
+      const totalValue = Object.entries(holdings).reduce((sum, [key, h]) => {
+        const [metal, purityStr] = key.split('_');
+        const purity = Number(purityStr);
+        const liveRate = rates.find((r) => r.metalType === metal && r.purity === purity)?.ratePerGram ?? 0;
+        return sum + Math.max(0, h.grams) * liveRate;
+      }, 0);
+      const gain = totalValue - totalInvested;
+      const gainPct = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+      setCustomerPortfolioStats({
+        totalValueInr: totalValue,
+        totalGainInr: gain,
+        totalGainPct: gainPct,
+      });
     };
 
     loadCustomerSummary().catch(() => {
       // Non-blocking summary panel.
     });
-  }, [currentUser, userProfile]);
+  }, [currentUser, userProfile, rates]);
 
   const fetchCustomerLedgerOrders = useCallback(async () => {
     if (!currentUser) return [] as any[];
@@ -362,11 +403,11 @@ export const HomeLanding: React.FC = () => {
     });
   };
 
-  // ── Sell Gold (form submit, no direct payout from frontend) ──────────────
+  // ── Redeem / Sell-to-jeweller request ────────────────────────────────────
   const handleSell = async () => {
     if (!sellForm.grams) return;
     if (!currentUser?.emailVerified) {
-      setSuccessMsg('Please verify your email before you can sell gold or silver.');
+      setSuccessMsg('Please verify your email before you can submit this request.');
       setTimeout(() => setSuccessMsg(''), 8000);
       return;
     }
@@ -385,8 +426,8 @@ export const HomeLanding: React.FC = () => {
       if ((o.type ?? '').toUpperCase() === 'SELL' && (o.status ?? '').toUpperCase() !== 'REJECTED') return sum - orderGrams;
       return sum;
     }, 0);
-    if (grams > heldGrams) {
-      setSuccessMsg(`Insufficient redeemable balance. Available: ${heldGrams.toFixed(3)}g, requested: ${grams.toFixed(3)}g.`);
+    if (redeemMode === 'REDEEM' && grams > heldGrams) {
+      setSuccessMsg(`Insufficient redeemable balance. Available: ${heldGrams.toFixed(4)}g, requested: ${grams.toFixed(4)}g.`);
       setTimeout(() => setSuccessMsg(''), 9000);
       return;
     }
@@ -395,38 +436,64 @@ export const HomeLanding: React.FC = () => {
     const custPhone   = userProfile?.phone ?? '';
 
     setModal({ type: null });
-    setSuccessMsg(`Sell request submitted for ${sellForm.grams}g of ${sellForm.purity}K gold. Our team will contact you on ${custPhone || 'your registered number'} within 24 hours.`);
+    setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${Number(sellForm.grams).toFixed(4)}g of ${sellForm.purity} purity gold.`);
     setSellForm({ grams: '', purity: '999', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
 
-    // ── Write sell request to Firestore ──────────────────────────────────
+    // ── Write jeweller-visible request to Firestore ───────────────────────
     try {
-      await addDoc(collection(db, 'goldOnlineOrders'), {
-        userId:         currentUser?.uid ?? 'anonymous',
+      await addDoc(collection(db, 'redemptionRequests'), {
         customerUid:    currentUser?.uid ?? 'anonymous',
-        type:           'SELL',
+        customerName:   custName,
+        customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
+        customerPhone:  custPhone,
+        shopName:       (userProfile as any)?.shopName ?? '',
+        shopId:         (userProfile as any)?.shopId ?? '',
+        requestType:    redeemMode,
+        requestChannel: 'HOME',
         metal:          'GOLD',
         purity:         purityNum,
         grams,
-        ratePerGram:    effectiveSellRatePerGram,
         marketRatePerGram,
-        postGstRatePerGram,
-        redeemGstReductionPercent: 3,
-        redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
+        redeemRatePerGram: effectiveSellRatePerGram,
+        estimatedInr:   totalAmount,
         availableBalanceAtRequestGrams: heldGrams,
-        totalAmountInr: totalAmount,
-        status:         'PENDING',
-        customerName:   custName,
-        customerPhone:  custPhone,
-        customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
-        shopName:       (userProfile as any)?.shopName ?? '',
-        shopId:         (userProfile as any)?.shopId ?? '',
         bankName:       sellForm.bank,
         accountNumber:  sellForm.account,
         ifscCode:       sellForm.ifsc,
+        status:         'PENDING',
         createdAt:      serverTimestamp(),
         updatedAt:      serverTimestamp(),
       });
+
+      if (redeemMode === 'REDEEM') {
+        await addDoc(collection(db, 'goldOnlineOrders'), {
+          userId:         currentUser?.uid ?? 'anonymous',
+          customerUid:    currentUser?.uid ?? 'anonymous',
+          type:           'SELL',
+          metal:          'GOLD',
+          purity:         purityNum,
+          grams,
+          ratePerGram:    effectiveSellRatePerGram,
+          marketRatePerGram,
+          postGstRatePerGram,
+          redeemGstReductionPercent: 3,
+          redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
+          availableBalanceAtRequestGrams: heldGrams,
+          totalAmountInr: totalAmount,
+          status:         'PENDING',
+          customerName:   custName,
+          customerPhone:  custPhone,
+          customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
+          shopName:       (userProfile as any)?.shopName ?? '',
+          shopId:         (userProfile as any)?.shopId ?? '',
+          bankName:       sellForm.bank,
+          accountNumber:  sellForm.account,
+          ifscCode:       sellForm.ifsc,
+          createdAt:      serverTimestamp(),
+          updatedAt:      serverTimestamp(),
+        });
+      }
     } catch { /* non-blocking */ }
   };
 
@@ -468,18 +535,28 @@ export const HomeLanding: React.FC = () => {
 
       {userProfile?.role === 'CUSTOMER' && (
         <div className="px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3">
+          <div className="max-w-[1400px] mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Orders</p>
               <p className="text-2xl font-black text-stone-800 dark:text-white mt-0.5">{customerSummary.totalOrders}</p>
             </div>
             <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-yellow-400">Gold Till Date</p>
-              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{customerSummary.totalGoldGrams.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{customerSummary.totalGoldGrams.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
             </div>
             <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-gray-400">Silver Till Date</p>
-              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{customerSummary.totalSilverGrams.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{customerSummary.totalSilverGrams.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Portfolio Value</p>
+              <p className="text-xl font-black text-stone-800 dark:text-white mt-0.5">₹{customerPortfolioStats.totalValueInr.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Gain %</p>
+              <p className={`text-xl font-black mt-0.5 ${customerPortfolioStats.totalGainPct >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                {customerPortfolioStats.totalGainPct >= 0 ? '+' : ''}{customerPortfolioStats.totalGainPct.toFixed(4)}%
+              </p>
             </div>
           </div>
         </div>
@@ -538,9 +615,8 @@ export const HomeLanding: React.FC = () => {
           </svg>
         ))}
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left: copy */}
+        <div className="relative max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
+          <div className="space-y-6">
             <div>
               <div className="inline-flex items-center gap-2 bg-amber-400/20 dark:bg-yellow-500/10 border border-amber-400/50 dark:border-yellow-500/30 text-amber-700 dark:text-yellow-400 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
                 <Zap size={13} className="text-amber-500 dark:text-yellow-400" />
@@ -557,110 +633,56 @@ export const HomeLanding: React.FC = () => {
                 Buy & sell pure gold and silver online at real-time international market prices. Set up AutoPay to invest in gold every month automatically.
               </p>
 
-              <div className="w-full overflow-x-auto pb-1">
-                <div className="inline-flex min-w-full flex-nowrap gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
+                  <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (999) / 10g</p>
+                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold24 ? gold24.ratePerGram.toFixed(4) : '—'} / gram</p>
+                </div>
+                <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
+                  <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (995) / 10g</p>
+                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold995 ? gold995.ratePerGram.toFixed(4) : '—'} / gram</p>
+                </div>
+                <div className="bg-white/90 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
+                  <p className="text-gray-600 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-1">Silver 999 / 1kg</p>
+                  <p className="text-2xl font-black text-gray-800 dark:text-gray-200">₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-gray-600/70 dark:text-gray-400">₹{silver24 ? silver24.ratePerGram.toFixed(4) : '—'} / gram</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1">
                   <button
                     onClick={() => { setBuyMetal('GOLD'); if (goldBuyPrice) setLockedRate(goldBuyPrice); setModal({ type: 'buy' }); }}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[170px] bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
                   >
                     <ShoppingCart size={18} />
                     Buy Gold Now
                   </button>
                   <button
                     onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[180px] bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
                   >
                     <ShoppingCart size={18} />
                     Buy Silver Now
                   </button>
                   <button
                     onClick={() => setModal({ type: 'sell' })}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[150px] bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
                   >
                     <ArrowUpRight size={18} />
-                    Sell Gold
+                    Redeem
                   </button>
                   <button
                     onClick={() => setModal({ type: 'autopay' })}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[180px] bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
                   >
                     <Repeat size={18} />
                     Setup AutoPay
                   </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: live price cards */}
-            <div className="space-y-4">
-                {/* Gold 24K */}
-              <div className="relative bg-gradient-to-br from-amber-400 to-yellow-600 dark:from-yellow-600/90 dark:to-amber-800 rounded-2xl p-6 shadow-2xl shadow-amber-400/30 dark:shadow-yellow-500/20 overflow-hidden">
-                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20 pointer-events-none" />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-yellow-100">
-                        <Coins size={20} />
-                        <span className="font-bold tracking-wide text-sm uppercase">Gold 24K (999)</span>
-                      </div>
-                    <span className="text-yellow-100 text-xs font-medium bg-white/20 px-2.5 py-1 rounded-full">per 10g</span>
-                  </div>
-                  {loading ? (
-                    <div className="flex items-center gap-2 text-white/80">
-                      <Loader2 size={20} className="animate-spin" />
-                      <span>Fetching live rate...</span>
-                    </div>
-                  ) : error ? (
-                    <p className="text-yellow-100 text-sm">Rate unavailable</p>
-                  ) : (
-                    <>
-                      <div className="text-4xl sm:text-5xl font-black text-white mb-1">
-                        ₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-                      </div>
-                      <div className="text-yellow-100 text-sm">
-                        ₹{gold24 ? gold24.ratePerGram.toFixed(2) : '—'} / gram
-                      </div>
-                    </>
-                  )}
-                </div>
               </div>
 
-              {/* Gold 995 */}
-              <div className="bg-white/70 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide">Gold 24K 995 / 10g</p>
-                </div>
-                {loading ? (
-                  <Loader2 size={16} className="animate-spin text-amber-400" />
-                ) : (
-                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">
-                    ₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-                  </p>
-                )}
-              </div>
-
-              {/* Silver */}
-              <div className="bg-white/70 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wide">Silver 999 / 1kg</p>
-                  <button
-                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
-                    className="flex items-center gap-1 px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-full text-xs font-bold transition-colors"
-                  >
-                    <ShoppingCart size={12} />
-                    Buy Silver
-                  </button>
-                </div>
-                {loading ? (
-                  <Loader2 size={16} className="animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-black text-gray-800 dark:text-gray-200">
-                    ₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
-                  </p>
-                )}
-              </div>
-
-              {/* Last updated + refresh */}
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-sm pt-1">
                 <span className="text-amber-700/70 dark:text-gray-500">
                   {lastUpdated ? `Updated at ${lastUpdated}` : 'Prices from international market'}
                 </span>
@@ -673,6 +695,7 @@ export const HomeLanding: React.FC = () => {
                   Refresh
                 </button>
               </div>
+            </div>
 
               {/* Price debug mini-panel — shows raw market data from worker */}
               {priceFeed && (
@@ -694,7 +717,6 @@ export const HomeLanding: React.FC = () => {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         </div>
       </section>
@@ -1093,10 +1115,26 @@ export const HomeLanding: React.FC = () => {
         </BottomSheet>
       )}
 
-      {/* Sell Gold Modal */}
+      {/* Redeem / Sell-to-jeweller Modal */}
       {modal.type === 'sell' && (
-        <BottomSheet title="Sell Gold" onClose={() => setModal({ type: null })}>
+        <BottomSheet title="Redeem / Sell To Jeweller" onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
+            <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => setRedeemMode('REDEEM')}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${redeemMode === 'REDEEM' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+              >
+                Redeem Digital Gold
+              </button>
+              <button
+                type="button"
+                onClick={() => setRedeemMode('SELL_TO_JEWELLER')}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${redeemMode === 'SELL_TO_JEWELLER' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+              >
+                Sell To Jeweller
+              </button>
+            </div>
             <div>
               <label className="fieldLabel">Gold Purity</label>
               <select value={sellForm.purity} onChange={(e) => setSellForm((f) => ({ ...f, purity: e.target.value }))} className="fieldInput">
@@ -1121,6 +1159,11 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
+            {redeemMode === 'SELL_TO_JEWELLER' && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-800 dark:text-amber-300">
+                This request does not require existing digital holdings. Your jeweller will see it under redemption requests.
+              </div>
+            )}
             {userProfile && (
               <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm">
                 <User size={16} className="text-amber-600 flex-shrink-0" />
@@ -1134,7 +1177,7 @@ export const HomeLanding: React.FC = () => {
             {currentUser && !currentUser.emailVerified && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
                 <span>
-                  Please verify your email to sell gold or silver. Check your inbox for a verification link.
+                  Please verify your email before submitting this request. Check your inbox for a verification link.
                 </span>
                 <button
                   onClick={handleResendVerification}
@@ -1167,9 +1210,9 @@ export const HomeLanding: React.FC = () => {
               className="w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               <ArrowUpRight size={18} />
-              Submit Sell Request
+              {redeemMode === 'REDEEM' ? 'Submit Redeem Request' : 'Submit Sell To Jeweller Request'}
             </button>
-            <p className="text-xs text-amber-600/70 dark:text-gray-500 text-center">Our team will review and contact you within 24 hours.</p>
+            <p className="text-xs text-amber-600/70 dark:text-gray-500 text-center">Your jeweller can review this request from Redemption Requests tab.</p>
           </div>
         </BottomSheet>
       )}
@@ -1202,7 +1245,7 @@ export const HomeLanding: React.FC = () => {
               />
               {autoPayForm.amount && gold24 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  ≈ {(parseFloat(autoPayForm.amount) / gold24.ratePerGram).toFixed(3)}g of 24K gold per month at today's rate
+                  ≈ {(parseFloat(autoPayForm.amount) / gold24.ratePerGram).toFixed(4)}g of 24K gold per month at today's rate
                 </p>
               )}
             </div>

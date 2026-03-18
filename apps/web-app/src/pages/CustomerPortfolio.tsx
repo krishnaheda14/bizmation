@@ -14,7 +14,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
-import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
+import { fetchCustomerOrdersWithDebug, normalizeGoldPurity, type CustomerOrderFetchDebug } from '../lib/customerOrders';
 
 interface GoldOrder {
   id: string;
@@ -46,6 +46,7 @@ export const CustomerPortfolio: React.FC = () => {
   const [rates,       setRates]      = useState<MetalRate[]>([]);
   const [loading,     setLoading]    = useState(true);
   const [error,       setError]      = useState('');
+  const [debugInfo,   setDebugInfo]  = useState<CustomerOrderFetchDebug | null>(null);
   const [shopFrozen,  setShopFrozen] = useState(false);
 
   // Shop freeze check
@@ -65,13 +66,18 @@ export const CustomerPortfolio: React.FC = () => {
       const rateData = await fetchLiveMetalRates();
       setRates(rateData);
 
-      const loaded = await fetchCustomerOrders({
+      const result = await fetchCustomerOrdersWithDebug({
         uid: currentUser.uid,
         email: currentUser.email ?? userProfile?.email ?? '',
         phone: userProfile?.phone ?? '',
       });
-      setOrders(loaded as GoldOrder[]);
-    } catch { setError('Could not load portfolio. Please try again.'); }
+      setDebugInfo(result.debug);
+      setOrders(result.orders as GoldOrder[]);
+    } catch (err: any) {
+      console.error('[Portfolio] fetch failed', err);
+      const code = err?.code ? ` (${err.code})` : '';
+      setError(`Could not load portfolio${code}. Check debug details below.`);
+    }
     finally { setLoading(false); }
   }, [currentUser, userProfile]);
 
@@ -139,11 +145,11 @@ export const CustomerPortfolio: React.FC = () => {
             </div>
             <div className="rounded-2xl px-4 py-3 bg-white/80 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-yellow-400">Gold Bought</p>
-              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{totalGoldBought.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{totalGoldBought.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
             </div>
             <div className="rounded-2xl px-4 py-3 bg-white/80 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-gray-400">Silver Bought</p>
-              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{totalSilverBought.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{totalSilverBought.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
             </div>
           </div>
 
@@ -174,6 +180,23 @@ export const CustomerPortfolio: React.FC = () => {
           </div>
         )}
 
+        {debugInfo && (
+          <div className="bg-stone-100 dark:bg-gray-900 border border-stone-200 dark:border-gray-700 rounded-xl px-4 py-3 text-xs text-stone-700 dark:text-gray-300 space-y-1">
+            <p className="font-bold">Fetch Debug</p>
+            <p>UID: {debugInfo.uid}</p>
+            <p>Email: {debugInfo.email || '-'}</p>
+            <p>Phone: {debugInfo.phone || '-'}</p>
+            <p>Unique Orders: {debugInfo.totalUnique}</p>
+            {debugInfo.steps.map((s, i) => (
+              <p key={i}>
+                {s.ok ? 'OK' : 'FAIL'} | {s.label} | count={s.count}
+                {s.errorCode ? ` | ${s.errorCode}` : ''}
+                {s.errorMessage ? ` | ${s.errorMessage}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <Loader2 size={32} className="animate-spin text-amber-500" />
@@ -191,15 +214,15 @@ export const CustomerPortfolio: React.FC = () => {
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-widest text-stone-500 mb-1">Total Portfolio Value</p>
-                    <p className="text-4xl font-black text-stone-800">₹{totalCurrentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
-                    <p className="text-sm text-stone-500 mt-0.5">Cost basis: ₹{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                    <p className="text-4xl font-black text-stone-800">₹{totalCurrentValue.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+                    <p className="text-sm text-stone-500 mt-0.5">Cost basis: ₹{totalInvested.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
                   </div>
                   <div className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xl ${
                     isProfitable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                   }`}>
                     {isProfitable ? <TrendingUp size={22} /> : <TrendingDown size={22} />}
-                    <span>{isProfitable ? '+' : ''}₹{Math.abs(totalPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                    <span className="text-base font-bold opacity-80">({totalPnLPct >= 0 ? '+' : ''}{totalPnLPct.toFixed(2)}%)</span>
+                    <span>{isProfitable ? '+' : ''}₹{Math.abs(totalPnL).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
+                    <span className="text-base font-bold opacity-80">({totalPnLPct >= 0 ? '+' : ''}{totalPnLPct.toFixed(4)}%)</span>
                   </div>
                 </div>
               </div>
@@ -237,7 +260,7 @@ export const CustomerPortfolio: React.FC = () => {
                           profit ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                         }`}>
                           {profit ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                          {profit ? '+' : ''}{h.pnlPct.toFixed(2)}%
+                          {profit ? '+' : ''}{h.pnlPct.toFixed(4)}%
                         </div>
                       </div>
 
@@ -245,13 +268,13 @@ export const CustomerPortfolio: React.FC = () => {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-2xl px-4 py-3" style={{ background:'rgba(253,243,212,0.6)', border:'1px solid rgba(251,191,36,0.2)' }}>
                           <p className="text-xs text-amber-600 font-semibold mb-0.5">Holdings</p>
-                          <p className="text-2xl font-black text-amber-900">{h.netGrams.toFixed(3)}<span className="text-sm font-medium ml-1">g</span></p>
+                          <p className="text-2xl font-black text-amber-900">{h.netGrams.toFixed(4)}<span className="text-sm font-medium ml-1">g</span></p>
                         </div>
                         <div className={`rounded-2xl px-4 py-3 ${profit ? 'bg-green-50' : 'bg-red-50'}`}
                           style={{ border:`1px solid ${profit ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
                           <p className={`text-xs font-semibold mb-0.5 ${profit ? 'text-green-600' : 'text-red-500'}`}>P&amp;L</p>
                           <p className={`text-2xl font-black ${profit ? 'text-green-700' : 'text-red-600'}`}>
-                            {profit ? '+' : ''}₹{Math.abs(h.pnlAmount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                            {profit ? '+' : ''}₹{Math.abs(h.pnlAmount).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                           </p>
                         </div>
                       </div>
@@ -260,19 +283,19 @@ export const CustomerPortfolio: React.FC = () => {
                       <div className="rounded-2xl px-4 py-3 space-y-2" style={{ background:'rgba(248,250,252,0.8)', border:'1px solid rgba(226,232,240,0.8)' }}>
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-stone-500">Avg Buy Price</span>
-                          <span className="font-bold text-stone-700">₹{h.avgBuyPrice.toFixed(2)}<span className="text-xs font-normal text-stone-400">/g</span></span>
+                          <span className="font-bold text-stone-700">₹{h.avgBuyPrice.toFixed(4)}<span className="text-xs font-normal text-stone-400">/g</span></span>
                         </div>
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-stone-500">Current Price</span>
                           <span className="font-bold text-stone-700">
                             {h.currentPrice > 0
-                              ? <>₹{h.currentPrice.toFixed(2)}<span className="text-xs font-normal text-stone-400">/g</span></>
+                              ? <>₹{h.currentPrice.toFixed(4)}<span className="text-xs font-normal text-stone-400">/g</span></>
                               : <span className="text-stone-400 text-xs">Loading…</span>}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-sm border-t border-stone-100 pt-2">
                           <span className="text-stone-500">Current Value</span>
-                          <span className="font-black text-stone-800">₹{h.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                          <span className="font-black text-stone-800">₹{h.currentValue.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
                         </div>
                       </div>
 

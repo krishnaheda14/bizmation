@@ -11,7 +11,7 @@ import {
   RefreshCw, Package, FileText, Download, Coins, TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchCustomerOrders } from '../lib/customerOrders';
+import { fetchCustomerOrdersWithDebug, type CustomerOrderFetchDebug } from '../lib/customerOrders';
 
 interface GoldOrder {
   id: string;
@@ -26,11 +26,13 @@ interface GoldOrder {
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
+  shopName?: string;
+  shopId?: string;
   createdAt: any;
 }
 
 // ── Invoice Generator ────────────────────────────────────────────────────────
-function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEmail: string): string {
+function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEmail: string, registeredJeweller: string): string {
   const date = order.createdAt?.toDate
     ? order.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -74,9 +76,9 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
 <body>
   <div class="header">
     <div class="brand">
-      <h1>💰 Bizmation Gold</h1>
-      <p>Gold & Silver Online Platform</p>
-      <p>www.bizmation.com</p>
+      <h1>💰 Devichand D Mirande</h1>
+      <p>Digital Gold & Silver Investment Ledger</p>
+      <p>Registered Jeweller Reference: ${registeredJeweller || 'Not linked'}</p>
     </div>
     <div class="invoice-meta">
       <h2>INVOICE</h2>
@@ -92,6 +94,7 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
       <div><div class="label">Customer Name</div><div class="value">${customerName || '—'}</div></div>
       <div><div class="label">Email</div><div class="value">${customerEmail || '—'}</div></div>
       ${order.customerPhone ? `<div><div class="label">Phone</div><div class="value">${order.customerPhone}</div></div>` : ''}
+      <div><div class="label">Registered Under Jeweller</div><div class="value">${registeredJeweller || 'Not linked'}</div></div>
     </div>
   </div>
 
@@ -111,13 +114,13 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
         <tr>
           <td>${metalLabel} ${order.type === 'BUY' ? 'Purchase' : 'Sale'}</td>
           <td><span class="badge ${order.type === 'BUY' ? 'badge-buy' : 'badge-sell'}">${order.type}</span></td>
-          <td>${order.grams.toFixed(3)} g</td>
-          <td>₹${order.ratePerGram.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-          <td>₹${order.totalAmountInr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+          <td>${order.grams.toFixed(4)} g</td>
+          <td>₹${order.ratePerGram.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</td>
+          <td>₹${order.totalAmountInr.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</td>
         </tr>
         <tr class="total-row">
           <td colspan="4" style="text-align:right">Total Amount</td>
-          <td class="amount-highlight">₹${order.totalAmountInr.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+          <td class="amount-highlight">₹${order.totalAmountInr.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</td>
         </tr>
       </tbody>
     </table>
@@ -131,15 +134,15 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
   </div>
 
   <div class="footer">
-    <p>Thank you for choosing Bizmation Gold. This is a computer-generated invoice.</p>
+    <p>Thank you for choosing Devichand D Mirande. This is a computer-generated invoice.</p>
     <p style="margin-top:4px">For queries, contact contact@bizmation.in</p>
   </div>
 </body>
 </html>`;
 }
 
-function downloadInvoice(order: GoldOrder, customerName: string, customerEmail: string) {
-  const html = generateInvoiceHTML(order, customerName, customerEmail);
+function downloadInvoice(order: GoldOrder, customerName: string, customerEmail: string, registeredJeweller: string) {
+  const html = generateInvoiceHTML(order, customerName, customerEmail, registeredJeweller);
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) return;
   win.document.write(html);
@@ -153,6 +156,7 @@ export const Orders: React.FC = () => {
   const [orders, setOrders]     = useState<GoldOrder[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+  const [debugInfo, setDebugInfo] = useState<CustomerOrderFetchDebug | null>(null);
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
   const [search, setSearch]     = useState('');
 
@@ -161,14 +165,17 @@ export const Orders: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const sorted = await fetchCustomerOrders({
+      const result = await fetchCustomerOrdersWithDebug({
         uid: currentUser.uid,
         email: currentUser.email ?? userProfile?.email ?? '',
         phone: userProfile?.phone ?? '',
-      }) as GoldOrder[];
-      setOrders(sorted);
-    } catch {
-      setError('Could not load orders. Please try again.');
+      });
+      setDebugInfo(result.debug);
+      setOrders(result.orders as GoldOrder[]);
+    } catch (err: any) {
+      console.error('[Orders] fetch failed', err);
+      const code = err?.code ? ` (${err.code})` : '';
+      setError(`Could not load orders${code}. Check debug details below.`);
     } finally {
       setLoading(false);
     }
@@ -250,6 +257,23 @@ export const Orders: React.FC = () => {
           </div>
         )}
 
+        {debugInfo && (
+          <div className="bg-stone-100 dark:bg-gray-900 border border-stone-200 dark:border-gray-700 rounded-xl px-4 py-3 text-xs text-stone-700 dark:text-gray-300 space-y-1">
+            <p className="font-bold">Fetch Debug</p>
+            <p>UID: {debugInfo.uid}</p>
+            <p>Email: {debugInfo.email || '-'}</p>
+            <p>Phone: {debugInfo.phone || '-'}</p>
+            <p>Unique Orders: {debugInfo.totalUnique}</p>
+            {debugInfo.steps.map((s, i) => (
+              <p key={i}>
+                {s.ok ? 'OK' : 'FAIL'} | {s.label} | count={s.count}
+                {s.errorCode ? ` | ${s.errorCode}` : ''}
+                {s.errorMessage ? ` | ${s.errorMessage}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
+
         {/* Orders Table */}
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -303,13 +327,13 @@ export const Orders: React.FC = () => {
                           {order.metal} {order.purity}K
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">
-                          {order.grams.toFixed(3)}g
+                          {order.grams.toFixed(4)}g
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm text-stone-600 dark:text-gray-300">
-                          ₹{order.ratePerGram?.toLocaleString('en-IN', { maximumFractionDigits: 2 }) ?? '—'}
+                          ₹{order.ratePerGram?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">
-                          ₹{order.totalAmountInr?.toLocaleString('en-IN', { maximumFractionDigits: 0 }) ?? '—'}
+                          ₹{order.totalAmountInr?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '—'}
                         </td>
                         <td className="py-3.5 px-4">
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -323,7 +347,9 @@ export const Orders: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <button onClick={() => downloadInvoice(order, customerName, customerEmail)} title="Download Invoice"
+                          <button
+                            onClick={() => downloadInvoice(order, customerName, customerEmail, order.shopName || userProfile?.shopName || '')}
+                            title="Download Invoice"
                             className="inline-flex items-center gap-1 px-3 py-1.5 bg-stone-100 dark:bg-gray-800 hover:bg-stone-200 dark:hover:bg-gray-700 text-stone-700 dark:text-gray-300 rounded-lg text-xs font-bold transition-colors">
                             <Download size={12} />
                             PDF
