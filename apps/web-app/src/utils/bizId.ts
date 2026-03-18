@@ -33,6 +33,17 @@ export const generateOrderId    = () => `BIZ-ORD-${tsSegment()}${randomSegment(6
 export const generateProductId  = () => `BIZ-PROD-${randomSegment(8)}`;
 export const generateSessionId  = () => `BIZ-SES-${tsSegment()}${randomSegment(4)}`;
 
+/**
+ * Owner code format: FIRST4 + 4 random chars, e.g. RAVI7K2Q.
+ * Used by customers during signup to link with the correct retailer/shop.
+ */
+export const generateOwnerCode = (ownerName: string): string => {
+  const firstToken = (ownerName || '').trim().split(/\s+/)[0] || 'SHOP';
+  const alpha = firstToken.replace(/[^A-Za-z]/g, '').toUpperCase();
+  const prefix = (alpha || 'SHOP').padEnd(4, 'X').slice(0, 4);
+  return `${prefix}${randomSegment(4)}`;
+};
+
 /** Generate a deterministic BUT unique code from a Firebase UID (for referral codes, etc.) */
 export const uidToShortCode = (uid: string): string =>
   uid.slice(0, 8).toUpperCase();

@@ -9,7 +9,7 @@
  *
  * Purity grades returned:
  *   GOLD  — 999 (24K), 995 (24K), 916 (22K), 750 (18K)   displayRate = per 10g
- *   SILVER — 999 only (5% handling surcharge silently included) displayRate = per 1kg
+ *   SILVER — 999 only (no hidden surcharge) displayRate = per 1kg
  */
 
 export interface MetalRate {
@@ -45,17 +45,11 @@ export interface WorkerData {
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY   = 1.09;
 /**
- * Silver surcharge applied silently on top of import duty.
- * Not shown in the public UI — only visible to super-admin and in this file.
- */
-const SILVER_SURCHARGE = 1.05;
-
-/**
  * Build the 5-rate array (4 gold purities + 1 silver 999) from raw spot prices.
  * Mirrors the worker's buildRates() exactly.
  *   Gold base = spot_per_gram_995 = (xauInr / TROY_OZ) * IMPORT_DUTY
  *   999 = base × (999/995)   |   916 = base × (916/995)   |   750 = base × (750/995)
- *   Silver 999 = silver_base × SILVER_SURCHARGE
+ *   Silver 999 = silver_base
  */
 function buildRatesFromSpot(xauInr: number, xagInr: number, source: string): MetalRate[] {
   const now = new Date().toISOString();
@@ -63,7 +57,7 @@ function buildRatesFromSpot(xauInr: number, xagInr: number, source: string): Met
   const gold999 = base995 * (999 / 995);
   const gold916 = base995 * (916 / 995);
   const gold750 = base995 * (750 / 995);
-  const silver999 = ((xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY) * SILVER_SURCHARGE;
+  const silver999 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
   return [
     { metalType: 'GOLD',   purity: 999, purityLabel: '24K (999)', ratePerGram: gold999,  displayRate: gold999  * 10,    effectiveDate: now, source },
     { metalType: 'GOLD',   purity: 995, purityLabel: '24K (995)', ratePerGram: base995,  displayRate: base995  * 10,    effectiveDate: now, source },

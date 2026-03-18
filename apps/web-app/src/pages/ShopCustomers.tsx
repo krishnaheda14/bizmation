@@ -5,7 +5,7 @@
  * full purchase analytics and expandable order history.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users, Loader2, Search, User, ChevronDown, ChevronUp,
   Coins, TrendingUp, ShoppingCart, ArrowUpRight, RefreshCw,
@@ -52,6 +52,10 @@ export const ShopCustomers: React.FC = () => {
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [ordersMap, setOrdersMap]     = useState<Record<string, Order[]>>({});
   const [ordersLoading, setOrdersLoading] = useState<string | null>(null);
+  const shopNameVariants = useMemo(
+    () => Array.from(new Set([(userProfile?.shopName ?? ''), (userProfile?.shopName ?? '').toLowerCase(), (userProfile?.shopName ?? '').toUpperCase()].filter(Boolean))),
+    [userProfile?.shopName],
+  );
 
   const fetchCustomers = useCallback(async () => {
     if (!currentUser || !userProfile) return;
@@ -71,7 +75,7 @@ export const ShopCustomers: React.FC = () => {
       }
       const q = query(
         collection(db, 'users'),
-        where('shopName', '==', shopName),
+        where('shopName', 'in', shopNameVariants),
         where('role', '==', 'CUSTOMER'),
         orderBy('name'),
       );
@@ -82,7 +86,7 @@ export const ShopCustomers: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser, userProfile]);
+  }, [currentUser, userProfile, shopNameVariants]);
 
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
@@ -95,9 +99,13 @@ export const ShopCustomers: React.FC = () => {
       const s1 = await getDocs(q1);
       s1.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as Order; });
       if (customerEmail) {
-        const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customerEmail));
-        const s2 = await getDocs(q2);
-        s2.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as Order; });
+        try {
+          const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customerEmail));
+          const s2 = await getDocs(q2);
+          s2.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as Order; });
+        } catch (err) {
+          console.warn('[ShopCustomers] Email fallback query skipped:', err);
+        }
       }
       const sorted = Object.values(seen).sort((a, b) => {
         const at = a.createdAt?.seconds ?? 0;

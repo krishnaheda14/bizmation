@@ -343,7 +343,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <div className="flex gap-2">
               <div className="flex-1 px-4 py-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg shadow-sm">
                 <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100">
-                  {fetchingRate ? 'Loading live rates…' : `₹${(getGoldRate(MetalType.GOLD, 24) * 0.9825).toFixed(2)}/gram`}
+                  {fetchingRate ? 'Loading live rates…' : `₹${getGoldRate(MetalType.GOLD, 24).toFixed(2)}/gram`}
                 </p>
                 <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
                   Live international market rate

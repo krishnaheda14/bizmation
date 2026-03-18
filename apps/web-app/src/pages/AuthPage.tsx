@@ -97,17 +97,20 @@ type ProgressStep   = { id: string; label: string; status: ProgressStatus; detai
 interface ExtSignUpData {
   name: string; email: string; password: string; phone: string;
   role: 'CUSTOMER' | 'OWNER'; shopName: string;
+  ownerCode: string;
   city: string; state: string; country: string; dateOfBirth: string;
   investmentGoal: string; referralCode: string;
-  panNumber: string; aadhaarLast4: string; gstNumber: string; businessType: string;
+  panNumber: string; aadhaarLast4: string; aadhaarNumber: string; gstNumber: string;
+  hallmarkLicenseNumber: string; businessType: string; businessAddress: string; businessPincode: string;
 }
 
 const blankForm = (): ExtSignUpData => ({
   name: '', email: '', password: '', phone: '+91',
-  role: 'CUSTOMER', shopName: '',
+  role: 'CUSTOMER', shopName: '', ownerCode: '',
   city: '', state: '', country: 'India', dateOfBirth: '',
   investmentGoal: '', referralCode: '',
-  panNumber: '', aadhaarLast4: '', gstNumber: '', businessType: '',
+  panNumber: '', aadhaarLast4: '', aadhaarNumber: '', gstNumber: '',
+  hallmarkLicenseNumber: '', businessType: '', businessAddress: '', businessPincode: '',
 });
 
 const AuthPage: React.FC = () => {
@@ -225,7 +228,8 @@ const AuthPage: React.FC = () => {
     if (!form.email.trim())              { setError('Please enter your email.'); return; }
     if (form.password.length < 6)        { setError('Password must be at least 6 characters.'); return; }
     if (form.password !== confirmPass)   { setError('Passwords do not match.'); return; }
-    if (!form.shopName.trim())           { setError('Please enter the shop / business name.'); return; }
+    if (form.role === 'OWNER' && !form.shopName.trim()) { setError('Please enter the shop / business name.'); return; }
+    if (form.role === 'CUSTOMER' && !form.ownerCode.trim()) { setError('Please enter the shop owner code.'); return; }
     // Phone validation: must be exactly 10 digits (after +91 prefix)
     const phoneDigits = phoneRaw.replace(/\D/g, '');
     if (phoneDigits.length !== 10) {
@@ -237,17 +241,20 @@ const AuthPage: React.FC = () => {
       return;
     }
 
-    // For CUSTOMER role: validate that the shop exists in Firestore
+    // For CUSTOMER role: validate that the owner code exists in Firestore.
     if (form.role === 'CUSTOMER') {
       try {
         setLoading(true);
-        const shopQ = query(collection(db, 'shops'), where('name', '==', form.shopName.trim()), limit(1));
+        const code = form.ownerCode.trim().toUpperCase();
+        const shopQ = query(collection(db, 'shops'), where('ownerCode', '==', code), limit(1));
         const shopSnap = await getDocs(shopQ);
         if (shopSnap.empty) {
-          setError('Shop not found. Please ask your shop owner for the exact shop name, or check spelling.');
+          setError('Invalid owner code. Please ask your shop owner for the exact code.');
           setLoading(false);
           return;
         }
+        const linkedShopName = String(shopSnap.docs[0].data()?.name ?? '').trim().toLowerCase();
+        setForm(f => ({ ...f, ownerCode: code, shopName: linkedShopName }));
       } catch {
         // Allow signup if Firestore check fails (non-blocking)
       } finally {
@@ -260,8 +267,13 @@ const AuthPage: React.FC = () => {
 
   const goStep3 = (e: React.FormEvent) => {
     e.preventDefault(); clearMsgs();
-    if (!form.city.trim() || !form.state.trim()) { setError('City and state are required.'); return; }
-    if (!form.dateOfBirth) { setError('Date of birth is required.'); return; }
+    if (form.role === 'CUSTOMER') {
+      if (!form.city.trim() || !form.state.trim()) { setError('City and state are required.'); return; }
+      if (!form.dateOfBirth) { setError('Date of birth is required.'); return; }
+    } else {
+      if (!form.businessAddress.trim()) { setError('Business address is required for shop owner.'); return; }
+      if (!/^\d{6}$/.test(form.businessPincode.trim())) { setError('Business pincode must be 6 digits.'); return; }
+    }
     setSignupStep(3);
   };
 
@@ -270,7 +282,8 @@ const AuthPage: React.FC = () => {
     if (form.role === 'OWNER') {
       if (!form.panNumber.trim())    { setError('PAN number is required for shop owners.'); return; }
       if (!form.gstNumber.trim())    { setError('GST number is required for shop owners.'); return; }
-      if (!form.aadhaarLast4.trim()) { setError('Aadhaar last 4 digits are required.'); return; }
+      if (!/^\d{12}$/.test(form.aadhaarNumber.trim())) { setError('Aadhaar number must be exactly 12 digits for shop owners.'); return; }
+      if (!form.hallmarkLicenseNumber.trim()) { setError('Hallmark license number is required for shop owners.'); return; }
     }
     // Build progress steps for visual feedback during signup
     const steps: ProgressStep[] = [
@@ -279,7 +292,7 @@ const AuthPage: React.FC = () => {
       { id: 'save-profile', label: 'Saving profile to database', status: 'pending' },
       ...(form.role === 'OWNER'
         ? [{ id: 'setup-shop', label: 'Setting up your shop',      status: 'pending' as ProgressStatus }]
-        : form.shopName.trim()
+        : form.ownerCode.trim()
         ? [{ id: 'link-shop',  label: 'Linking you to your shop',  status: 'pending' as ProgressStatus }]
         : []),
     ];
@@ -300,7 +313,7 @@ const AuthPage: React.FC = () => {
     }
   };
 
-  const stepLabels = ['Account Type & Basics', 'Personal Details', 'KYC & Compliance'];
+  const stepLabels = ['Account Type & Basics', form.role === 'OWNER' ? 'Business Details' : 'Personal Details', 'KYC & Compliance'];
 
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-4 py-10"
@@ -450,7 +463,11 @@ const AuthPage: React.FC = () => {
               </div>
               <h2 className="font-display text-2xl font-semibold text-amber-900 mb-0.5">{stepLabels[signupStep-1]}</h2>
               <p className="text-xs text-amber-500 mb-5 tracking-wide">
-                {signupStep===1?'Choose your account type and basics':signupStep===2?'Your personal & contact details':'For regulatory compliance and fast payouts'}
+                {signupStep===1
+                  ? 'Choose your account type and basics'
+                  : signupStep===2
+                  ? (form.role === 'OWNER' ? 'Your business details' : 'Your personal & contact details')
+                  : 'For regulatory compliance and fast payouts'}
               </p>
 
               {signupStep === 1 && (
@@ -507,59 +524,79 @@ const AuthPage: React.FC = () => {
                     </div>
                     <p className="text-[10px] text-amber-400 mt-1 pl-1">10-digit number without 0 or +91</p>
                   </div>
-                  {/* ── Shop name forced to lowercase for standardisation ── */}
-                  <div>
-                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">
-                      {form.role==='OWNER'?'Shop / Business Name *':'Name of your Gold Shop *'}
-                    </label>
-                    <input
-                      type="text" required
-                      value={form.shopName}
-                      onChange={e => setForm(f => ({ ...f, shopName: e.target.value.toLowerCase() }))}
-                      placeholder={form.role==='OWNER'?'e.g. lakshmi gold palace':'e.g. bizmation gold'}
-                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
-                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
-                      onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
-                      onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
-                    />
-                    <p className="text-[10px] text-amber-400 mt-1 pl-1">Stored in lowercase — must match exactly across all users of this shop</p>
-                  </div>
+                  {form.role === 'OWNER' ? (
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Shop / Business Name *</label>
+                      <input
+                        type="text" required
+                        value={form.shopName}
+                        onChange={e => setForm(f => ({ ...f, shopName: e.target.value.toLowerCase() }))}
+                        placeholder="e.g. lakshmi gold palace"
+                        className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none"
+                        style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
+                        onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
+                        onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Shop Owner Code *</label>
+                      <input
+                        type="text" required
+                        value={form.ownerCode}
+                        onChange={e => setForm(f => ({ ...f, ownerCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
+                        placeholder="e.g. RAVI7K2Q"
+                        className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none uppercase"
+                        style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}
+                        onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
+                        onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
+                      />
+                      <p className="text-[10px] text-amber-400 mt-1 pl-1">Get this code from your jeweller shop owner.</p>
+                    </div>
+                  )}
                   <GoldButton loading={false}>Continue →</GoldButton>
                 </form>
               )}
 
               {signupStep === 2 && (
                 <form onSubmit={goStep3} className="space-y-4">
-                  {/* ── State dropdown ── */}
-                  <div>
-                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">State *</label>
-                    <select
-                      value={form.state}
-                      onChange={e => setForm(f => ({ ...f, state: e.target.value, city: '' }))}
-                      required
-                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none"
-                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
-                      <option value="">Select state</option>
-                      {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  {/* ── City dropdown (dependent on state) ── */}
-                  <div>
-                    <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">City *</label>
-                    <select
-                      value={form.city}
-                      onChange={setF('city')}
-                      required
-                      disabled={!form.state}
-                      className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none disabled:opacity-50"
-                      style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
-                      <option value="">{form.state ? 'Select city' : 'Select state first'}</option>
-                      {(CITIES_BY_STATE[form.state] ?? []).map(c => <option key={c} value={c}>{c}</option>)}
-                      {form.state && <option value="Other">Other (not listed)</option>}
-                    </select>
-                  </div>
-                  <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
-                  <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
+                  {form.role === 'CUSTOMER' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">State *</label>
+                        <select
+                          value={form.state}
+                          onChange={e => setForm(f => ({ ...f, state: e.target.value, city: '' }))}
+                          required
+                          className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none"
+                          style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
+                          <option value="">Select state</option>
+                          {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">City *</label>
+                        <select
+                          value={form.city}
+                          onChange={setF('city')}
+                          required
+                          disabled={!form.state}
+                          className="w-full px-4 py-2.5 rounded-2xl text-sm text-stone-800 transition-all focus:outline-none appearance-none disabled:opacity-50"
+                          style={{ background:'rgba(255,251,240,0.9)',border:'1.5px solid rgba(251,191,36,0.35)',boxShadow:'inset 0 1px 3px rgba(180,120,0,0.06)' }}>
+                          <option value="">{form.state ? 'Select city' : 'Select state first'}</option>
+                          {(CITIES_BY_STATE[form.state] ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+                          {form.state && <option value="Other">Other (not listed)</option>}
+                        </select>
+                      </div>
+                      <GoldInput label="Country" value={form.country} onChange={setF('country')} required />
+                      <GoldInput label="Date of Birth" type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} required />
+                    </>
+                  ) : (
+                    <>
+                      <GoldInput label="Business Address *" value={form.businessAddress} onChange={setF('businessAddress')} required placeholder="Shop/office full address" />
+                      <GoldInput label="Business Pincode *" value={form.businessPincode} onChange={setF('businessPincode')} required placeholder="6 digit pincode" maxLength={6} />
+                    </>
+                  )}
                   <div>
                     <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">{form.role==='CUSTOMER'?'Investment Goal':'Business Type'}</label>
                     <select value={form.role==='CUSTOMER'?form.investmentGoal:form.businessType} onChange={setF(form.role==='CUSTOMER'?'investmentGoal':'businessType')}
@@ -597,12 +634,25 @@ const AuthPage: React.FC = () => {
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="rounded-2xl px-4 py-3 text-xs text-amber-700" style={{ background:'rgba(254,252,232,0.9)',border:'1px solid rgba(251,191,36,0.3)' }}>
                     {form.role==='OWNER'
-                      ? 'GST number is required for shop owners for regulatory compliance. PAN & Aadhaar are optional.'
+                      ? 'Shop owner compliance: Aadhaar, PAN, Hallmark license and GST are compulsory. Please also email these documents to support after signup.'
                       : 'PAN & Aadhaar are optional but required for gold purchases above ₹50,000 per RBI regulations. Data is encrypted.'}
                   </div>
-                  <GoldInput label="PAN Number (optional)" value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} />
-                  <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
-                  {form.role==='OWNER' && <GoldInput label="GST Number *" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="27AABCU9603R1ZM" maxLength={15} required />}
+                  {form.role === 'OWNER' ? (
+                    <>
+                      <GoldInput label="PAN Number *" value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} required />
+                      <GoldInput label="Aadhaar Number *" value={form.aadhaarNumber} onChange={setF('aadhaarNumber')} placeholder="12 digit Aadhaar" maxLength={12} required />
+                      <GoldInput label="Hallmark License Number *" value={form.hallmarkLicenseNumber} onChange={setF('hallmarkLicenseNumber')} placeholder="Enter hallmark license" required />
+                      <GoldInput label="GST Number *" value={form.gstNumber} onChange={setF('gstNumber')} placeholder="27AABCU9603R1ZM" maxLength={15} required />
+                      <div className="rounded-xl px-3 py-2 text-[11px] text-amber-700" style={{ background:'rgba(253,243,212,0.7)',border:'1px solid rgba(251,191,36,0.25)' }}>
+                        Please mail the same documents (Aadhaar, PAN, Hallmark, GST) to contact@bizmation.in for verification.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <GoldInput label="PAN Number (optional)" value={form.panNumber} onChange={setF('panNumber')} placeholder="ABCDE1234F" maxLength={10} />
+                      <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
+                    </>
+                  )}
                   <p className="text-[11px] text-stone-400 leading-relaxed px-1">By creating an account you agree to our Terms of Service and Privacy Policy. Data stored securely for KYC and tax compliance (India).</p>
                   <div className="flex gap-3">
                     <BackButton onClick={()=>setSignupStep(2)} />

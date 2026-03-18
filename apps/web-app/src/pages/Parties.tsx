@@ -7,7 +7,7 @@
  * Customer rows expand to show their goldOnlineOrders.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection, query, where, getDocs,
@@ -64,6 +64,7 @@ interface Order {
   status: string;
   createdAt: any;
   razorpayPaymentId?: string;
+  shopCommissionInr?: number;
 }
 
 // --- Main Component ---------------------------------------------------------
@@ -147,6 +148,10 @@ export const Parties: React.FC = () => {
   const [expandedUid, setExpandedUid]     = useState<string | null>(null);
   const [ordersMap, setOrdersMap]         = useState<Record<string, Order[]>>({});
   const [ordersLoading, setOrdersLoading] = useState<string | null>(null);
+  const shopNameVariants = useMemo(
+    () => Array.from(new Set([(userProfile?.shopName ?? ''), (userProfile?.shopName ?? '').toLowerCase(), (userProfile?.shopName ?? '').toUpperCase()].filter(Boolean))),
+    [userProfile?.shopName],
+  );
 
   const fetchCustomers = useCallback(async () => {
     if (!currentUser || !userProfile) return;
@@ -160,7 +165,7 @@ export const Parties: React.FC = () => {
     try {
       const q = query(
         collection(db, 'users'),
-        where('shopName', '==', shopName),
+        where('shopName', 'in', shopNameVariants),
         where('role', '==', 'CUSTOMER'),
       );
       const snap = await getDocs(q);
@@ -171,7 +176,7 @@ export const Parties: React.FC = () => {
       console.error('[Parties] Error fetching customers:', e);
       setError('Failed to load customers. Check Firestore rules: ' + (e?.message ?? ''));
     }
-  }, [currentUser, userProfile]);
+  }, [currentUser, userProfile, shopNameVariants]);
 
   const fetchShops = useCallback(async () => {
     if (!currentUser) return;
@@ -211,15 +216,23 @@ export const Parties: React.FC = () => {
         s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
       }
       if (customer.email) {
-        const q = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
-        const s = await getDocs(q);
-        s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
-        console.log('[Parties] Orders by email for', customer.name, ':', s.size);
+        try {
+          const q = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
+          const s = await getDocs(q);
+          s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
+          console.log('[Parties] Orders by email for', customer.name, ':', s.size);
+        } catch (err) {
+          console.warn('[Parties] Email fallback query skipped:', err);
+        }
       }
       if (customer.phone) {
-        const q = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', customer.phone));
-        const s = await getDocs(q);
-        s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
+        try {
+          const q = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', customer.phone));
+          const s = await getDocs(q);
+          s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
+        } catch (err) {
+          console.warn('[Parties] Phone fallback query skipped:', err);
+        }
       }
       const sorted = Object.values(all).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
       console.log('[Parties] Total unique orders for', customer.name, ':', sorted.length);
@@ -386,7 +399,7 @@ export const Parties: React.FC = () => {
               <Users size={40} className="text-amber-300 dark:text-amber-700 mx-auto mb-4" />
               <p className="text-amber-800 dark:text-gray-300 font-bold">No customers found</p>
               <p className="text-amber-600/70 dark:text-gray-500 text-sm mt-1">
-                Customers who sign up with shop name <strong>{userProfile?.shopName}</strong> will appear here.
+                Customers who sign up using your owner code will appear here under <strong>{userProfile?.shopName}</strong>.
               </p>
             </div>
           ) : (
@@ -436,6 +449,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
   const initials = customer.name?.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase() || '?';
   const totalGold = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + o.grams, 0);
   const totalInvested = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + o.totalAmountInr, 0);
+  const totalCommission = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + (Number(o.shopCommissionInr) || 0), 0);
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-amber-100 dark:border-gray-800 rounded-3xl shadow-sm overflow-hidden hover:shadow-md transition-shadow">
@@ -467,8 +481,8 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
       </div>
 
       {orders !== undefined && (
-        <div className="grid grid-cols-3 border-t border-amber-50 dark:border-gray-800 divide-x divide-amber-50 dark:divide-gray-800">
-          {[{ label: 'Orders', value: orders.length }, { label: 'Gold', value: totalGold.toFixed(3) + 'g' }, { label: 'Invested', value: 'Rs.' + totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }].map(s => (
+        <div className="grid grid-cols-4 border-t border-amber-50 dark:border-gray-800 divide-x divide-amber-50 dark:divide-gray-800">
+          {[{ label: 'Orders', value: orders.length }, { label: 'Gold', value: totalGold.toFixed(3) + 'g' }, { label: 'Invested', value: 'Rs.' + totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }, { label: 'Commission', value: 'Rs.' + totalCommission.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }].map(s => (
             <div key={s.label} className="py-2.5 text-center">
               <p className="text-xs font-black text-stone-700 dark:text-white">{s.value}</p>
               <p className="text-[10px] text-stone-400 dark:text-gray-500">{s.label}</p>
@@ -489,7 +503,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-amber-100 dark:border-gray-800">
-                    {['Date','Type','Metal','Grams','Amount','Status'].map(h => (
+                    {['Date','Type','Metal','Grams','Amount','Commission','Status'].map(h => (
                       <th key={h} className="text-left py-2 px-3 text-amber-700 dark:text-gray-400 font-semibold uppercase">{h}</th>
                     ))}
                   </tr>
@@ -504,6 +518,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
                         <td className="py-2 px-3 font-semibold text-amber-700 dark:text-yellow-400">{o.metal} {o.purity}K</td>
                         <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{o.grams?.toFixed?.(3)}g</td>
                         <td className="py-2 px-3 font-black text-stone-800 dark:text-white">Rs.{o.totalAmountInr?.toLocaleString?.('en-IN',{maximumFractionDigits:0})}</td>
+                        <td className="py-2 px-3 font-black text-amber-700 dark:text-amber-400">Rs.{Number(o.shopCommissionInr || 0).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
                         <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.status==='SUCCESS'?'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':o.status==='PENDING'?'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400':'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')}>{o.status}</span></td>
                       </tr>
                     );

@@ -26,6 +26,7 @@ import { Referral } from './pages/Referral';
 import { RedemptionPage } from './pages/RedemptionPage';
 import { RedemptionRequests } from './pages/RedemptionRequests';
 import { SuperAdmin } from './pages/SuperAdmin';
+import { NomineePage } from './pages/Nominee';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -71,6 +72,9 @@ function App() {
 
   const isCustomer   = userProfile?.role === 'CUSTOMER';
   const isSuperAdmin = userProfile?.role === 'SUPER_ADMIN';
+  const ownerStatus = ((userProfile as any)?.shopVerificationStatus ?? '').toUpperCase();
+  const isOwnerOrStaff = userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF';
+  const isOwnerPendingVerification = isOwnerOrStaff && ownerStatus !== 'APPROVED';
 
   // ── Super Admin: full-platform console ────────────────────────────────────
   if (isSuperAdmin) {
@@ -88,6 +92,7 @@ function App() {
     // Customer-only routes
     if (currentRoute === '/portfolio')  return <CustomerPortfolio />;
     if (currentRoute === '/orders')     return <Orders />;
+    if (currentRoute === '/nominee')    return <NomineePage />;
     if (currentRoute === '/profile')    return <Profile />;
     if (currentRoute === '/redemption') return <RedemptionPage />;
     if (currentRoute === '/referral')   return <Referral />;
@@ -95,6 +100,11 @@ function App() {
     // For customer accounts, only home, portfolio and profile are allowed
     if (isCustomer) {
       return <HomeLanding />;
+    }
+
+    if (isOwnerPendingVerification && currentRoute !== '/' && currentRoute !== '/profile') {
+      window.location.hash = '#/';
+      return null;
     }
 
     // Shop / staff / owner routes
@@ -127,7 +137,7 @@ function App() {
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/profile', '/redemption', '/referral', '/analytics', '/redemption-requests', '/super-admin']);
+  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/nominee', '/profile', '/redemption', '/referral', '/analytics', '/redemption-requests', '/super-admin']);
 
   return (
     <ThemeProvider>

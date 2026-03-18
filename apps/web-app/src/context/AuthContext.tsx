@@ -36,7 +36,7 @@ import {
   collection, query, where, getDocs, limit,
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { generateCustomerId, generateShopId } from '../utils/bizId';
+import { generateCustomerId, generateShopId, generateOwnerCode } from '../utils/bizId';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +56,32 @@ export interface UserProfile {
   kycStatus: 'PENDING' | 'VERIFIED';
   role: 'CUSTOMER' | 'STAFF' | 'OWNER' | 'SUPER_ADMIN';
   shopName?: string;             // for OWNER/STAFF accounts
+  shopId?: string;
+  ownerCode?: string;            // code shared by owner to onboard customers
   gstNumber?: string;            // GST registration number (OWNER)
+  hallmarkLicenseNumber?: string;
+  aadhaarNumber?: string;
+  businessAddress?: string;
+  businessPincode?: string;
+  shopVerificationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  shopVerificationRequestedAt?: any;
+  shopVerificationReviewedAt?: any;
+  shopVerificationReviewedBy?: string;
+  shopVerificationNote?: string;
+  shopVerified?: boolean;
+  nominee?: {
+    name?: string;
+    relation?: string;
+    phone?: string;
+    aadhaarNumber?: string;
+    panNumber?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+    updatedAt?: any;
+  };
   phoneVerified?: boolean;
   totalGoldPurchasedGrams: number;
   totalSilverPurchasedGrams: number;
@@ -76,9 +101,14 @@ export interface SignUpData {
   dateOfBirth: string;
   panNumber: string;
   aadhaarLast4: string;
+  aadhaarNumber?: string;
   role?: 'CUSTOMER' | 'OWNER';
   shopName?: string;
+  ownerCode?: string;
   gstNumber?: string;  // GST registration number (required for OWNER)
+  hallmarkLicenseNumber?: string;
+  businessAddress?: string;
+  businessPincode?: string;
 }
 
 interface AuthContextType {
@@ -167,6 +197,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     data: SignUpData,
     onProgress?: (stepId: string, status: 'running' | 'done' | 'error', detail?: string) => void,
   ) => {
+    const role = data.role ?? 'CUSTOMER';
+    const aadhaarDigits = (data.aadhaarNumber ?? '').replace(/\D/g, '');
+    const aadhaarLast4 = aadhaarDigits ? aadhaarDigits.slice(-4) : (data.aadhaarLast4 || '').trim();
+
+    if (role === 'OWNER') {
+      if (!data.panNumber?.trim()) throw new Error('PAN number is required for shop owner signup.');
+      if (!data.gstNumber?.trim()) throw new Error('GST number is required for shop owner signup.');
+      if (!data.hallmarkLicenseNumber?.trim()) throw new Error('Hallmark license number is required for shop owner signup.');
+      if (!/^\d{12}$/.test(aadhaarDigits)) throw new Error('Aadhaar number must be exactly 12 digits for shop owner signup.');
+      if (!data.businessAddress?.trim()) throw new Error('Business address is required for shop owner signup.');
+    }
+
+    let resolvedShopName = (data.shopName ?? '').trim().toLowerCase();
+    const ownerCodeInput = (data.ownerCode ?? '').trim().toUpperCase();
+
+    if (role === 'CUSTOMER') {
+      if (!ownerCodeInput) {
+        throw new Error('Shop owner code is required.');
+      }
+      const shopByCode = await getDocs(query(collection(db, 'shops'), where('ownerCode', '==', ownerCodeInput), limit(1)));
+      if (shopByCode.empty) {
+        throw new Error(`Owner code "${ownerCodeInput}" not found. Please confirm with your shop owner.`);
+      }
+      const found = shopByCode.docs[0];
+      resolvedShopName = String(found.data()?.name ?? '').trim().toLowerCase();
+    }
+
+    let ownerCode = ownerCodeInput;
+    if (role === 'OWNER') {
+      ownerCode = '';
+      for (let i = 0; i < 8; i++) {
+        const candidate = generateOwnerCode(data.name || data.shopName || 'SHOP');
+        const existing = await getDocs(query(collection(db, 'shops'), where('ownerCode', '==', candidate), limit(1)));
+        if (existing.empty) {
+          ownerCode = candidate;
+          break;
+        }
+      }
+      if (!ownerCode) {
+        throw new Error('Could not generate a unique owner code. Please retry signup.');
+      }
+    }
+
     // ── Step 1: Create Firebase Auth account ──────────────────────────────
     // IMPORTANT: we create the auth user FIRST so all subsequent Firestore
     // operations run as an authenticated user and pass security rules.
@@ -200,22 +273,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Build Firestore profile object
     const profile: UserProfile = {
       uid:                        createdUser.uid,
-      ...(data.role === 'CUSTOMER' ? { bizCustomerId: generateCustomerId() } : {}),
-      ...(data.role === 'OWNER' ? { bizShopId: generateShopId() } : {}),
+      ...(role === 'CUSTOMER' ? { bizCustomerId: generateCustomerId() } : {}),
+      ...(role === 'OWNER' ? { bizShopId: generateShopId() } : {}),
       name:                       data.name,
       email:                      data.email,
       phone:                      data.phone,
-      city:                       data.city,
-      state:                      data.state,
-      country:                    data.country,
-      dateOfBirth:                data.dateOfBirth,
+      city:                       role === 'OWNER' ? '' : data.city,
+      state:                      role === 'OWNER' ? '' : data.state,
+      country:                    role === 'OWNER' ? '' : data.country,
+      dateOfBirth:                role === 'OWNER' ? '' : data.dateOfBirth,
       panNumber:                  (data.panNumber || '').trim().toUpperCase(),
-      aadhaarLast4:               (data.aadhaarLast4 || '').trim(),
+      aadhaarLast4,
+      ...(aadhaarDigits ? { aadhaarNumber: aadhaarDigits } : {}),
       kycStatus:                  'PENDING',
-      role:                       data.role ?? 'CUSTOMER',
-      // shopName stored lowercase for consistent cross-user querying
-      ...(data.shopName ? { shopName: data.shopName.trim().toLowerCase() } : {}),
+      role,
+      ...(resolvedShopName ? { shopName: resolvedShopName } : {}),
+      ...(role === 'OWNER' ? { shopId: createdUser.uid } : {}),
+      ...(ownerCode ? { ownerCode } : {}),
       ...(data.gstNumber ? { gstNumber: data.gstNumber.trim().toUpperCase() } : {}),
+      ...(data.hallmarkLicenseNumber ? { hallmarkLicenseNumber: data.hallmarkLicenseNumber.trim().toUpperCase() } : {}),
+      ...(data.businessAddress ? { businessAddress: data.businessAddress.trim() } : {}),
+      ...(data.businessPincode ? { businessPincode: data.businessPincode.trim() } : {}),
+      ...(role === 'OWNER' ? {
+        shopVerificationStatus: 'PENDING' as const,
+        shopVerificationRequestedAt: serverTimestamp(),
+        shopVerified: false,
+      } : {}),
       phoneVerified:              false,
       totalGoldPurchasedGrams:    0,
       totalSilverPurchasedGrams:  0,
@@ -286,9 +369,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ownerName: profile.name,
               phone: profile.phone || null,
               email: profile.email || null,
-              city: profile.city || null,
-              state: profile.state || null,
-              address: null,
+              city: null,
+              state: null,
+              address: (profile as any).businessAddress || null,
             }),
           });
         } else {
@@ -320,30 +403,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id:          createdUser.uid,
           bizShopId:   profile.bizShopId ?? generateShopId(),
           name:        profile.shopName || profile.name,
+          ownerCode:   profile.ownerCode || ownerCode,
           ownerUid:    createdUser.uid,
           ownerName:   profile.name,
           email:       profile.email || null,
           phone:       profile.phone || null,
-          city:        profile.city || null,
-          state:       profile.state || null,
-          country:     profile.country || null,
+          city:        null,
+          state:       null,
+          country:     null,
+          businessAddress: (profile as any).businessAddress || null,
+          businessPincode: (profile as any).businessPincode || null,
           panNumber:   profile.panNumber || null,
           gstNumber:   (profile as any).gstNumber || null,
+          hallmarkLicenseNumber: (profile as any).hallmarkLicenseNumber || null,
+          aadhaarNumber: (profile as any).aadhaarNumber || null,
           aadhaarLast4: profile.aadhaarLast4 || null,
+          verificationStatus: 'PENDING',
+          verificationRequestedAt: serverTimestamp(),
+          verificationReviewedAt: null,
+          verificationReviewedBy: null,
+          verificationNote: `Please email KYC documents to contact@bizmation.in with owner code ${profile.ownerCode || ownerCode}.`,
+          verified: false,
           createdAt:   serverTimestamp(),
           updatedAt:   serverTimestamp(),
         });
         onProgress?.('setup-shop', 'done');
-      } else if (profile.role === 'CUSTOMER' && profile.shopName) {
+      } else if (profile.role === 'CUSTOMER' && profile.ownerCode) {
         onProgress?.('link-shop', 'running');
-        // shops allow read: if true, so this works even before full authentication
-        const shopQuery = query(collection(db, 'shops'), where('name', '==', profile.shopName), limit(1));
+        const shopQuery = query(collection(db, 'shops'), where('ownerCode', '==', profile.ownerCode), limit(1));
         const shopSnap  = await getDocs(shopQuery);
         if (!shopSnap.empty) {
           const shopDoc = shopSnap.docs[0];
+          const linkedShopName = String(shopDoc.data()?.name ?? '').trim().toLowerCase();
           // Store shopId in user profile for fast lookups later
           await updateDoc(doc(db, 'users', createdUser.uid), {
             shopId:    shopDoc.id,
+            shopName:  linkedShopName,
+            ownerCode: profile.ownerCode,
             updatedAt: serverTimestamp(),
           });
           // Create customer sub-doc under the shop
@@ -358,8 +454,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           onProgress?.('link-shop', 'done');
         } else {
-          onProgress?.('link-shop', 'error', `Shop "${profile.shopName}" not found — check spelling with your shop owner.`);
-          console.warn('[signUp] No shop found with name:', profile.shopName);
+          onProgress?.('link-shop', 'error', `Owner code "${profile.ownerCode}" not found.`);
+          console.warn('[signUp] No shop found with ownerCode:', profile.ownerCode);
         }
       }
     } catch (err: any) {

@@ -8,7 +8,7 @@
  *  • Daily / monthly trend cards
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection, query, where, onSnapshot, orderBy, Timestamp,
@@ -30,6 +30,8 @@ interface Order {
   status: string;
   customerName?: string;
   customerEmail?: string;
+  shopCommissionInr?: number;
+  bullionPayoutStatus?: string;
   createdAt: any;
 }
 
@@ -40,7 +42,11 @@ interface MetalStats {
   sellGrams: number;
   buyInr: number;
   sellInr: number;
+  commissionInr: number;
 }
+
+const GOLD_COMMISSION_PER_GRAM = 20;
+const SILVER_COMMISSION_PER_GRAM = 2;
 
 const fmtInr = (n: number) =>
   '₹' + Math.round(n).toLocaleString('en-IN');
@@ -51,6 +57,10 @@ const fmtGrams = (n: number) =>
 export const Analytics: React.FC = () => {
   const { userProfile } = useAuth();
   const shopName = userProfile?.shopName ?? '';
+  const shopNameVariants = useMemo(
+    () => Array.from(new Set([shopName, shopName.toLowerCase(), shopName.toUpperCase()].filter(Boolean))),
+    [shopName],
+  );
 
   const [orders,    setOrders]    = useState<Order[]>([]);
   const [loading,   setLoading]   = useState(true);
@@ -63,7 +73,7 @@ export const Analytics: React.FC = () => {
 
     const q = query(
       collection(db, 'goldOnlineOrders'),
-      where('shopName', '==', shopName),
+      where('shopName', 'in', shopNameVariants),
       orderBy('createdAt', 'desc'),
     );
 
@@ -75,7 +85,7 @@ export const Analytics: React.FC = () => {
     }, () => setLoading(false));
 
     return () => unsub();
-  }, [shopName]);
+  }, [shopName, shopNameVariants]);
 
   // Compute stats
   const computeStats = (metal: string): MetalStats => {
@@ -83,12 +93,17 @@ export const Analytics: React.FC = () => {
     return subset.reduce((acc, o) => {
       const g = Number(o.grams) || 0;
       const inr = Number(o.totalAmountInr) || 0;
+      const commission = Number(o.shopCommissionInr)
+        || ((o.type === 'BUY')
+          ? g * ((metal.toUpperCase() === 'GOLD') ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM)
+          : 0);
       if (o.type === 'BUY') { acc.buyGrams += g; acc.buyInr += inr; }
       else { acc.sellGrams += g; acc.sellInr += inr; }
+      acc.commissionInr += commission;
       acc.totalGrams = acc.buyGrams - acc.sellGrams;
       acc.totalInr += inr;
       return acc;
-    }, { totalGrams: 0, totalInr: 0, buyGrams: 0, sellGrams: 0, buyInr: 0, sellInr: 0 });
+    }, { totalGrams: 0, totalInr: 0, buyGrams: 0, sellGrams: 0, buyInr: 0, sellInr: 0, commissionInr: 0 });
   };
 
   const gold   = computeStats('GOLD');
@@ -111,6 +126,23 @@ export const Analytics: React.FC = () => {
     return ts >= today;
   });
   const todayInr = todayOrders.reduce((s, o) => s + (Number(o.totalAmountInr) || 0), 0);
+
+  const totalCommission = orders.reduce((s, o) => {
+    const g = Number(o.grams) || 0;
+    const fallback = (o.type === 'BUY')
+      ? g * (((o.metal ?? '').toUpperCase() === 'GOLD') ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM)
+      : 0;
+    return s + (Number(o.shopCommissionInr) || fallback);
+  }, 0);
+
+  const pendingCommission = orders.reduce((s, o) => {
+    const isBuy = (o.type ?? '').toUpperCase() === 'BUY';
+    const unsettled = (o.bullionPayoutStatus ?? 'UNSETTLED').toUpperCase() !== 'SETTLED';
+    if (!isBuy || !unsettled) return s;
+    const g = Number(o.grams) || 0;
+    const fallback = g * (((o.metal ?? '').toUpperCase() === 'GOLD') ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM);
+    return s + (Number(o.shopCommissionInr) || fallback);
+  }, 0);
 
   const StatCard: React.FC<{ label: string; value: string; sub?: string; icon: React.ReactNode; accent: string }> =
     ({ label, value, sub, icon, accent }) => (
@@ -165,6 +197,19 @@ export const Analytics: React.FC = () => {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-amber-100 dark:border-gray-800 shadow-sm">
+            <p className="text-xs text-stone-500 dark:text-gray-400 font-medium">Total Commission Earned</p>
+            <p className="text-3xl font-black text-amber-800 dark:text-amber-400 mt-1">{fmtInr(totalCommission)}</p>
+            <p className="text-xs text-stone-400 mt-1">All buy orders till date</p>
+          </div>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-amber-100 dark:border-gray-800 shadow-sm">
+            <p className="text-xs text-stone-500 dark:text-gray-400 font-medium">Commission Pending From Bullion</p>
+            <p className="text-3xl font-black text-red-700 dark:text-red-400 mt-1">{fmtInr(pendingCommission)}</p>
+            <p className="text-xs text-stone-400 mt-1">Unsettled orders</p>
+          </div>
+        </div>
+
         {/* Gold stats */}
         <div>
           <h2 className="text-lg font-black text-amber-900 dark:text-white mb-4 flex items-center gap-2">
@@ -174,7 +219,7 @@ export const Analytics: React.FC = () => {
             <StatCard label="Net Holding (sold to customers)" value={fmtGrams(gold.buyGrams)} sub={fmtInr(gold.buyInr) + ' bought'} icon={<TrendingUp size={18} className="text-amber-700" />} accent="bg-amber-100 dark:bg-amber-900/30" />
             <StatCard label="Total Sold (redeemed)" value={fmtGrams(gold.sellGrams)} sub={fmtInr(gold.sellInr) + ' redeemed'} icon={<TrendingDown size={18} className="text-red-500" />} accent="bg-red-50 dark:bg-red-900/20" />
             <StatCard label="Total Orders" value={String(orders.filter(o => o.metal?.toUpperCase() === 'GOLD').length)} sub="All time" icon={<BarChart3 size={18} className="text-amber-700" />} accent="bg-amber-100 dark:bg-amber-900/30" />
-            <StatCard label="Total Revenue" value={fmtInr(gold.totalInr)} sub="Buy + Sell" icon={<ArrowUpRight size={18} className="text-green-600" />} accent="bg-green-50 dark:bg-green-900/20" />
+            <StatCard label="Commission" value={fmtInr(gold.commissionInr)} sub="Gold buy commissions" icon={<ArrowUpRight size={18} className="text-green-600" />} accent="bg-green-50 dark:bg-green-900/20" />
           </div>
         </div>
 
@@ -187,7 +232,7 @@ export const Analytics: React.FC = () => {
             <StatCard label="Net Holding (sold to customers)" value={fmtGrams(silver.buyGrams)} sub={fmtInr(silver.buyInr) + ' bought'} icon={<TrendingUp size={18} className="text-stone-500" />} accent="bg-stone-100 dark:bg-stone-900/30" />
             <StatCard label="Total Sold (redeemed)" value={fmtGrams(silver.sellGrams)} sub={fmtInr(silver.sellInr) + ' redeemed'} icon={<TrendingDown size={18} className="text-red-500" />} accent="bg-red-50 dark:bg-red-900/20" />
             <StatCard label="Total Orders" value={String(orders.filter(o => o.metal?.toUpperCase() === 'SILVER').length)} sub="All time" icon={<BarChart3 size={18} className="text-stone-500" />} accent="bg-stone-100 dark:bg-stone-900/30" />
-            <StatCard label="Total Revenue" value={fmtInr(silver.totalInr)} sub="Buy + Sell" icon={<ArrowUpRight size={18} className="text-green-600" />} accent="bg-green-50 dark:bg-green-900/20" />
+            <StatCard label="Commission" value={fmtInr(silver.commissionInr)} sub="Silver buy commissions" icon={<ArrowUpRight size={18} className="text-green-600" />} accent="bg-green-50 dark:bg-green-900/20" />
           </div>
         </div>
 

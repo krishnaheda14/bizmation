@@ -494,4 +494,4 @@ docker run -p 3001:3001 --env-file apps/backend/.env bizmation-backend
 
 ---
 
-*Built for Indian jewellery businesses. For support: support@bizmation.com*
+*Built for Indian jewellery businesses. For support: contact@bizmation.in*

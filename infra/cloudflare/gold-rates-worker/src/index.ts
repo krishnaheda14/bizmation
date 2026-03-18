@@ -1,16 +1,23 @@
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+}
+
+interface ScheduledEvent {
+  cron: string;
+  scheduledTime: number;
+}
+
 export interface Env {
   GOLD_RATES_KV: KVNamespace;
 }
 
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY = 1.09;
-/**
- * Silver 5% surcharge: covers handling, storage and assay charges.
- * This surcharge is NOT shown as a label in the public UI.
- * The displayed silver 999 price already includes it.
- * Visible only to super-admin and in this source file.
- */
-const SILVER_SURCHARGE = 1.05;
 
 const CDN_XAU_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json';
 const CDN_XAU_MIRROR  = 'https://latest.currency-api.pages.dev/v1/currencies/xau.json';
@@ -120,8 +127,7 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; x
  *   750 (18K) = spot_base × (750/995)  — fashion/designer jewellery
  *
  * Silver:
- *   999 only — includes SILVER_SURCHARGE (5% extra handling/assay charge).
- *   The surcharge is silently applied; the final per-gram/per-kg price is shown.
+ *   999 only — no hidden surcharge.
  *
  * displayRate: per 10g for gold, per 1kg for silver.
  */
@@ -132,8 +138,7 @@ function buildRates(xauInr: number, xagInr: number, source: string, now: string)
   const gold916 = base995 * (916 / 995);
   const gold750 = base995 * (750 / 995);
 
-  // Silver 999 with 5% surcharge (not shown as label in public UI)
-  const silver999 = ((xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY) * SILVER_SURCHARGE;
+  const silver999 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
 
   return [
     { metalType: 'GOLD',   purity: 999, purityLabel: '24K (999)', ratePerGram: gold999,  displayRate: gold999  * 10,    effectiveDate: now, source },
@@ -186,7 +191,7 @@ export default {
     if ((url.pathname === '/' || url.pathname === '/gold-rates') && request.method === 'GET') {
       try {
         let cachedStr: string | null = null;
-        try { cachedStr = env.GOLD_RATES_KV ? await env.GOLD_RATES_KV.get('gold_rates_cache') : null; } catch (e) { console.warn('[Worker] KV get failed:', e?.message || e); }
+        try { cachedStr = env.GOLD_RATES_KV ? await env.GOLD_RATES_KV.get('gold_rates_cache') : null; } catch (e: any) { console.warn('[Worker] KV get failed:', e?.message || e); }
         if (cachedStr) { const data: CachedRates = JSON.parse(cachedStr); return jsonResponse({ success: true, data, cached: true }, 200, origin); }
         const fresh = await fetchAndCacheRates(env);
         return jsonResponse({ success: true, data: fresh, cached: false }, 200, origin);

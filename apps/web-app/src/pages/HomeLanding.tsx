@@ -15,8 +15,9 @@ import {
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -45,17 +46,10 @@ interface SellFormData {
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
-  const SELL_PRICE_DIFF_PER_GRAM = 50;
-  const SELL_PRICE_COST_FACTOR = 0.97;
-  const normalizePhone = (raw: string): string => {
-    if (!raw) return '';
-    const trimmed = String(raw).trim();
-    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
-    const digits = trimmed.replace(/\D/g, '');
-    if (digits.length === 10) return `+91${digits}`;
-    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-    return digits ? `+${digits}` : '';
-  };
+  const REDEEM_GST_FACTOR = 0.97;
+  const REDEEM_DEDUCTION_PER_GRAM = 50;
+  const GOLD_COMMISSION_PER_GRAM = 20;   // Rs 200 per 10g
+  const SILVER_COMMISSION_PER_GRAM = 2;  // Rs 2000 per 1kg
     // Detailed live price breakdown state
     const [priceFeed, setPriceFeed] = useState<any>(null);
     const fetchDetailedFeed = useCallback(async () => {
@@ -99,6 +93,9 @@ export const HomeLanding: React.FC = () => {
       return () => clearInterval(interval);
     }, [fetchDetailedFeed]);
   const { currentUser, userProfile } = useAuth();
+  const ownerVerificationStatus = ((userProfile as any)?.shopVerificationStatus ?? '').toUpperCase();
+  const ownerIsUnverified = (userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF')
+    && ownerVerificationStatus !== 'APPROVED';
   // Email verification resend state
   const [resending, setResending] = useState(false);
   const [resentMsg, setResentMsg] = useState('');
@@ -173,10 +170,11 @@ export const HomeLanding: React.FC = () => {
   }, [lockedRate]);
   // Use the highest purity (999) as the reference for buy prices
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
+  const gold995 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 999);
-  // Buy prices: 999 rate minus 1.75% — effective buy price (not shown in UI)
-  const goldBuyPrice = gold24 ? Math.round(gold24.ratePerGram * 0.9825 * 100) / 100 : 0;
-  const silverBuyPrice = silver24 ? Math.round(silver24.ratePerGram * 0.9825 * 100) / 100 : 0;
+  // Customer buy prices include bullion-trader commission component.
+  const goldBuyPrice = gold24 ? Math.round((gold24.ratePerGram + GOLD_COMMISSION_PER_GRAM) * 100) / 100 : 0;
+  const silverBuyPrice = silver24 ? Math.round((silver24.ratePerGram + SILVER_COMMISSION_PER_GRAM) * 100) / 100 : 0;
   // Live rates table: show 999 grade only
   const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 999) || (r.metalType === 'SILVER' && r.purity === 999));
 
@@ -204,26 +202,11 @@ export const HomeLanding: React.FC = () => {
   useEffect(() => {
     const loadCustomerSummary = async () => {
       if (!currentUser || userProfile?.role !== 'CUSTOMER') return;
-      const seen: Record<string, any> = {};
-
-      const byUid = await getDocs(query(collection(db, 'goldOnlineOrders'), where('userId', '==', currentUser.uid)));
-      byUid.docs.forEach(d => { seen[d.id] = d.data(); });
-
-      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
-      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
-      for (const e of emailCandidates) {
-        const byEmail = await getDocs(query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', e)));
-        byEmail.docs.forEach(d => { seen[d.id] = d.data(); });
-      }
-
-      const rawPhone = (userProfile?.phone ?? '').trim();
-      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
-      for (const candidate of phoneCandidates) {
-        const byPhone = await getDocs(query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', candidate)));
-        byPhone.docs.forEach(d => { seen[d.id] = d.data(); });
-      }
-
-      const all = Object.values(seen);
+      const all = await fetchCustomerOrders({
+        uid: currentUser.uid,
+        email: currentUser.email ?? userProfile?.email ?? '',
+        phone: userProfile?.phone ?? '',
+      });
       const totalGoldGrams = all
         .filter((o: any) => o.type === 'BUY' && o.status === 'SUCCESS' && o.metal === 'GOLD')
         .reduce((sum: number, o: any) => sum + (Number(o.grams) || 0), 0);
@@ -243,19 +226,34 @@ export const HomeLanding: React.FC = () => {
     });
   }, [currentUser, userProfile]);
 
+  const fetchCustomerLedgerOrders = useCallback(async () => {
+    if (!currentUser) return [] as any[];
+    return fetchCustomerOrders({
+      uid: currentUser.uid,
+      email: currentUser.email ?? userProfile?.email ?? '',
+      phone: userProfile?.phone ?? '',
+    });
+  }, [currentUser, userProfile]);
+
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
-    const metalRate = buyMetal === 'GOLD'
-      ? (lockedRate ?? gold24?.ratePerGram)
-      : silver24?.ratePerGram;
-    if (!metalRate) return;
+    const liveMarketRate = buyMetal === 'GOLD' ? (gold24?.ratePerGram ?? 0) : (silver24?.ratePerGram ?? 0);
+    const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
+    const customerRate = buyMetal === 'GOLD'
+      ? (lockedRate ?? (liveMarketRate + commissionPerGram))
+      : (liveMarketRate + commissionPerGram);
+    if (!customerRate || !liveMarketRate) return;
     const grams       = parseFloat(buyForm.grams);
-    const ratePerGram = metalRate;
-    const totalAmount = grams * ratePerGram;
+    const ratePerGram = customerRate;
+    const baseAmountInr = grams * liveMarketRate;
+    const shopCommissionInr = grams * commissionPerGram;
+    const totalAmount = grams * customerRate;
     const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custEmail   = userProfile?.email ?? currentUser?.email ?? '';
     const custPhone   = userProfile?.phone ?? '';
+    const customerShopName = (userProfile as any)?.shopName ?? '';
+    const customerShopId = (userProfile as any)?.shopId ?? '';
     setPaying(true);
     buyGold({
       grams, ratePerGram,
@@ -274,17 +272,26 @@ export const HomeLanding: React.FC = () => {
         try {
           await addDoc(collection(db, 'goldOnlineOrders'), {
             userId:            currentUser?.uid ?? 'anonymous',
+            customerUid:       currentUser?.uid ?? 'anonymous',
             type:              'BUY',
             metal:             buyMetal,
-            purity:            24,
+            purity:            buyMetal === 'GOLD' ? 999 : 999,
             grams,
             ratePerGram,
+            marketRatePerGram: liveMarketRate,
+            commissionPerGram,
+            shopCommissionInr,
+            bullionBaseAmountInr: baseAmountInr,
+            bullionSettlementAmountInr: totalAmount,
+            bullionPayoutStatus: 'UNSETTLED',
             totalAmountInr:    totalAmount,
             razorpayPaymentId: id,
             status:            'SUCCESS',
             customerName:      custName,
             customerPhone:     custPhone,
             customerEmail:     custEmail,
+            shopName:          customerShopName,
+            shopId:            customerShopId,
             createdAt:         serverTimestamp(),
             updatedAt:         serverTimestamp(),
           });
@@ -366,8 +373,23 @@ export const HomeLanding: React.FC = () => {
     const grams       = parseFloat(sellForm.grams);
     const purityNum   = Number(sellForm.purity);
     const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
-    const baseSellRatePerGram = Math.max(0, (sellRate?.ratePerGram ?? 0) - SELL_PRICE_DIFF_PER_GRAM);
-    const effectiveSellRatePerGram = Math.round(baseSellRatePerGram * SELL_PRICE_COST_FACTOR * 100) / 100;
+    const marketRatePerGram = sellRate?.ratePerGram ?? 0;
+    const postGstRatePerGram = marketRatePerGram * REDEEM_GST_FACTOR;
+    const effectiveSellRatePerGram = Math.max(0, Math.round((postGstRatePerGram - REDEEM_DEDUCTION_PER_GRAM) * 100) / 100);
+    const orders = await fetchCustomerLedgerOrders();
+    const heldGrams = orders.reduce((sum: number, o: any) => {
+      if ((o.metal ?? '').toUpperCase() !== 'GOLD') return sum;
+      if (normalizeGoldPurity(Number(o.purity) || 0) !== purityNum) return sum;
+      const orderGrams = Number(o.grams) || 0;
+      if ((o.type ?? '').toUpperCase() === 'BUY' && (o.status ?? '').toUpperCase() === 'SUCCESS') return sum + orderGrams;
+      if ((o.type ?? '').toUpperCase() === 'SELL' && (o.status ?? '').toUpperCase() !== 'REJECTED') return sum - orderGrams;
+      return sum;
+    }, 0);
+    if (grams > heldGrams) {
+      setSuccessMsg(`Insufficient redeemable balance. Available: ${heldGrams.toFixed(3)}g, requested: ${grams.toFixed(3)}g.`);
+      setTimeout(() => setSuccessMsg(''), 9000);
+      return;
+    }
     const totalAmount = grams * effectiveSellRatePerGram;
     const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custPhone   = userProfile?.phone ?? '';
@@ -381,18 +403,24 @@ export const HomeLanding: React.FC = () => {
     try {
       await addDoc(collection(db, 'goldOnlineOrders'), {
         userId:         currentUser?.uid ?? 'anonymous',
+        customerUid:    currentUser?.uid ?? 'anonymous',
         type:           'SELL',
         metal:          'GOLD',
         purity:         purityNum,
         grams,
         ratePerGram:    effectiveSellRatePerGram,
-        marketRatePerGram: sellRate?.ratePerGram ?? 0,
-        priceDifferencePerGram: SELL_PRICE_DIFF_PER_GRAM,
-        sellingDiscountPercent: 3,
+        marketRatePerGram,
+        postGstRatePerGram,
+        redeemGstReductionPercent: 3,
+        redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
+        availableBalanceAtRequestGrams: heldGrams,
         totalAmountInr: totalAmount,
         status:         'PENDING',
         customerName:   custName,
         customerPhone:  custPhone,
+        customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
+        shopName:       (userProfile as any)?.shopName ?? '',
+        shopId:         (userProfile as any)?.shopId ?? '',
         bankName:       sellForm.bank,
         accountNumber:  sellForm.account,
         ifscCode:       sellForm.ifsc,
@@ -413,8 +441,7 @@ export const HomeLanding: React.FC = () => {
     ? (
       parseFloat(sellForm.grams)
       * (
-        Math.max(0, rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))!.ratePerGram - SELL_PRICE_DIFF_PER_GRAM)
-        * SELL_PRICE_COST_FACTOR
+        Math.max(0, (rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))!.ratePerGram * REDEEM_GST_FACTOR) - REDEEM_DEDUCTION_PER_GRAM)
       )
     ).toFixed(2)
     : null;
@@ -426,6 +453,18 @@ export const HomeLanding: React.FC = () => {
   // ────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
+
+      {ownerIsUnverified && (
+        <div className="px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="max-w-7xl mx-auto rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+            <p className="text-sm font-bold text-red-700 dark:text-red-300">Shop verification pending</p>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+              Your jeweller account is currently unverified. Please email Aadhaar, PAN, Hallmark, and GST documents to contact@bizmation.in with your owner code.
+              Access will be fully enabled after super-admin approval.
+            </p>
+          </div>
+        </div>
+      )}
 
       {userProfile?.role === 'CUSTOMER' && (
         <div className="px-4 sm:px-6 lg:px-8 pt-4">
@@ -508,13 +547,13 @@ export const HomeLanding: React.FC = () => {
                 LIVE PRICES • BUY & SELL ONLINE
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black leading-tight text-amber-900 dark:text-white mb-4">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight text-amber-900 dark:text-white mb-3">
                 Gold & Silver
                 <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 dark:from-yellow-400 dark:via-amber-300 dark:to-yellow-500">
                   At Live Prices
                 </span>
               </h1>
-              <p className="text-lg text-amber-800/80 dark:text-gray-300 mb-8 leading-relaxed max-w-lg">
+              <p className="text-base text-amber-800/80 dark:text-gray-300 mb-6 leading-relaxed max-w-lg">
                 Buy & sell pure gold and silver online at real-time international market prices. Set up AutoPay to invest in gold every month automatically.
               </p>
 
@@ -583,6 +622,20 @@ export const HomeLanding: React.FC = () => {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* Gold 995 */}
+              <div className="bg-white/70 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide">Gold 24K 995 / 10g</p>
+                </div>
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin text-amber-400" />
+                ) : (
+                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">
+                    ₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '—'}
+                  </p>
+                )}
               </div>
 
               {/* Silver */}
@@ -1026,15 +1079,15 @@ export const HomeLanding: React.FC = () => {
               </div>
             )}
 
-            {/* Slide to Buy */}
             {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified) && (
-              <SlideToConfirm
-                label={paying ? 'Opening payment…' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN')}`}
-                value={slideValue}
+              <button
+                onClick={handleBuy}
                 disabled={paying}
-                onChange={setSlideValue}
-                onConfirm={handleBuy}
-              />
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+              >
+                {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+                {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN')}`}
+              </button>
             )}
           </div>
         </BottomSheet>
@@ -1063,7 +1116,7 @@ export const HomeLanding: React.FC = () => {
             {sellEst && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">
                 <div className="flex justify-between text-green-800 dark:text-green-300">
-                  <span>Estimated value (live rate - ₹50/g, then 3% reduction)</span>
+                  <span>Estimated value (live rate - 3% GST, then minus ₹50/g)</span>
                   <span className="font-black text-lg text-green-900 dark:text-green-300">₹{Number(sellEst).toLocaleString('en-IN')}</span>
                 </div>
               </div>

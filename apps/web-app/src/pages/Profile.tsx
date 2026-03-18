@@ -23,6 +23,8 @@ export const Profile: React.FC = () => {
     country:     userProfile?.country     ?? 'India',
     dateOfBirth: userProfile?.dateOfBirth ?? '',
     shopName:    userProfile?.shopName    ?? '',
+    businessAddress: (userProfile as any)?.businessAddress ?? '',
+    businessPincode: (userProfile as any)?.businessPincode ?? '',
   });
 
   const [saving,  setSaving]  = useState(false);
@@ -40,10 +42,17 @@ export const Profile: React.FC = () => {
       await updateDoc(doc(db, 'users', currentUser.uid), {
         name:        form.name.trim(),
         phone:       form.phone.trim(),
-        city:        form.city.trim(),
-        state:       form.state.trim(),
-        country:     form.country.trim(),
-        dateOfBirth: form.dateOfBirth,
+        ...(isOwner
+          ? {
+            businessAddress: form.businessAddress.trim(),
+            businessPincode: form.businessPincode.trim(),
+          }
+          : {
+            city:        form.city.trim(),
+            state:       form.state.trim(),
+            country:     form.country.trim(),
+            dateOfBirth: form.dateOfBirth,
+          }),
         shopName:    form.shopName.trim(),
         updatedAt:   serverTimestamp(),
       });
@@ -87,7 +96,7 @@ export const Profile: React.FC = () => {
         <form onSubmit={handleSave}
           className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-amber-100 dark:border-gray-800 p-6 sm:p-8 space-y-5">
 
-          <h2 className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-widest mb-1">Personal Details</h2>
+          <h2 className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-widest mb-1">{isOwner ? 'Business Details' : 'Personal Details'}</h2>
 
           <DarkField label="Full Name" icon={<User size={15} />}
             type="text" value={form.name} onChange={setF('name')} required placeholder="Your full name" />
@@ -110,18 +119,29 @@ export const Profile: React.FC = () => {
               type="text" value={form.shopName} onChange={setF('shopName')} placeholder="e.g. Lakshmi Gold Palace" />
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <DarkField label="City" icon={<MapPin size={15} />}
-              type="text" value={form.city} onChange={setF('city')} placeholder="Mumbai" />
-            <DarkField label="State" icon={<MapPin size={15} />}
-              type="text" value={form.state} onChange={setF('state')} placeholder="Maharashtra" />
-          </div>
+          {isOwner ? (
+            <>
+              <DarkField label="Business Address" icon={<MapPin size={15} />}
+                type="text" value={form.businessAddress} onChange={setF('businessAddress')} placeholder="Shop/office full address" />
+              <DarkField label="Business Pincode" icon={<MapPin size={15} />}
+                type="text" value={form.businessPincode} onChange={setF('businessPincode')} placeholder="6 digit pincode" />
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <DarkField label="City" icon={<MapPin size={15} />}
+                  type="text" value={form.city} onChange={setF('city')} placeholder="Mumbai" />
+                <DarkField label="State" icon={<MapPin size={15} />}
+                  type="text" value={form.state} onChange={setF('state')} placeholder="Maharashtra" />
+              </div>
 
-          <DarkField label="Country" icon={<Globe size={15} />}
-            type="text" value={form.country} onChange={setF('country')} placeholder="India" />
+              <DarkField label="Country" icon={<Globe size={15} />}
+                type="text" value={form.country} onChange={setF('country')} placeholder="India" />
 
-          <DarkField label="Date of Birth" icon={<Calendar size={15} />}
-            type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} />
+              <DarkField label="Date of Birth" icon={<Calendar size={15} />}
+                type="date" value={form.dateOfBirth} onChange={setF('dateOfBirth')} />
+            </>
+          )}
 
           <button
             type="submit"
@@ -150,6 +170,14 @@ export const Profile: React.FC = () => {
             {isOwner && (
               <ReadField label="GST Number" icon={<Shield size={15} />}
                 value={(userProfile as any).gstNumber || 'â€”'} />
+            )}
+            {isOwner && (
+              <ReadField label="Owner Code" icon={<Shield size={15} />}
+                value={(userProfile as any).ownerCode || 'â€”'} />
+            )}
+            {isOwner && (
+              <ReadField label="Hallmark License" icon={<Shield size={15} />}
+                value={(userProfile as any).hallmarkLicenseNumber || 'â€”'} />
             )}
           </div>
           <p className="text-xs text-stone-400 dark:text-gray-600 leading-relaxed">

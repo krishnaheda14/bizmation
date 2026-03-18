@@ -29,6 +29,16 @@ service cloud.firestore {
       return p != null ? p.shopName : '';
     }
 
+    function callerShopId() {
+      let p = safeProfile();
+      return p != null && p.shopId != null ? p.shopId : '';
+    }
+
+    function callerEmail() {
+      let p = safeProfile();
+      return p != null ? p.email : '';
+    }
+
     // ── /users/{uid} ─────────────────────────────────────────────────────────
     // Owners/staff can read customers in their own shop.
     // SUPER_ADMIN can read/update any user.
@@ -37,7 +47,13 @@ service cloud.firestore {
       allow read: if isAuth() && (
         request.auth.uid == uid
         || isSuperAdmin()
-        || (isOwnerOrStaff() && resource.data.shopName == callerShopName())
+        || (
+          isOwnerOrStaff() && (
+            resource.data.shopName == callerShopName()
+            || resource.data.shopId == callerShopId()
+            || resource.data.shopId == request.auth.uid
+          )
+        )
       );
       // allow create: user MUST be authenticated and writing their OWN document.
       // getIdToken(true) in AuthContext guarantees the token is fresh at this point.
@@ -88,33 +104,97 @@ service cloud.firestore {
 
     // ── /goldOnlineOrders/{id} ───────────────────────────────────────────────
     match /goldOnlineOrders/{id} {
-      allow create: if isAuth();
+      allow create: if isAuth() && (
+        request.resource.data.userId == request.auth.uid
+        || request.resource.data.customerUid == request.auth.uid
+      );
       allow read: if isAuth() && (
         resource.data.userId == request.auth.uid
+        || resource.data.customerUid == request.auth.uid
+        || (callerEmail() != '' && resource.data.customerEmail == callerEmail())
         || isSuperAdmin()
         || (
           isOwnerOrStaff()
-          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+            || (
+              resource.data.userId != null
+              && exists(/databases/$(database)/documents/users/$(resource.data.userId))
+              && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
+            )
+          )
         )
       );
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (
+        resource.data.userId == request.auth.uid
+        || resource.data.customerUid == request.auth.uid
+        || isSuperAdmin()
+        || (
+          isOwnerOrStaff()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+          )
+        )
+      );
       allow delete: if false;
     }
 
     // ── /autoPaySubscriptions/{id} ───────────────────────────────────────────
     match /autoPaySubscriptions/{id} {
-      allow create: if isAuth();
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       allow read: if isAuth() && (
         resource.data.userId == request.auth.uid
         || isSuperAdmin()
         || (
           isOwnerOrStaff()
-          && exists(/databases/$(database)/documents/users/$(resource.data.userId))
-          && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+            || (
+              exists(/databases/$(database)/documents/users/$(resource.data.userId))
+              && get(/databases/$(database)/documents/users/$(resource.data.userId)).data.shopName == callerShopName()
+            )
+          )
         )
       );
-      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (
+        resource.data.userId == request.auth.uid
+        || isSuperAdmin()
+      );
+      allow delete: if false;
+    }
+
+    // ── /redemptionRequests/{id} ───────────────────────────────────────────
+    match /redemptionRequests/{id} {
+      allow create: if isAuth()
+        && request.resource.data.customerUid == request.auth.uid;
+
+      allow read: if isAuth() && (
+        resource.data.customerUid == request.auth.uid
+        || isSuperAdmin()
+        || (
+          isOwnerOrStaff()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+          )
+        )
+      );
+
+      allow update: if isAuth() && (
+        resource.data.customerUid == request.auth.uid
+        || isSuperAdmin()
+        || (
+          isOwnerOrStaff()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+          )
+        )
+      );
+
       allow delete: if false;
     }
 

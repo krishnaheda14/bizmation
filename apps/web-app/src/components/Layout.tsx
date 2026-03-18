@@ -22,6 +22,7 @@ import {
   ArrowDownCircle,
   Gift,
   LayoutDashboard,
+  Shield,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -54,6 +55,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { id: 'home',       label: 'Home',           icon: <Home size={20} />,            path: '/' },
     { id: 'portfolio',  label: 'My Portfolio',   icon: <Briefcase size={20} />,        path: '/portfolio' },
     { id: 'orders',     label: 'My Orders',      icon: <ClipboardList size={20} />,    path: '/orders' },
+    { id: 'nominee',    label: 'Nominee',        icon: <Shield size={20} />,           path: '/nominee' },
     { id: 'redemption', label: 'Sell / Redeem',  icon: <ArrowDownCircle size={20} />,  path: '/redemption' },
     { id: 'referral',   label: 'Refer & Earn',   icon: <Gift size={20} />,             path: '/referral' },
     { id: 'profile',    label: 'My Profile',     icon: <Settings size={20} />,         path: '/profile' },

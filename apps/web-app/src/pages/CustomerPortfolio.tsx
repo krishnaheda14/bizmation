@@ -14,6 +14,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
+import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
 
 interface GoldOrder {
   id: string;
@@ -47,16 +48,6 @@ export const CustomerPortfolio: React.FC = () => {
   const [error,       setError]      = useState('');
   const [shopFrozen,  setShopFrozen] = useState(false);
 
-  const normalizePhone = (raw: string): string => {
-    if (!raw) return '';
-    const trimmed = String(raw).trim();
-    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
-    const digits = trimmed.replace(/\D/g, '');
-    if (digits.length === 10) return `+91${digits}`;
-    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-    return digits ? `+${digits}` : '';
-  };
-
   // Shop freeze check
   useEffect(() => {
     if (!userProfile?.shopName) return;
@@ -74,36 +65,12 @@ export const CustomerPortfolio: React.FC = () => {
       const rateData = await fetchLiveMetalRates();
       setRates(rateData);
 
-      const dedup: Record<string, GoldOrder> = {};
-
-      const byUid = await getDocs(query(
-        collection(db, 'goldOnlineOrders'),
-        where('userId', '==', currentUser.uid),
-      ));
-      byUid.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
-
-      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
-      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
-      for (const candidate of emailCandidates) {
-        const byEmail = await getDocs(query(
-          collection(db, 'goldOnlineOrders'),
-          where('customerEmail', '==', candidate),
-        ));
-        byEmail.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
-      }
-
-      const rawPhone = (userProfile?.phone ?? '').trim();
-      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
-      for (const candidate of phoneCandidates) {
-        const byPhone = await getDocs(query(
-          collection(db, 'goldOnlineOrders'),
-          where('customerPhone', '==', candidate),
-        ));
-        byPhone.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
-      }
-
-      const loaded = Object.values(dedup).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
-      setOrders(loaded);
+      const loaded = await fetchCustomerOrders({
+        uid: currentUser.uid,
+        email: currentUser.email ?? userProfile?.email ?? '',
+        phone: userProfile?.phone ?? '',
+      });
+      setOrders(loaded as GoldOrder[]);
     } catch { setError('Could not load portfolio. Please try again.'); }
     finally { setLoading(false); }
   }, [currentUser, userProfile]);
@@ -115,7 +82,8 @@ export const CustomerPortfolio: React.FC = () => {
     const map: Record<string, { buyGrams: number; sellGrams: number; totalInvested: number }> = {};
     for (const o of orders) {
       if (o.type === 'BUY' && o.status !== 'SUCCESS') continue;
-      const key = `${o.metal}_${o.purity}`;
+      const normalizedPurity = normalizeGoldPurity(Number(o.purity) || 0);
+      const key = `${o.metal}_${normalizedPurity}`;
       if (!map[key]) map[key] = { buyGrams: 0, sellGrams: 0, totalInvested: 0 };
       if (o.type === 'BUY') {
         map[key].buyGrams     += o.grams;

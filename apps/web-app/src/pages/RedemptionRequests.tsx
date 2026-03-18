@@ -6,7 +6,7 @@
  * • Approve / Settle / Reject with optional note
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection, query, where, onSnapshot, doc, updateDoc,
@@ -22,9 +22,10 @@ interface RedemptionRequest {
   customerUid: string;
   shopName: string;
   metal: string;
-  purity: string;
+  purity: string | number;
   grams: number;
-  ratePerGram: number;
+  ratePerGram?: number;
+  redeemRatePerGram?: number;
   estimatedInr: number;
   status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED';
   createdAt?: Timestamp;
@@ -54,6 +55,10 @@ function StatusBadge({ status }: { status: string }) {
 export const RedemptionRequests: React.FC = () => {
   const { userProfile } = useAuth();
   const shopName = (userProfile as any)?.shopName ?? '';
+  const shopNameVariants = useMemo(
+    () => Array.from(new Set([shopName, shopName.toLowerCase(), shopName.toUpperCase()].filter(Boolean))),
+    [shopName],
+  );
 
   const [requests, setRequests]     = useState<RedemptionRequest[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -66,7 +71,7 @@ export const RedemptionRequests: React.FC = () => {
     if (!shopName) { setLoading(false); return; }
     const q = query(
       collection(db, 'redemptionRequests'),
-      where('shopName', '==', shopName),
+      where('shopName', 'in', shopNameVariants),
       orderBy('createdAt', 'desc'),
     );
     const unsub = onSnapshot(q, snap => {
@@ -74,7 +79,7 @@ export const RedemptionRequests: React.FC = () => {
       setLoading(false);
     }, () => setLoading(false));
     return () => unsub();
-  }, [shopName]);
+  }, [shopName, shopNameVariants]);
 
   const setStatus = async (id: string, status: RedemptionRequest['status']) => {
     setActionMap(m => ({ ...m, [id]: true }));
@@ -201,7 +206,7 @@ export const RedemptionRequests: React.FC = () => {
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-stone-500 dark:text-gray-400 mt-1">
                           <span>{r.metal} {r.purity}</span>
                           <span className="font-bold text-stone-700 dark:text-gray-200">{fmtG(r.grams)}</span>
-                          <span>@ {fmtInr(r.ratePerGram)}/g</span>
+                          <span>@ {fmtInr(Number(r.redeemRatePerGram ?? r.ratePerGram ?? 0))}/g</span>
                           <span className="font-bold text-amber-700 dark:text-amber-400">{fmtInr(r.estimatedInr)}</span>
                           {ts && <span>{ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
                         </div>

@@ -4,7 +4,7 @@
  * Shows: all registered shops, all customers, platform-level stats
  */
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -14,6 +14,13 @@ interface ShopRow {
   ownerUid: string;
   ownerEmail?: string;
   bizShopId?: string;
+  ownerCode?: string;
+  verificationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  verificationRequestedAt?: any;
+  verificationReviewedAt?: any;
+  verificationReviewedBy?: string;
+  verificationNote?: string;
+  verified?: boolean;
   createdAt?: string;
   city?: string;
   phone?: string;
@@ -31,10 +38,29 @@ interface CustomerRow {
   kycStatus?: string;
 }
 
-interface Tab { key: 'shops' | 'customers' | 'stats'; label: string }
+interface PlatformOrderRow {
+  id: string;
+  type: 'BUY' | 'SELL';
+  status?: string;
+  metal?: string;
+  purity?: number;
+  grams?: number;
+  ratePerGram?: number;
+  marketRatePerGram?: number;
+  totalAmountInr?: number;
+  shopCommissionInr?: number;
+  bullionPayoutStatus?: string;
+  customerName?: string;
+  customerEmail?: string;
+  shopName?: string;
+  createdAt?: any;
+}
+
+interface Tab { key: 'shops' | 'customers' | 'orders' | 'stats'; label: string }
 const TABS: Tab[] = [
   { key: 'shops',     label: 'Shops'     },
   { key: 'customers', label: 'Customers' },
+  { key: 'orders',    label: 'Orders'    },
   { key: 'stats',     label: 'Platform'  },
 ];
 
@@ -43,9 +69,12 @@ export function SuperAdmin() {
   const [tab, setTab]           = useState<Tab['key']>('shops');
   const [shops, setShops]       = useState<ShopRow[]>([]);
   const [customers, setCust]    = useState<CustomerRow[]>([]);
+  const [orders, setOrders]     = useState<PlatformOrderRow[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [loadErr, setLoadErr]   = useState('');
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [verifyNote, setVerifyNote] = useState<Record<string, string>>({});
 
   // Guard — should never render for non-super-admin
   if (userProfile?.role !== 'SUPER_ADMIN') {
@@ -106,6 +135,10 @@ export function SuperAdmin() {
       }
       console.log('[SuperAdmin] Found', custList.length, 'customers');
       setCust(custList);
+
+      const ordersSnap = await getDocs(query(collection(db, 'goldOnlineOrders'), orderBy('createdAt', 'desc')));
+      const orderRows = ordersSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as PlatformOrderRow));
+      setOrders(orderRows);
     } catch (err: any) {
       console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
       setLoadErr(err?.message ?? 'Failed to load data. Check Firestore rules are deployed.');
@@ -126,6 +159,59 @@ export function SuperAdmin() {
     c.bizCustomerId?.toLowerCase().includes(search.toLowerCase()) ||
     c.shopName?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const filteredOrders = orders.filter(o => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    return (o.customerName ?? '').toLowerCase().includes(q)
+      || (o.customerEmail ?? '').toLowerCase().includes(q)
+      || (o.shopName ?? '').toLowerCase().includes(q)
+      || (o.metal ?? '').toLowerCase().includes(q)
+      || (o.type ?? '').toLowerCase().includes(q)
+      || (o.status ?? '').toLowerCase().includes(q);
+  });
+
+  const totalCommission = orders.reduce((sum, o) => sum + (Number(o.shopCommissionInr) || 0), 0);
+  const unsettledCommission = orders.reduce((sum, o) => {
+    const isBuy = (o.type ?? '').toUpperCase() === 'BUY';
+    const unsettled = (o.bullionPayoutStatus ?? 'UNSETTLED').toUpperCase() !== 'SETTLED';
+    return isBuy && unsettled ? sum + (Number(o.shopCommissionInr) || 0) : sum;
+  }, 0);
+
+  const pendingShops = shops.filter((s) => (s.verificationStatus ?? 'PENDING') === 'PENDING');
+
+  const setShopVerification = async (shop: ShopRow, status: 'APPROVED' | 'REJECTED') => {
+    if (!userProfile?.uid) return;
+    setActionLoading((prev) => ({ ...prev, [shop.id]: true }));
+    try {
+      const note = (verifyNote[shop.id] ?? '').trim();
+      await updateDoc(doc(db, 'shops', shop.id), {
+        verificationStatus: status,
+        verificationReviewedAt: serverTimestamp(),
+        verificationReviewedBy: userProfile.uid,
+        verificationNote: note,
+        verified: status === 'APPROVED',
+        updatedAt: serverTimestamp(),
+      });
+
+      if (shop.ownerUid) {
+        await updateDoc(doc(db, 'users', shop.ownerUid), {
+          shopVerificationStatus: status,
+          shopVerificationReviewedAt: serverTimestamp(),
+          shopVerificationReviewedBy: userProfile.uid,
+          shopVerificationNote: note,
+          shopVerified: status === 'APPROVED',
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await loadData();
+    } catch (err: any) {
+      alert(err?.message ?? 'Failed to update verification status.');
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [shop.id]: false }));
+    }
+  };
 
   const kycBadge = (s?: string) => {
     const base = 'text-xs px-2 py-0.5 rounded-full font-medium';
@@ -162,6 +248,7 @@ export function SuperAdmin() {
               {t.label}
               {t.key === 'shops'     && <span className="ml-1.5 text-xs bg-amber-200 text-amber-800 rounded-full px-1.5 py-px">{shops.length}</span>}
               {t.key === 'customers' && <span className="ml-1.5 text-xs bg-amber-200 text-amber-800 rounded-full px-1.5 py-px">{customers.length}</span>}
+              {t.key === 'orders'    && <span className="ml-1.5 text-xs bg-amber-200 text-amber-800 rounded-full px-1.5 py-px">{orders.length}</span>}
             </button>
           ))}
         </div>
@@ -199,33 +286,86 @@ export function SuperAdmin() {
 
             {/* ── Shops Tab ──────────────────────────────────────────── */}
             {tab === 'shops' && (
-              <div className="rounded-3xl overflow-hidden shadow-sm border border-amber-100 bg-white/80 backdrop-blur">
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Total Shops</p>
+                    <p className="text-xl font-black text-stone-800 mt-1">{shops.length}</p>
+                  </div>
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Pending Verification</p>
+                    <p className="text-xl font-black text-red-700 mt-1">{pendingShops.length}</p>
+                  </div>
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Approved Shops</p>
+                    <p className="text-xl font-black text-green-700 mt-1">{shops.filter(s => s.verificationStatus === 'APPROVED').length}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl overflow-hidden shadow-sm border border-amber-100 bg-white/80 backdrop-blur">
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background:'linear-gradient(90deg,rgba(253,243,212,0.9),rgba(253,243,212,0.5))' }}>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Shop Name</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Biz ID</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Owner Code</th>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">City</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Phone</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Owner UID</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Verification</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Review Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredShops.length === 0 && (
-                      <tr><td colSpan={5} className="text-center py-12 text-stone-400 text-sm">No shops found</td></tr>
+                      <tr><td colSpan={6} className="text-center py-12 text-stone-400 text-sm">No shops found</td></tr>
                     )}
                     {filteredShops.map((s, i) => (
                       <tr key={s.id} className={i % 2 === 0 ? 'bg-white/60' : 'bg-amber-50/40'}>
                         <td className="px-5 py-3 font-medium text-stone-800">{s.name || '—'}</td>
                         <td className="px-5 py-3 font-mono text-xs text-amber-700">{s.bizShopId || '—'}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-amber-700">{s.ownerCode || '—'}</td>
                         <td className="px-5 py-3 text-stone-600">{s.city || '—'}</td>
-                        <td className="px-5 py-3 text-stone-600">{s.phone || '—'}</td>
-                        <td className="px-5 py-3 font-mono text-xs text-stone-400 truncate max-w-[120px]">{s.ownerUid}</td>
+                        <td className="px-5 py-3">
+                          {(s.verificationStatus ?? 'PENDING') === 'APPROVED' && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Approved</span>}
+                          {(s.verificationStatus ?? 'PENDING') === 'REJECTED' && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-700">Rejected</span>}
+                          {(s.verificationStatus ?? 'PENDING') === 'PENDING' && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">Pending</span>}
+                        </td>
+                        <td className="px-5 py-3">
+                          {(s.verificationStatus ?? 'PENDING') === 'PENDING' ? (
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                placeholder="Review note (optional)"
+                                value={verifyNote[s.id] ?? ''}
+                                onChange={(e) => setVerifyNote((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                                className="w-full rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-stone-700"
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setShopVerification(s, 'APPROVED')}
+                                  disabled={!!actionLoading[s.id]}
+                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-60"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => setShopVerification(s, 'REJECTED')}
+                                  disabled={!!actionLoading[s.id]}
+                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-60"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-stone-500">Reviewed</p>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             {/* ── Customers Tab ──────────────────────────────────────── */}
@@ -259,6 +399,73 @@ export function SuperAdmin() {
               </div>
             )}
 
+            {/* ── Orders Tab ─────────────────────────────────────────── */}
+            {tab === 'orders' && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Total Platform Orders</p>
+                    <p className="text-xl font-black text-stone-800 mt-1">{orders.length}</p>
+                  </div>
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Shop Commission (All Time)</p>
+                    <p className="text-xl font-black text-amber-800 mt-1">₹{Math.round(totalCommission).toLocaleString('en-IN')}</p>
+                  </div>
+                  <div className="rounded-2xl p-4 bg-white border border-amber-100">
+                    <p className="text-xs text-stone-500">Commission Pending Payout</p>
+                    <p className="text-xl font-black text-red-700 mt-1">₹{Math.round(unsettledCommission).toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl overflow-hidden shadow-sm border border-amber-100 bg-white/80 backdrop-blur">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background:'linear-gradient(90deg,rgba(253,243,212,0.9),rgba(253,243,212,0.5))' }}>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Date</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Customer</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Shop</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Type</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Metal</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Grams</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Market/g</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Order/g</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Commission</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Order Total</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-amber-800 uppercase tracking-wider">Payout</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredOrders.length === 0 && (
+                          <tr><td colSpan={11} className="text-center py-12 text-stone-400 text-sm">No orders found</td></tr>
+                        )}
+                        {filteredOrders.map((o, i) => {
+                          const d = o.createdAt?.seconds
+                            ? new Date(o.createdAt.seconds * 1000).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+                            : '—';
+                          return (
+                            <tr key={o.id} className={i % 2 === 0 ? 'bg-white/60' : 'bg-amber-50/40'}>
+                              <td className="px-4 py-3 text-stone-600">{d}</td>
+                              <td className="px-4 py-3 text-stone-700">{o.customerName || o.customerEmail || '—'}</td>
+                              <td className="px-4 py-3 text-stone-700">{o.shopName || '—'}</td>
+                              <td className="px-4 py-3 font-semibold text-stone-700">{o.type || '—'} <span className="text-xs text-stone-400">{o.status || ''}</span></td>
+                              <td className="px-4 py-3 text-stone-700">{o.metal || '—'} {o.purity ? `(${o.purity})` : ''}</td>
+                              <td className="px-4 py-3 text-right text-stone-700">{Number(o.grams || 0).toFixed(3)}</td>
+                              <td className="px-4 py-3 text-right text-stone-700">₹{Math.round(Number(o.marketRatePerGram || 0)).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-3 text-right text-stone-700">₹{Math.round(Number(o.ratePerGram || 0)).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-3 text-right font-bold text-amber-800">₹{Math.round(Number(o.shopCommissionInr || 0)).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-3 text-right font-bold text-stone-800">₹{Math.round(Number(o.totalAmountInr || 0)).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-3 text-xs font-semibold text-stone-600">{o.bullionPayoutStatus || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* ── Platform Stats Tab ─────────────────────────────────── */}
             {tab === 'stats' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -268,6 +475,8 @@ export function SuperAdmin() {
                   { label: 'Verified KYC',       value: customers.filter(c=>c.kycStatus==='VERIFIED').length, icon: '✅', color: '#bbf7d0' },
                   { label: 'Pending KYC',        value: customers.filter(c=>c.kycStatus!=='VERIFIED').length, icon: '⏳', color: '#fed7aa' },
                   { label: 'Avg Cust/Shop',      value: shops.length ? (customers.length / shops.length).toFixed(1) : '0', icon: '📊', color: '#e9d5ff' },
+                  { label: 'Platform Orders',    value: orders.length, icon: '🧾', color: '#fecaca' },
+                  { label: 'Total Commission',   value: '₹' + Math.round(totalCommission).toLocaleString('en-IN'), icon: '💸', color: '#bbf7d0' },
                 ].map(stat => (
                   <div key={stat.label} className="rounded-3xl p-6 flex items-center gap-4 shadow-sm border border-amber-100 bg-white/80 backdrop-blur">
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: stat.color }}>

@@ -10,9 +10,8 @@ import {
   ShoppingCart, ArrowUpRight, Loader2, AlertCircle,
   RefreshCw, Package, FileText, Download, Coins, TrendingUp,
 } from 'lucide-react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
+import { fetchCustomerOrders } from '../lib/customerOrders';
 
 interface GoldOrder {
   id: string;
@@ -133,7 +132,7 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
 
   <div class="footer">
     <p>Thank you for choosing Bizmation Gold. This is a computer-generated invoice.</p>
-    <p style="margin-top:4px">For queries, contact support@bizmation.com</p>
+    <p style="margin-top:4px">For queries, contact contact@bizmation.in</p>
   </div>
 </body>
 </html>`;
@@ -157,48 +156,16 @@ export const Orders: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
   const [search, setSearch]     = useState('');
 
-  const normalizePhone = (raw: string): string => {
-    if (!raw) return '';
-    const trimmed = String(raw).trim();
-    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
-    const digits = trimmed.replace(/\D/g, '');
-    if (digits.length === 10) return `+91${digits}`;
-    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-    return digits ? `+${digits}` : '';
-  };
-
   const fetchOrders = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
     setError('');
     try {
-      const seen: Record<string, GoldOrder> = {};
-
-      const q1 = query(collection(db, 'goldOnlineOrders'), where('userId', '==', currentUser.uid));
-      const s1 = await getDocs(q1);
-      s1.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
-
-      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
-      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
-      for (const candidate of emailCandidates) {
-        const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', candidate));
-        const s2 = await getDocs(q2);
-        s2.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
-      }
-
-      const rawPhone = (userProfile?.phone ?? '').trim();
-      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
-      for (const candidate of phoneCandidates) {
-        const q3 = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', candidate));
-        const s3 = await getDocs(q3);
-        s3.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
-      }
-
-      const sorted = Object.values(seen).sort((a, b) => {
-        const at = a.createdAt?.seconds ?? 0;
-        const bt = b.createdAt?.seconds ?? 0;
-        return bt - at;
-      });
+      const sorted = await fetchCustomerOrders({
+        uid: currentUser.uid,
+        email: currentUser.email ?? userProfile?.email ?? '',
+        phone: userProfile?.phone ?? '',
+      }) as GoldOrder[];
       setOrders(sorted);
     } catch {
       setError('Could not load orders. Please try again.');

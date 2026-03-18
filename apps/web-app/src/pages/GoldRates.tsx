@@ -5,7 +5,7 @@
  * fawazahmed0 CDN (fallback).  NO BACKEND REQUIRED.
  *
  * Gold purity grades: 999 (24K), 995 (24K), 916 (22K), 750 (18K) â€” per 10g
- * Silver: 999 only â€” per 1kg  (5% handling surcharge silently included)
+ * Silver: 999 only â€” per 1kg
  */
 
 import React, { useState, useEffect } from 'react';
@@ -193,7 +193,7 @@ export const GoldRates: React.FC = () => {
               <p className="font-semibold">âœ“ Real-time Cloudflare Worker (5-min KV cache)</p>
               <p className="font-semibold">âœ“ Gold: per 10 grams Â· Silver: per 1 kilogram</p>
               <p className="font-semibold">âœ“ 9% import duty for Indian market</p>
-              <p className="font-semibold">âœ“ Silver 999 rate with handling charges</p>
+              <p className="font-semibold">âœ“ Silver 999 rate (no hidden surcharge)</p>
             </div>
           </div>
         </div>
@@ -292,7 +292,7 @@ export const GoldRates: React.FC = () => {
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400 space-y-1">
           <p>Gold: 999 Â· 995 Â· 916 (22K) Â· 750 (18K) â€” Prices include 9% import duty</p>
-          <p>Silver: 999 purity Â· Prices include 9% import duty + handling charges</p>
+          <p>Silver: 999 purity Â· Prices include 9% import duty</p>
           <p className="flex items-center justify-center gap-1.5">
             Data: Cloudflare Worker â†’
             <a
