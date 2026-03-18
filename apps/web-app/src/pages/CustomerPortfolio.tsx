@@ -47,6 +47,16 @@ export const CustomerPortfolio: React.FC = () => {
   const [error,       setError]      = useState('');
   const [shopFrozen,  setShopFrozen] = useState(false);
 
+  const normalizePhone = (raw: string): string => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+    return digits ? `+${digits}` : '';
+  };
+
   // Shop freeze check
   useEffect(() => {
     if (!userProfile?.shopName) return;
@@ -64,17 +74,39 @@ export const CustomerPortfolio: React.FC = () => {
       const rateData = await fetchLiveMetalRates();
       setRates(rateData);
 
-      if (currentUser.email) {
-        const snap = await getDocs(query(
+      const dedup: Record<string, GoldOrder> = {};
+
+      const byUid = await getDocs(query(
+        collection(db, 'goldOnlineOrders'),
+        where('userId', '==', currentUser.uid),
+      ));
+      byUid.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
+
+      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
+      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
+      for (const candidate of emailCandidates) {
+        const byEmail = await getDocs(query(
           collection(db, 'goldOnlineOrders'),
-          where('customerEmail', '==', currentUser.email),
+          where('customerEmail', '==', candidate),
         ));
-        const loaded: GoldOrder[] = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-        setOrders(loaded);
+        byEmail.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
       }
+
+      const rawPhone = (userProfile?.phone ?? '').trim();
+      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
+      for (const candidate of phoneCandidates) {
+        const byPhone = await getDocs(query(
+          collection(db, 'goldOnlineOrders'),
+          where('customerPhone', '==', candidate),
+        ));
+        byPhone.docs.forEach(d => { dedup[d.id] = { id: d.id, ...(d.data() as any) }; });
+      }
+
+      const loaded = Object.values(dedup).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+      setOrders(loaded);
     } catch { setError('Could not load portfolio. Please try again.'); }
     finally { setLoading(false); }
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -108,6 +140,9 @@ export const CustomerPortfolio: React.FC = () => {
   })();
 
   const totalInvested     = orders.filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + o.totalAmountInr, 0);
+  const totalOrders       = orders.length;
+  const totalGoldBought   = orders.filter(o => o.type === 'BUY' && o.status === 'SUCCESS' && o.metal === 'GOLD').reduce((s, o) => s + o.grams, 0);
+  const totalSilverBought = orders.filter(o => o.type === 'BUY' && o.status === 'SUCCESS' && o.metal === 'SILVER').reduce((s, o) => s + o.grams, 0);
   const totalCurrentValue = holdings.reduce((s, h) => s + h.currentValue, 0);
   const costBasisTotal    = holdings.reduce((s, h) => s + h.netGrams * h.avgBuyPrice, 0);
   const totalPnL          = totalCurrentValue - costBasisTotal;
@@ -128,7 +163,23 @@ export const CustomerPortfolio: React.FC = () => {
 
       {/* Header */}
       <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-stone-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 border-b border-amber-200 dark:border-yellow-900/30 px-4 sm:px-6 py-8">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-4xl mx-auto space-y-5">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-2xl px-4 py-3 bg-white/80 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Orders</p>
+              <p className="text-2xl font-black text-stone-800 dark:text-white mt-0.5">{totalOrders}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/80 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-yellow-400">Gold Bought</p>
+              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{totalGoldBought.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/80 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-gray-400">Silver Bought</p>
+              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{totalSilverBought.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-black text-amber-900 dark:text-white flex items-center gap-3">
               <Coins className="text-amber-500 dark:text-yellow-400" size={30} />
@@ -143,6 +194,7 @@ export const CustomerPortfolio: React.FC = () => {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
+          </div>
         </div>
       </div>
 

@@ -15,7 +15,7 @@ import {
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, updateDoc, doc, increment, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -45,6 +45,17 @@ interface SellFormData {
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
+  const SELL_PRICE_DIFF_PER_GRAM = 50;
+  const SELL_PRICE_COST_FACTOR = 0.97;
+  const normalizePhone = (raw: string): string => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+    return digits ? `+${digits}` : '';
+  };
     // Detailed live price breakdown state
     const [priceFeed, setPriceFeed] = useState<any>(null);
     const fetchDetailedFeed = useCallback(async () => {
@@ -120,6 +131,7 @@ export const HomeLanding: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [slideValue, setSlideValue] = useState(0);
+  const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   // ── Price-lock countdown ──────────────────────────────────────────
   const LOCK_DURATION = 120; // seconds
   const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
@@ -188,6 +200,48 @@ export const HomeLanding: React.FC = () => {
     const interval = setInterval(loadRates, 5000);
     return () => clearInterval(interval);
   }, [loadRates]);
+
+  useEffect(() => {
+    const loadCustomerSummary = async () => {
+      if (!currentUser || userProfile?.role !== 'CUSTOMER') return;
+      const seen: Record<string, any> = {};
+
+      const byUid = await getDocs(query(collection(db, 'goldOnlineOrders'), where('userId', '==', currentUser.uid)));
+      byUid.docs.forEach(d => { seen[d.id] = d.data(); });
+
+      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
+      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
+      for (const e of emailCandidates) {
+        const byEmail = await getDocs(query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', e)));
+        byEmail.docs.forEach(d => { seen[d.id] = d.data(); });
+      }
+
+      const rawPhone = (userProfile?.phone ?? '').trim();
+      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
+      for (const candidate of phoneCandidates) {
+        const byPhone = await getDocs(query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', candidate)));
+        byPhone.docs.forEach(d => { seen[d.id] = d.data(); });
+      }
+
+      const all = Object.values(seen);
+      const totalGoldGrams = all
+        .filter((o: any) => o.type === 'BUY' && o.status === 'SUCCESS' && o.metal === 'GOLD')
+        .reduce((sum: number, o: any) => sum + (Number(o.grams) || 0), 0);
+      const totalSilverGrams = all
+        .filter((o: any) => o.type === 'BUY' && o.status === 'SUCCESS' && o.metal === 'SILVER')
+        .reduce((sum: number, o: any) => sum + (Number(o.grams) || 0), 0);
+
+      setCustomerSummary({
+        totalOrders: all.length,
+        totalGoldGrams,
+        totalSilverGrams,
+      });
+    };
+
+    loadCustomerSummary().catch(() => {
+      // Non-blocking summary panel.
+    });
+  }, [currentUser, userProfile]);
 
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
@@ -312,7 +366,9 @@ export const HomeLanding: React.FC = () => {
     const grams       = parseFloat(sellForm.grams);
     const purityNum   = Number(sellForm.purity);
     const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
-    const totalAmount = sellRate ? grams * sellRate.ratePerGram * 0.95 : 0;
+    const baseSellRatePerGram = Math.max(0, (sellRate?.ratePerGram ?? 0) - SELL_PRICE_DIFF_PER_GRAM);
+    const effectiveSellRatePerGram = Math.round(baseSellRatePerGram * SELL_PRICE_COST_FACTOR * 100) / 100;
+    const totalAmount = grams * effectiveSellRatePerGram;
     const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custPhone   = userProfile?.phone ?? '';
 
@@ -329,7 +385,10 @@ export const HomeLanding: React.FC = () => {
         metal:          'GOLD',
         purity:         purityNum,
         grams,
-        ratePerGram:    sellRate?.ratePerGram ?? 0,
+        ratePerGram:    effectiveSellRatePerGram,
+        marketRatePerGram: sellRate?.ratePerGram ?? 0,
+        priceDifferencePerGram: SELL_PRICE_DIFF_PER_GRAM,
+        sellingDiscountPercent: 3,
         totalAmountInr: totalAmount,
         status:         'PENDING',
         customerName:   custName,
@@ -351,7 +410,13 @@ export const HomeLanding: React.FC = () => {
     : null;
 
   const sellEst = sellForm.grams && rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))
-    ? (parseFloat(sellForm.grams) * rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))!.ratePerGram * 0.95).toFixed(2)
+    ? (
+      parseFloat(sellForm.grams)
+      * (
+        Math.max(0, rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))!.ratePerGram - SELL_PRICE_DIFF_PER_GRAM)
+        * SELL_PRICE_COST_FACTOR
+      )
+    ).toFixed(2)
     : null;
 
   const noKey = !RAZORPAY_KEY_ID;
@@ -361,6 +426,25 @@ export const HomeLanding: React.FC = () => {
   // ────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
+
+      {userProfile?.role === 'CUSTOMER' && (
+        <div className="px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="max-w-7xl mx-auto grid grid-cols-3 gap-3">
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Orders</p>
+              <p className="text-2xl font-black text-stone-800 dark:text-white mt-0.5">{customerSummary.totalOrders}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-yellow-400">Gold Till Date</p>
+              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{customerSummary.totalGoldGrams.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-gray-400">Silver Till Date</p>
+              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{customerSummary.totalSilverGrams.toFixed(3)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Success Toast ────────────────────────────────────────────────── */}
       {successMsg && (
@@ -434,35 +518,37 @@ export const HomeLanding: React.FC = () => {
                 Buy & sell pure gold and silver online at real-time international market prices. Set up AutoPay to invest in gold every month automatically.
               </p>
 
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => { setBuyMetal('GOLD'); if (goldBuyPrice) setLockedRate(goldBuyPrice); setModal({ type: 'buy' }); }}
-                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <ShoppingCart size={18} />
-                  Buy Gold Now
-                </button>
-                <button
-                  onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
-                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <ShoppingCart size={18} />
-                  Buy Silver Now
-                </button>
-                <button
-                  onClick={() => setModal({ type: 'sell' })}
-                  className="flex items-center gap-2 px-7 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <ArrowUpRight size={18} />
-                  Sell Gold
-                </button>
-                <button
-                  onClick={() => setModal({ type: 'autopay' })}
-                  className="flex items-center gap-2 px-7 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <Repeat size={18} />
-                  Setup AutoPay
-                </button>
+              <div className="w-full overflow-x-auto pb-1">
+                <div className="inline-flex min-w-full flex-nowrap gap-3">
+                  <button
+                    onClick={() => { setBuyMetal('GOLD'); if (goldBuyPrice) setLockedRate(goldBuyPrice); setModal({ type: 'buy' }); }}
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[170px] bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <ShoppingCart size={18} />
+                    Buy Gold Now
+                  </button>
+                  <button
+                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[180px] bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <ShoppingCart size={18} />
+                    Buy Silver Now
+                  </button>
+                  <button
+                    onClick={() => setModal({ type: 'sell' })}
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[150px] bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <ArrowUpRight size={18} />
+                    Sell Gold
+                  </button>
+                  <button
+                    onClick={() => setModal({ type: 'autopay' })}
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 min-w-[180px] bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Repeat size={18} />
+                    Setup AutoPay
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -977,7 +1063,7 @@ export const HomeLanding: React.FC = () => {
             {sellEst && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">
                 <div className="flex justify-between text-green-800 dark:text-green-300">
-                  <span>Estimated value (after 5% deduction)</span>
+                  <span>Estimated value (live rate - ₹50/g, then 3% reduction)</span>
                   <span className="font-black text-lg text-green-900 dark:text-green-300">₹{Number(sellEst).toLocaleString('en-IN')}</span>
                 </div>
               </div>

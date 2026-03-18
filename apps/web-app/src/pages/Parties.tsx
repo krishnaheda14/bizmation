@@ -101,105 +101,27 @@ export const Parties: React.FC = () => {
       setFreezeLoading(false);
     }
   };
-  // Price debug fetch — uses real-time sources:
-  //   XAU/USD, XAG/USD  → Swissquote via corsproxy (real-time)
-  //   USD/INR            → exchangerate.fun (real-time, fallback: fawazahmed0 CDN)
-  //   XAU/INR, XAG/INR  → fawazahmed0 CDN (direct INR values used in UI calculations)
+  // Price debug fetch — uses the exact same shared pipeline as rates page:
+  //   1) Cloudflare Worker snapshot (preferred)
+  //   2) Shared frontend utility fallback
   const fetchDebugRates = async () => {
     setDebugLoading(true); setDebugError('');
     try {
-      const { fetchLiveMetalRates } = await import('../lib/goldPrices');
-      const bust = `?_=${Date.now()}`;
-
-      // Helper: parse Swissquote mid-price from proxied response
-      const parseSQMid = (data: any[]): number | null => {
-        if (!Array.isArray(data) || data.length === 0) return null;
-        for (const platform of data) {
-          const profiles: any[] = platform.spreadProfilePrices || [];
-          for (const name of ['standard', 'premium', 'prime']) {
-            const p = profiles.find((x: any) => x.spreadProfile === name);
-            if (p?.bid != null && p?.ask != null) return (p.bid + p.ask) / 2;
-          }
-        }
-        const first = data[0]?.spreadProfilePrices?.[0];
-        return (first?.bid != null && first?.ask != null) ? (first.bid + first.ask) / 2 : null;
-      };
-
-      // Fetch all sources in parallel (Swissquote primary for USD prices)
-      const PROXY = 'https://corsproxy.io/?url=';
-      const [xauCdn, xagCdn, sqXauRaw, sqXagRaw, erFun] = await Promise.all([
-        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        fetch(PROXY + encodeURIComponent('https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD') + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
-        fetch('https://api.exchangerate.fun/latest?base=USD' + '&_=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).catch(() => null),
+      const { fetchLiveMetalRates, fetchWorkerData } = await import('../lib/goldPrices');
+      const [workerSnapshot, computedRates] = await Promise.all([
+        fetchWorkerData(),
+        fetchLiveMetalRates(),
       ]);
 
-      // USD/INR: prefer exchangerate.fun, fallback to CDN
-      const usdInrEr = erFun?.rates?.INR;
-      const usdInrCdn = (await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json' + bust, { cache: 'no-store' }).then(r => r.json()).catch(() => null))?.usd?.inr;
-      const usdInr = (usdInrEr && isFinite(usdInrEr)) ? usdInrEr : usdInrCdn;
-
-      // Swissquote real-time XAU/USD and XAG/USD (preferred)
-      const xauUsdSQ = sqXauRaw ? parseSQMid(sqXauRaw) : null;
-      const xagUsdSQ = sqXagRaw ? parseSQMid(sqXagRaw) : null;
-
-      // If Swissquote provided valid mid prices, prefer them over CDN daily values
-      const xauUsdPreferred = (xauUsdSQ && isFinite(xauUsdSQ)) ? xauUsdSQ : xauCdn?.xau?.usd;
-      const xagUsdPreferred = (xagUsdSQ && isFinite(xagUsdSQ)) ? xagUsdSQ : xagCdn?.xag?.usd;
-
-      // Compute price-per-gram (INR) derived from Swissquote USD spot and exchangerate.fun
-      const TROY_OZ_GRAMS = 31.1035;
-      const IMPORT_DUTY = 1.09;
-      let derivedGold24GramInr: number | null = null;
-      if (xauUsdSQ && isFinite(xauUsdSQ) && isFinite(usdInr) && usdInr > 0) {
-        derivedGold24GramInr = (xauUsdSQ * usdInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
-      }
-
-      // Fetch backend rates (single source of truth). We'll compare backend 24K with Swissquote-derived 24K.
-      const backendRates = await fetchLiveMetalRates().catch(() => null);
-      const backendGold24 = backendRates?.find((r: any) => r.metalType === 'GOLD' && r.purity === 999)?.ratePerGram;
-
-      // If both backend and Swissquote-derived exist, compare and auto-sync if they differ significantly
-      const mismatchThresholdPercent = 0.5; // 0.5% allowed diff
-      let syncAction = 'none';
-      if (derivedGold24GramInr && isFinite(derivedGold24GramInr) && backendGold24 && isFinite(backendGold24)) {
-        const diffPercent = Math.abs(backendGold24 - derivedGold24GramInr) / derivedGold24GramInr * 100;
-        if (diffPercent > mismatchThresholdPercent) {
-          // Force a backend reconcile to pull fresh Swissquote values and update DB
-          try {
-            const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_URL) ? (import.meta as any).env.VITE_API_URL as string : '';
-            const reconcilePath = '/api/gold-rates/reconcile?thresholdPercent=0';
-            const reconcileUrl = API_BASE ? (API_BASE.replace(/\/$/, '') + reconcilePath) : reconcilePath;
-            await fetch(reconcileUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' } , cache: 'no-store' , body: JSON.stringify({ thresholdPercent: 0 }) }).catch(() => null);
-            // re-fetch backend rates after reconcile
-            const refreshed = await fetchLiveMetalRates().catch(() => null);
-            if (refreshed) {
-              // replace backendRates
-              // eslint-disable-next-line no-param-reassign
-              // @ts-ignore
-              backendRates.length = 0; backendRates.push(...refreshed);
-              syncAction = 'reconciled';
-            } else {
-              syncAction = 'reconcile_failed';
-            }
-          } catch (reErr) {
-            syncAction = 'reconcile_error';
-          }
-        } else {
-          syncAction = 'matched';
-        }
-      }
-
       setDebugRates({
-        xauUsd: xauUsdPreferred,
-        xagUsd: xagUsdPreferred,
-        usdInr,
-        xauInr: xauCdn?.xau?.inr,
-        xagInr: xagCdn?.xag?.inr,
-        rates: backendRates || [],
+        xauUsd: workerSnapshot?.xauUsd ?? null,
+        xagUsd: workerSnapshot?.xagUsd ?? null,
+        usdInr: workerSnapshot?.usdToInr ?? null,
+        xauInr: workerSnapshot?.xauInr ?? null,
+        xagInr: workerSnapshot?.xagInr ?? null,
+        rates: workerSnapshot?.rates?.length ? workerSnapshot.rates : computedRates,
         fetchedAt: new Date().toLocaleTimeString(),
-        syncAction,
+        syncAction: workerSnapshot ? 'worker-aligned' : 'fallback-rates',
       });
     } catch (e: any) {
       setDebugError('Failed to fetch rates: ' + (e?.message ?? ''));
@@ -281,15 +203,23 @@ export const Parties: React.FC = () => {
     setOrdersLoading(customer.uid);
     console.log('[Parties] Loading orders for customer:', customer.name, customer.uid);
     try {
-      // Query orders by email only (consistent with how HomeLanding stores orders)
+      // Query by userId first, then email/phone fallback; dedupe by doc id.
       const all: Record<string, Order> = {};
+      if (customer.uid) {
+        const q = query(collection(db, 'goldOnlineOrders'), where('userId', '==', customer.uid));
+        const s = await getDocs(q);
+        s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
+      }
       if (customer.email) {
         const q = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
         const s = await getDocs(q);
         s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
         console.log('[Parties] Orders by email for', customer.name, ':', s.size);
-      } else {
-        console.warn('[Parties] Customer has no email — cannot load orders:', customer.name);
+      }
+      if (customer.phone) {
+        const q = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', customer.phone));
+        const s = await getDocs(q);
+        s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
       }
       const sorted = Object.values(all).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
       console.log('[Parties] Total unique orders for', customer.name, ':', sorted.length);

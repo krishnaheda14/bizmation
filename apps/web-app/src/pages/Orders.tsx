@@ -157,6 +157,16 @@ export const Orders: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
   const [search, setSearch]     = useState('');
 
+  const normalizePhone = (raw: string): string => {
+    if (!raw) return '';
+    const trimmed = String(raw).trim();
+    if (trimmed.startsWith('+')) return '+' + trimmed.slice(1).replace(/\D/g, '');
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length === 10) return `+91${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+    return digits ? `+${digits}` : '';
+  };
+
   const fetchOrders = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
@@ -168,15 +178,18 @@ export const Orders: React.FC = () => {
       const s1 = await getDocs(q1);
       s1.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
 
-      if (currentUser.email) {
-        const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', currentUser.email));
+      const email = (currentUser.email ?? userProfile?.email ?? '').trim();
+      const emailCandidates = Array.from(new Set([email, email.toLowerCase()].filter(Boolean)));
+      for (const candidate of emailCandidates) {
+        const q2 = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', candidate));
         const s2 = await getDocs(q2);
         s2.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
       }
 
-      const phone = userProfile?.phone ?? '';
-      if (phone) {
-        const q3 = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', phone));
+      const rawPhone = (userProfile?.phone ?? '').trim();
+      const phoneCandidates = Array.from(new Set([rawPhone, normalizePhone(rawPhone)].filter(Boolean)));
+      for (const candidate of phoneCandidates) {
+        const q3 = query(collection(db, 'goldOnlineOrders'), where('customerPhone', '==', candidate));
         const s3 = await getDocs(q3);
         s3.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as GoldOrder; });
       }
