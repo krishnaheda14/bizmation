@@ -36,7 +36,6 @@ interface AutoPayFormData {
 
 interface SellFormData {
   grams: string;
-  purity: string;
   bank: string;
   account: string;
   ifsc: string;
@@ -122,7 +121,7 @@ export const HomeLanding: React.FC = () => {
   const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
   const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500' });
   const [sellForm, setSellForm] = useState<SellFormData>({
-    grams: '', purity: '999', bank: '', account: '', ifsc: '',
+    grams: '', bank: '', account: '', ifsc: '',
   });
   const [redeemMode, setRedeemMode] = useState<'REDEEM' | 'SELL_TO_JEWELLER'>('REDEEM');
   const [paying, setPaying] = useState(false);
@@ -174,12 +173,15 @@ export const HomeLanding: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockedRate]);
-  // Use the highest purity (999) as the reference for buy prices
+  // Show 999 rates to users, but execute gold buy/sell on 995 operational rate.
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
   const gold995 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995);
   const silver24 = rates.find((r) => r.metalType === 'SILVER' && r.purity === 999);
+  const goldOperationalRatePerGram = gold995?.ratePerGram ?? gold24?.ratePerGram ?? 0;
   // Customer buy prices include bullion-trader commission component.
-  const goldBuyPrice = gold24 ? Math.round((gold24.ratePerGram + GOLD_COMMISSION_PER_GRAM) * 100) / 100 : 0;
+  const goldBuyPrice = goldOperationalRatePerGram
+    ? Math.round((goldOperationalRatePerGram + GOLD_COMMISSION_PER_GRAM) * 100) / 100
+    : 0;
   const silverBuyPrice = silver24 ? Math.round((silver24.ratePerGram + SILVER_COMMISSION_PER_GRAM) * 100) / 100 : 0;
   // Live rates table: show 999 grade only
   const filteredRates = rates.filter((r) => (r.metalType === 'GOLD' && r.purity === 999) || (r.metalType === 'SILVER' && r.purity === 999));
@@ -279,7 +281,7 @@ export const HomeLanding: React.FC = () => {
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
-    const liveMarketRate = buyMetal === 'GOLD' ? (gold24?.ratePerGram ?? 0) : (silver24?.ratePerGram ?? 0);
+    const liveMarketRate = buyMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
     const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
     const customerRate = buyMetal === 'GOLD'
       ? (lockedRate ?? (liveMarketRate + commissionPerGram))
@@ -316,7 +318,7 @@ export const HomeLanding: React.FC = () => {
             customerUid:       currentUser?.uid ?? 'anonymous',
             type:              'BUY',
             metal:             buyMetal,
-            purity:            buyMetal === 'GOLD' ? 999 : 999,
+            purity:            buyMetal === 'GOLD' ? 995 : 999,
             grams,
             ratePerGram,
             marketRatePerGram: liveMarketRate,
@@ -412,15 +414,16 @@ export const HomeLanding: React.FC = () => {
       return;
     }
     const grams       = parseFloat(sellForm.grams);
-    const purityNum   = Number(sellForm.purity);
-    const sellRate    = rates.find((r) => r.metalType === 'GOLD' && r.purity === purityNum);
+    const purityNum = 995;
+    const sellRate = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995)
+      ?? rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
     const marketRatePerGram = sellRate?.ratePerGram ?? 0;
     const postGstRatePerGram = marketRatePerGram * REDEEM_GST_FACTOR;
     const effectiveSellRatePerGram = Math.max(0, Math.round((postGstRatePerGram - REDEEM_DEDUCTION_PER_GRAM) * 100) / 100);
     const orders = await fetchCustomerLedgerOrders();
     const heldGrams = orders.reduce((sum: number, o: any) => {
       if ((o.metal ?? '').toUpperCase() !== 'GOLD') return sum;
-      if (normalizeGoldPurity(Number(o.purity) || 0) !== purityNum) return sum;
+      if (normalizeGoldPurity(Number(o.purity) || 0) !== 995) return sum;
       const orderGrams = Number(o.grams) || 0;
       if ((o.type ?? '').toUpperCase() === 'BUY' && (o.status ?? '').toUpperCase() === 'SUCCESS') return sum + orderGrams;
       if ((o.type ?? '').toUpperCase() === 'SELL' && (o.status ?? '').toUpperCase() !== 'REJECTED') return sum - orderGrams;
@@ -436,8 +439,8 @@ export const HomeLanding: React.FC = () => {
     const custPhone   = userProfile?.phone ?? '';
 
     setModal({ type: null });
-    setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${Number(sellForm.grams).toFixed(4)}g of ${sellForm.purity} purity gold.`);
-    setSellForm({ grams: '', purity: '999', bank: '', account: '', ifsc: '' });
+    setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${Number(sellForm.grams).toFixed(4)}g of 24K (995) gold.`);
+    setSellForm({ grams: '', bank: '', account: '', ifsc: '' });
     setTimeout(() => setSuccessMsg(''), 12000);
 
     // ── Write jeweller-visible request to Firestore ───────────────────────
@@ -501,16 +504,16 @@ export const HomeLanding: React.FC = () => {
     ? (lockedRate ?? goldBuyPrice)
     : silverBuyPrice;
   const buyTotal = buyForm.grams && activeRate
-    ? (parseFloat(buyForm.grams) * activeRate).toFixed(2)
+    ? (parseFloat(buyForm.grams) * activeRate).toFixed(4)
     : null;
 
-  const sellEst = sellForm.grams && rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))
+  const sellEst = sellForm.grams && (rates.find((r) => r.metalType === 'GOLD' && r.purity === 995) || rates.find((r) => r.metalType === 'GOLD' && r.purity === 999))
     ? (
       parseFloat(sellForm.grams)
       * (
-        Math.max(0, (rates.find((r) => r.metalType === 'GOLD' && r.purity === Number(sellForm.purity))!.ratePerGram * REDEEM_GST_FACTOR) - REDEEM_DEDUCTION_PER_GRAM)
+        Math.max(0, (((rates.find((r) => r.metalType === 'GOLD' && r.purity === 995) ?? rates.find((r) => r.metalType === 'GOLD' && r.purity === 999))?.ratePerGram ?? 0) * REDEEM_GST_FACTOR) - REDEEM_DEDUCTION_PER_GRAM)
       )
-    ).toFixed(2)
+    ).toFixed(4)
     : null;
 
   const noKey = !RAZORPAY_KEY_ID;
@@ -633,16 +636,11 @@ export const HomeLanding: React.FC = () => {
                 Buy & sell pure gold and silver online at real-time international market prices. Set up AutoPay to invest in gold every month automatically.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
                   <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (999) / 10g</p>
                   <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
                   <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold24 ? gold24.ratePerGram.toFixed(4) : '—'} / gram</p>
-                </div>
-                <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
-                  <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (995) / 10g</p>
-                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
-                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold995 ? gold995.ratePerGram.toFixed(4) : '—'} / gram</p>
                 </div>
                 <div className="bg-white/90 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
                   <p className="text-gray-600 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-1">Silver 999 / 1kg</p>
@@ -762,7 +760,7 @@ export const HomeLanding: React.FC = () => {
               <span className="font-bold text-amber-800 dark:text-yellow-400 text-sm">Gold (XAU/USD)</span>
               {gold24 && !loading && (
                 <span className="ml-auto font-mono text-amber-700 dark:text-yellow-300 text-sm font-bold">
-                  ₹{gold24.ratePerGram.toFixed(2)}/g
+                  ₹{gold24.ratePerGram.toFixed(4)}/g
                 </span>
               )}
             </div>
@@ -774,7 +772,7 @@ export const HomeLanding: React.FC = () => {
               <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">Silver (XAG/USD)</span>
               {silver24 && !loading && (
                 <span className="ml-auto font-mono text-gray-600 dark:text-gray-300 text-sm font-bold">
-                  ₹{silver24.ratePerGram.toFixed(2)}/g
+                  ₹{silver24.ratePerGram.toFixed(4)}/g
                 </span>
               )}
             </div>
@@ -808,8 +806,8 @@ export const HomeLanding: React.FC = () => {
             {
               icon: <CreditCard size={32} className="text-amber-500 dark:text-yellow-400" />,
               step: '02',
-              title: 'Buy or Sell Online',
-              desc: 'Enter the quantity you want, pay securely via Razorpay (UPI, cards, net banking), or submit a sell request.',
+              title: 'Buy or Redeem Online',
+              desc: 'Enter the quantity you want, pay securely via Razorpay (UPI, cards, net banking), or submit a redeem request.',
               cta: (
                 <div className="flex gap-2 mt-4">
                   <button
@@ -822,7 +820,7 @@ export const HomeLanding: React.FC = () => {
                     onClick={() => setModal({ type: 'sell' })}
                     className="flex-1 py-2 bg-amber-100 dark:bg-gray-800 hover:bg-amber-200 dark:hover:bg-gray-700 text-amber-800 dark:text-amber-300 text-sm font-bold rounded-lg transition-colors"
                   >
-                    Sell
+                    Redeem
                   </button>
                 </div>
               ),
@@ -913,13 +911,13 @@ export const HomeLanding: React.FC = () => {
                     <tr key={`${r.metalType}-${r.purity}`} className="border-b border-amber-50 dark:border-gray-800/60 hover:bg-amber-50/40 dark:hover:bg-gray-900/50 transition-colors">
                       <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300">{r.metalType}</td>
                       <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300">{r.purity}K</td>
-                      <td className="py-3.5 px-4 text-right text-sm font-medium text-stone-800 dark:text-white">₹{r.ratePerGram.toFixed(2)}</td>
-                      <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">₹{r.displayRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                      <td className="py-3.5 px-4 text-right text-sm font-medium text-stone-800 dark:text-white">₹{r.ratePerGram.toFixed(4)}</td>
+                      <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">₹{r.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</td>
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => {
                             setBuyMetal(r.metalType);
-                            if (r.metalType === 'GOLD') setLockedRate(r.ratePerGram);
+                            if (r.metalType === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice);
                             else setLockedRate(null);
                             setModal({ type: 'buy' });
                           }}
@@ -1038,7 +1036,7 @@ export const HomeLanding: React.FC = () => {
             {/* Live price display + lock timer */}
             <div className="rounded-2xl px-5 py-4 text-center" style={{ background:'linear-gradient(135deg,rgba(253,243,212,0.9),rgba(254,243,199,0.5))', border:'1px solid rgba(251,191,36,0.3)' }}>
               <p className="text-xs text-amber-600 font-semibold uppercase tracking-widest mb-0.5">Live {buyMetal === 'GOLD' ? 'Gold' : 'Silver'} Price</p>
-              <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(2)}<span className="text-sm font-medium text-amber-600">/g</span></p>
+              <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(4)}<span className="text-sm font-medium text-amber-600">/g</span></p>
               {lockedRate && buyMetal === 'GOLD' && lockSecondsLeft > 0 && (
                 <div className="flex items-center justify-center gap-1.5 mt-1">
                   <Timer size={13} className={lockSecondsLeft <= 30 ? 'text-red-500 animate-pulse' : 'text-green-600'} />
@@ -1084,7 +1082,7 @@ export const HomeLanding: React.FC = () => {
               />
               {buyTotal && (
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right pointer-events-none">
-                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
                 </div>
               )}
             </div>
@@ -1108,7 +1106,7 @@ export const HomeLanding: React.FC = () => {
                 className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
               >
                 {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-                {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN')}`}
+                {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
               </button>
             )}
           </div>
@@ -1135,13 +1133,9 @@ export const HomeLanding: React.FC = () => {
                 Sell To Jeweller
               </button>
             </div>
-            <div>
-              <label className="fieldLabel">Gold Purity</label>
-              <select value={sellForm.purity} onChange={(e) => setSellForm((f) => ({ ...f, purity: e.target.value }))} className="fieldInput">
-                <option value="999">24K (999)</option>
-                <option value="916">22K (916)</option>
-                <option value="750">18K (750)</option>
-              </select>
+            <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-gray-900/40 p-3 text-sm">
+              <p className="text-amber-800 dark:text-amber-300 font-semibold">Operational Purity</p>
+              <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">All gold redeem/sell requests are processed as 24K (995).</p>
             </div>
             <div>
               <label className="fieldLabel">Weight (grams)</label>
@@ -1155,7 +1149,7 @@ export const HomeLanding: React.FC = () => {
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">
                 <div className="flex justify-between text-green-800 dark:text-green-300">
                   <span>Estimated value (live rate - 3% GST, then minus ₹50/g)</span>
-                  <span className="font-black text-lg text-green-900 dark:text-green-300">₹{Number(sellEst).toLocaleString('en-IN')}</span>
+                  <span className="font-black text-lg text-green-900 dark:text-green-300">₹{Number(sellEst).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</span>
                 </div>
               </div>
             )}
@@ -1243,9 +1237,9 @@ export const HomeLanding: React.FC = () => {
                 onChange={(e) => setAutoPayForm((f) => ({ ...f, amount: e.target.value }))}
                 className="fieldInput"
               />
-              {autoPayForm.amount && gold24 && (
+              {autoPayForm.amount && goldOperationalRatePerGram > 0 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  ≈ {(parseFloat(autoPayForm.amount) / gold24.ratePerGram).toFixed(4)}g of 24K gold per month at today's rate
+                  ≈ {(parseFloat(autoPayForm.amount) / goldOperationalRatePerGram).toFixed(4)}g of 24K (995) gold per month at today's rate
                 </p>
               )}
             </div>

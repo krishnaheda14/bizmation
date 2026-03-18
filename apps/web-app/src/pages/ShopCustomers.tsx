@@ -43,6 +43,14 @@ interface Order {
   createdAt: any;
 }
 
+const fmtInr = (n: number, compact = true) => {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v);
+  if (compact && abs >= 10000000) return `₹${(v / 10000000).toFixed(4)} Cr`;
+  if (compact && abs >= 100000) return `₹${(v / 100000).toFixed(4)} L`;
+  return `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+};
+
 export const ShopCustomers: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
   const [customers, setCustomers]     = useState<CustomerRecord[]>([]);
@@ -169,8 +177,8 @@ export const ShopCustomers: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
             { label: 'Total Customers', value: String(totalCustomers), icon: <Users size={20} className="text-amber-500" />, bg: 'from-amber-50 to-yellow-50 dark:from-yellow-900/20 dark:to-amber-900/10', border: 'border-amber-200 dark:border-yellow-800/40' },
-            { label: 'Total Gold Sold', value: `${totalGold.toFixed(3)}g`, icon: <Coins size={20} className="text-amber-500 dark:text-yellow-400" />, bg: 'from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10', border: 'border-green-200 dark:border-green-800/40' },
-            { label: 'Total Revenue', value: `₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, icon: <TrendingUp size={20} className="text-blue-500 dark:text-blue-400" />, bg: 'from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/10', border: 'border-blue-200 dark:border-blue-800/40' },
+            { label: 'Total Gold Sold', value: `${totalGold.toFixed(4)}g`, icon: <Coins size={20} className="text-amber-500 dark:text-yellow-400" />, bg: 'from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10', border: 'border-green-200 dark:border-green-800/40' },
+            { label: 'Total Revenue', value: fmtInr(totalInvested), icon: <TrendingUp size={20} className="text-blue-500 dark:text-blue-400" />, bg: 'from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/10', border: 'border-blue-200 dark:border-blue-800/40' },
           ].map(({ label, value, icon, bg, border }) => (
             <div key={label} className={`bg-gradient-to-br ${bg} border ${border} rounded-2xl p-5 shadow-sm`}>
               <div className="flex items-center gap-2 mb-2">{icon}<span className="text-xs font-bold text-stone-500 dark:text-gray-400 uppercase tracking-wide">{label}</span></div>
@@ -248,10 +256,10 @@ export const ShopCustomers: React.FC = () => {
                     {/* Analytics pills */}
                     <div className="hidden sm:flex items-center gap-3 flex-shrink-0 text-xs">
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-2.5 py-1 rounded-full font-semibold">
-                        {(c.totalGoldPurchasedGrams ?? 0).toFixed(2)}g Gold
+                        {(c.totalGoldPurchasedGrams ?? 0).toFixed(4)}g Gold
                       </span>
                       <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2.5 py-1 rounded-full font-semibold">
-                        ₹{(c.totalInvestedInr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        {fmtInr(c.totalInvestedInr ?? 0)}
                       </span>
                       <span className="text-stone-400 dark:text-gray-500">Joined {joinDate}</span>
                     </div>
@@ -266,13 +274,13 @@ export const ShopCustomers: React.FC = () => {
                       {/* Mobile analytics */}
                       <div className="sm:hidden flex flex-wrap gap-2 mb-4">
                         <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-2.5 py-1 rounded-full text-xs font-semibold">
-                          {(c.totalGoldPurchasedGrams ?? 0).toFixed(2)}g Gold Bought
+                          {(c.totalGoldPurchasedGrams ?? 0).toFixed(4)}g Gold Bought
                         </span>
                         <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2.5 py-1 rounded-full text-xs font-semibold">
-                          ₹{(c.totalInvestedInr ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Invested
+                          {fmtInr(c.totalInvestedInr ?? 0)} Invested
                         </span>
                         <span className="bg-slate-100 dark:bg-slate-900/30 text-slate-600 dark:text-slate-400 px-2.5 py-1 rounded-full text-xs font-semibold">
-                          {(c.totalSilverPurchasedGrams ?? 0).toFixed(2)}g Silver
+                          {(c.totalSilverPurchasedGrams ?? 0).toFixed(4)}g Silver
                         </span>
                       </div>
 
@@ -321,9 +329,9 @@ export const ShopCustomers: React.FC = () => {
                                       </span>
                                     </td>
                                     <td className="py-2 px-3 font-semibold text-amber-700 dark:text-yellow-400">{o.metal} {o.purity}K</td>
-                                    <td className="py-2 px-3 text-right font-bold">{o.grams.toFixed(3)}g</td>
-                                    <td className="py-2 px-3 text-right text-stone-500 dark:text-gray-400">₹{o.ratePerGram?.toLocaleString('en-IN', { maximumFractionDigits: 2 }) ?? '—'}</td>
-                                    <td className="py-2 px-3 text-right font-black text-stone-800 dark:text-white">₹{o.totalAmountInr?.toLocaleString('en-IN', { maximumFractionDigits: 0 }) ?? '—'}</td>
+                                    <td className="py-2 px-3 text-right font-bold">{o.grams.toFixed(4)}g</td>
+                                    <td className="py-2 px-3 text-right text-stone-500 dark:text-gray-400">{o.ratePerGram != null ? fmtInr(Number(o.ratePerGram), false) : '—'}</td>
+                                    <td className="py-2 px-3 text-right font-black text-stone-800 dark:text-white">{o.totalAmountInr != null ? fmtInr(Number(o.totalAmountInr)) : '—'}</td>
                                     <td className="py-2 px-3">
                                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                                         o.status === 'SUCCESS'

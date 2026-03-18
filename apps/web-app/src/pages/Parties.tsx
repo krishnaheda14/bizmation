@@ -19,6 +19,14 @@ import {
   ShoppingCart, RefreshCw, AlertCircle, Shield,
 } from 'lucide-react';
 
+const fmtInr = (n: number, compact = true) => {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v);
+  if (compact && abs >= 10000000) return `₹${(v / 10000000).toFixed(4)} Cr`;
+  if (compact && abs >= 100000) return `₹${(v / 100000).toFixed(4)} L`;
+  return `₹${v.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+};
+
 // --- Types ------------------------------------------------------------------
 
 interface CustomerParty {
@@ -482,7 +490,7 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
 
       {orders !== undefined && (
         <div className="grid grid-cols-4 border-t border-amber-50 dark:border-gray-800 divide-x divide-amber-50 dark:divide-gray-800">
-          {[{ label: 'Orders', value: orders.length }, { label: 'Gold', value: totalGold.toFixed(3) + 'g' }, { label: 'Invested', value: 'Rs.' + totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }, { label: 'Commission', value: 'Rs.' + totalCommission.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }].map(s => (
+          {[{ label: 'Orders', value: orders.length }, { label: 'Gold', value: totalGold.toFixed(4) + 'g' }, { label: 'Invested', value: fmtInr(totalInvested) }, { label: 'Commission', value: fmtInr(totalCommission) }].map(s => (
             <div key={s.label} className="py-2.5 text-center">
               <p className="text-xs font-black text-stone-700 dark:text-white">{s.value}</p>
               <p className="text-[10px] text-stone-400 dark:text-gray-500">{s.label}</p>
@@ -516,9 +524,9 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
                         <td className="py-2 px-3 text-stone-500 dark:text-gray-400">{d}</td>
                         <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.type==='BUY'?'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400')}>{o.type}</span></td>
                         <td className="py-2 px-3 font-semibold text-amber-700 dark:text-yellow-400">{o.metal} {o.purity}K</td>
-                        <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{o.grams?.toFixed?.(3)}g</td>
-                        <td className="py-2 px-3 font-black text-stone-800 dark:text-white">Rs.{o.totalAmountInr?.toLocaleString?.('en-IN',{maximumFractionDigits:0})}</td>
-                        <td className="py-2 px-3 font-black text-amber-700 dark:text-amber-400">Rs.{Number(o.shopCommissionInr || 0).toLocaleString('en-IN',{maximumFractionDigits:0})}</td>
+                        <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{o.grams?.toFixed?.(4)}g</td>
+                        <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{fmtInr(Number(o.totalAmountInr || 0))}</td>
+                        <td className="py-2 px-3 font-black text-amber-700 dark:text-amber-400">{fmtInr(Number(o.shopCommissionInr || 0))}</td>
                         <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.status==='SUCCESS'?'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':o.status==='PENDING'?'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400':'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')}>{o.status}</span></td>
                       </tr>
                     );

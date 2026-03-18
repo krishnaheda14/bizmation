@@ -58,7 +58,7 @@ const REDEEM_GST_FACTOR = 0.97;
 const REDEEM_DEDUCTION_PER_GRAM = 50;
 
 const METAL_PURITIES: Record<'GOLD' | 'SILVER', number[]> = {
-  GOLD: [999, 916, 750],
+  GOLD: [995],
   SILVER: [999],
 };
 
@@ -67,6 +67,7 @@ const fmtG = (v: number) => (v || 0).toFixed(4) + 'g';
 
 const purityLabel = (metal: 'GOLD' | 'SILVER', purity: number) => {
   if (metal === 'SILVER') return String(purity);
+  if (purity === 995) return '24K (995)';
   if (purity === 999) return '24K (999)';
   if (purity === 916) return '22K (916)';
   if (purity === 750) return '18K (750)';
@@ -97,7 +98,7 @@ export const RedemptionPage: React.FC = () => {
   const [loadingRates, setLoadingRates] = useState(true);
 
   const [metal, setMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
-  const [purity, setPurity] = useState<number>(999);
+  const [purity, setPurity] = useState<number>(995);
   const [gramsStr, setGramsStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -210,7 +211,14 @@ export const RedemptionPage: React.FC = () => {
   );
 
   const liveRate = useMemo(
-    () => rates.find((r) => r.metalType === metal && Number(r.purity) === purity)?.ratePerGram ?? 0,
+    () => {
+      if (metal === 'GOLD') {
+        return rates.find((r) => r.metalType === 'GOLD' && Number(r.purity) === 995)?.ratePerGram
+          ?? rates.find((r) => r.metalType === 'GOLD' && Number(r.purity) === 999)?.ratePerGram
+          ?? 0;
+      }
+      return rates.find((r) => r.metalType === 'SILVER' && Number(r.purity) === 999)?.ratePerGram ?? 0;
+    },
     [rates, metal, purity],
   );
 

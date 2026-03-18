@@ -48,11 +48,16 @@ interface MetalStats {
 const GOLD_COMMISSION_PER_GRAM = 20;
 const SILVER_COMMISSION_PER_GRAM = 2;
 
-const fmtInr = (n: number) =>
-  '₹' + Math.round(n).toLocaleString('en-IN');
+const fmtInr = (n: number, compact = true) => {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v);
+  if (compact && abs >= 10000000) return `₹${(v / 10000000).toFixed(4)} Cr`;
+  if (compact && abs >= 100000) return `₹${(v / 100000).toFixed(4)} L`;
+  return '₹' + v.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+};
 
 const fmtGrams = (n: number) =>
-  n >= 1000 ? (n / 1000).toFixed(2) + ' kg' : n.toFixed(3) + ' g';
+  n >= 1000 ? (n / 1000).toFixed(4) + ' kg' : n.toFixed(4) + ' g';
 
 export const Analytics: React.FC = () => {
   const { userProfile } = useAuth();

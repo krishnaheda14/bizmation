@@ -114,7 +114,13 @@ const fmtDate = (ts: any): string => {
   return d.toLocaleString('en-IN');
 };
 
-const fmtInr = (v: number) => `₹${Math.round(v || 0).toLocaleString('en-IN')}`;
+const fmtInr = (v: number, compact = true) => {
+  const n = Number(v) || 0;
+  const abs = Math.abs(n);
+  if (compact && abs >= 10000000) return `₹${(n / 10000000).toFixed(4)} Cr`;
+  if (compact && abs >= 100000) return `₹${(n / 100000).toFixed(4)} L`;
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+};
 
 const normalize = (v: string | undefined) => String(v || '').trim().toLowerCase();
 
@@ -273,16 +279,34 @@ export function SuperAdmin() {
         verified: status === 'APPROVED',
         updatedAt: serverTimestamp(),
       });
-      if (shop.ownerUid) {
-        await updateDoc(doc(db, 'users', shop.ownerUid), {
+
+      const linkedUserIds = Array.from(new Set(
+        users
+          .filter((u) => ['OWNER', 'STAFF'].includes((u.role ?? '').toUpperCase()))
+          .filter((u) =>
+            (shop.ownerUid && u.id === shop.ownerUid)
+            || (shop.ownerUid && u.uid === shop.ownerUid)
+            || (!!shop.id && u.shopId === shop.id)
+            || (!!shop.bizShopId && u.bizShopId === shop.bizShopId)
+            || (!!shop.name && normalize(u.shopName) === normalize(shop.name))
+            || (!!shop.ownerCode && normalize(u.ownerCode) === normalize(shop.ownerCode))
+            || (!!shop.email && normalize(u.email) === normalize(shop.email))
+          )
+          .map((u) => u.id)
+          .concat(shop.ownerUid ? [shop.ownerUid] : []),
+      ));
+
+      await Promise.allSettled(linkedUserIds.map((uid) =>
+        updateDoc(doc(db, 'users', uid), {
           shopVerificationStatus: status,
           shopVerificationReviewedAt: serverTimestamp(),
           shopVerificationReviewedBy: userProfile.uid,
           shopVerificationNote: note,
           shopVerified: status === 'APPROVED',
           updatedAt: serverTimestamp(),
-        });
-      }
+        }),
+      ));
+
       await loadData();
     } catch (err: any) {
       alert(err?.message ?? 'Failed to update verification status.');
@@ -440,31 +464,27 @@ export function SuperAdmin() {
                                 <td className="px-4 py-3 text-right font-semibold text-stone-700">{sOrders.length}</td>
                                 <td className="px-4 py-3 text-right font-bold text-amber-800">{fmtInr(sCommission)}</td>
                                 <td className="px-4 py-3">
-                                  {(s.verificationStatus ?? 'PENDING') === 'PENDING' ? (
-                                    <div className="space-y-2">
-                                      <input
-                                        type="text"
-                                        placeholder="Review note"
-                                        value={verifyNote[s.id] ?? ''}
-                                        onChange={(e) => setVerifyNote((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                                        className="w-full rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-stone-700"
-                                      />
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          onClick={() => setShopVerification(s, 'APPROVED')}
-                                          disabled={!!actionLoading[s.id]}
-                                          className="px-2 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-60"
-                                        >Approve</button>
-                                        <button
-                                          onClick={() => setShopVerification(s, 'REJECTED')}
-                                          disabled={!!actionLoading[s.id]}
-                                          className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-60"
-                                        >Reject</button>
-                                      </div>
+                                  <div className="space-y-2">
+                                    <input
+                                      type="text"
+                                      placeholder="Review note"
+                                      value={verifyNote[s.id] ?? ''}
+                                      onChange={(e) => setVerifyNote((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                                      className="w-full rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-stone-700"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setShopVerification(s, 'APPROVED')}
+                                        disabled={!!actionLoading[s.id]}
+                                        className="px-2 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-60"
+                                      >Approve</button>
+                                      <button
+                                        onClick={() => setShopVerification(s, 'REJECTED')}
+                                        disabled={!!actionLoading[s.id]}
+                                        className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-60"
+                                      >Reject</button>
                                     </div>
-                                  ) : (
-                                    <p className="text-xs text-stone-500">Reviewed</p>
-                                  )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3">
                                   <button
@@ -510,7 +530,7 @@ export function SuperAdmin() {
                                                   <td className="py-1 pr-2">{o.customerName || o.customerEmail || '-'}</td>
                                                   <td className="py-1 pr-2">{o.type || '-'}</td>
                                                   <td className="py-1 pr-2">{o.metal || '-'} {o.purity ? `(${o.purity})` : ''}</td>
-                                                  <td className="py-1 pr-2 text-right">{Number(o.grams || 0).toFixed(3)}</td>
+                                                  <td className="py-1 pr-2 text-right">{Number(o.grams || 0).toFixed(4)}</td>
                                                   <td className="py-1 pr-2 text-right">{fmtInr(Number(o.totalAmountInr || 0))}</td>
                                                   <td className="py-1 pr-2 text-right">{fmtInr(Number(o.shopCommissionInr || 0))}</td>
                                                 </tr>
@@ -636,9 +656,9 @@ export function SuperAdmin() {
                                                   <td className="py-1 pr-2 font-mono">{o.id}</td>
                                                   <td className="py-1 pr-2">{o.type || '-'}</td>
                                                   <td className="py-1 pr-2">{o.metal || '-'} {o.purity ? `(${o.purity})` : ''}</td>
-                                                  <td className="py-1 pr-2 text-right">{Number(o.grams || 0).toFixed(3)}</td>
-                                                  <td className="py-1 pr-2 text-right">{fmtInr(Number(o.marketRatePerGram || 0))}</td>
-                                                  <td className="py-1 pr-2 text-right">{fmtInr(Number(o.ratePerGram || 0))}</td>
+                                                  <td className="py-1 pr-2 text-right">{Number(o.grams || 0).toFixed(4)}</td>
+                                                  <td className="py-1 pr-2 text-right">{fmtInr(Number(o.marketRatePerGram || 0), false)}</td>
+                                                  <td className="py-1 pr-2 text-right">{fmtInr(Number(o.ratePerGram || 0), false)}</td>
                                                   <td className="py-1 pr-2 text-right">{fmtInr(Number(o.shopCommissionInr || 0))}</td>
                                                   <td className="py-1 pr-2 text-right">{fmtInr(Number(o.totalAmountInr || 0))}</td>
                                                   <td className="py-1 pr-2">{o.status || '-'}</td>
@@ -714,10 +734,10 @@ export function SuperAdmin() {
                             <td className="px-4 py-3 font-mono text-xs text-stone-600">{o.shopId || '-'}</td>
                             <td className="px-4 py-3 font-semibold text-stone-700">{o.type || '-'} <span className="text-xs text-stone-400">{o.status || ''}</span></td>
                             <td className="px-4 py-3 text-stone-700">{o.metal || '-'} {o.purity ? `(${o.purity})` : ''}</td>
-                            <td className="px-4 py-3 text-right text-stone-700">{Number(o.grams || 0).toFixed(3)}</td>
-                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.marketRatePerGram || 0))}</td>
-                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.ratePerGram || 0))}</td>
-                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.commissionPerGram || 0))}</td>
+                            <td className="px-4 py-3 text-right text-stone-700">{Number(o.grams || 0).toFixed(4)}</td>
+                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.marketRatePerGram || 0), false)}</td>
+                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.ratePerGram || 0), false)}</td>
+                            <td className="px-4 py-3 text-right text-stone-700">{fmtInr(Number(o.commissionPerGram || 0), false)}</td>
                             <td className="px-4 py-3 text-right font-bold text-amber-800">{fmtInr(Number(o.shopCommissionInr || 0))}</td>
                             <td className="px-4 py-3 text-right font-bold text-stone-800">{fmtInr(Number(o.totalAmountInr || 0))}</td>
                             <td className="px-4 py-3 text-xs font-semibold text-stone-600">{o.status || '-'}</td>
