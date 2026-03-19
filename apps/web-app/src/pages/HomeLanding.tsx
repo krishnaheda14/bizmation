@@ -15,7 +15,7 @@ import {
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, updateDoc, doc, increment, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
 
@@ -133,6 +133,13 @@ export const HomeLanding: React.FC = () => {
     totalValueInr: 0,
     totalGainInr: 0,
     totalGainPct: 0,
+  });
+  const [ownerSummary, setOwnerSummary] = useState({
+    totalOrders: 0,
+    totalGoldSoldGrams: 0,
+    totalSilverSoldGrams: 0,
+    totalRevenueInr: 0,
+    totalCommissionInr: 0,
   });
   // ── Price-lock countdown ──────────────────────────────────────────
   const LOCK_DURATION = 120; // seconds
@@ -268,6 +275,51 @@ export const HomeLanding: React.FC = () => {
       // Non-blocking summary panel.
     });
   }, [currentUser, userProfile, rates]);
+
+  useEffect(() => {
+    const loadOwnerSummary = async () => {
+      const role = (userProfile?.role ?? '').toUpperCase();
+      if (!currentUser || !['OWNER', 'STAFF'].includes(role)) return;
+      const shopName = (userProfile?.shopName ?? '').trim();
+      if (!shopName) return;
+
+      const variants = Array.from(new Set([shopName, shopName.toLowerCase(), shopName.toUpperCase()]));
+      const found: Record<string, any> = {};
+
+      for (const s of variants) {
+        try {
+          const snap = await getDocs(query(collection(db, 'goldOnlineOrders'), where('shopName', '==', s)));
+          snap.docs.forEach((d) => { found[d.id] = { id: d.id, ...(d.data() as any) }; });
+        } catch {
+          // Non-blocking owner summary fallback.
+        }
+      }
+
+      const list = Object.values(found);
+      const successBuys = list.filter((o: any) => (o.type ?? '').toUpperCase() === 'BUY' && (o.status ?? '').toUpperCase() === 'SUCCESS');
+
+      const totalGoldSoldGrams = successBuys
+        .filter((o: any) => (o.metal ?? '').toUpperCase() === 'GOLD')
+        .reduce((s: number, o: any) => s + (Number(o.grams) || 0), 0);
+      const totalSilverSoldGrams = successBuys
+        .filter((o: any) => (o.metal ?? '').toUpperCase() === 'SILVER')
+        .reduce((s: number, o: any) => s + (Number(o.grams) || 0), 0);
+      const totalRevenueInr = successBuys.reduce((s: number, o: any) => s + (Number(o.totalAmountInr) || 0), 0);
+      const totalCommissionInr = successBuys.reduce((s: number, o: any) => s + (Number(o.shopCommissionInr) || 0), 0);
+
+      setOwnerSummary({
+        totalOrders: list.length,
+        totalGoldSoldGrams,
+        totalSilverSoldGrams,
+        totalRevenueInr,
+        totalCommissionInr,
+      });
+    };
+
+    loadOwnerSummary().catch(() => {
+      // Non-blocking owner summary panel.
+    });
+  }, [currentUser, userProfile]);
 
   const fetchCustomerLedgerOrders = useCallback(async () => {
     if (!currentUser) return [] as any[];
@@ -536,6 +588,26 @@ export const HomeLanding: React.FC = () => {
         </div>
       )}
 
+      {(userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF') && (
+        <div className="px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="max-w-[1400px] mx-auto flex justify-end">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-amber-200 dark:border-yellow-800 bg-white/85 dark:bg-gray-900 px-3.5 py-2 shadow-sm">
+              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Owner Code:</span>
+              <span className="text-xs font-black text-amber-900 dark:text-yellow-300">{(userProfile as any)?.ownerCode || '—'}</span>
+              {!!(userProfile as any)?.ownerCode && (
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText((userProfile as any)?.ownerCode || '')}
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-gray-800 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-gray-700"
+                >
+                  Copy
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {userProfile?.role === 'CUSTOMER' && (
         <div className="px-4 sm:px-6 lg:px-8 pt-4">
           <div className="max-w-[1400px] mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -560,6 +632,33 @@ export const HomeLanding: React.FC = () => {
               <p className={`text-xl font-black mt-0.5 ${customerPortfolioStats.totalGainPct >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                 {customerPortfolioStats.totalGainPct >= 0 ? '+' : ''}{customerPortfolioStats.totalGainPct.toFixed(4)}%
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF') && (
+        <div className="px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="max-w-[1400px] mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Orders</p>
+              <p className="text-2xl font-black text-stone-800 dark:text-white mt-0.5">{ownerSummary.totalOrders}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-yellow-400">Gold Sold</p>
+              <p className="text-2xl font-black text-amber-900 dark:text-yellow-300 mt-0.5">{ownerSummary.totalGoldSoldGrams.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-gray-400">Silver Sold</p>
+              <p className="text-2xl font-black text-slate-700 dark:text-gray-200 mt-0.5">{ownerSummary.totalSilverSoldGrams.toFixed(4)}<span className="text-sm font-semibold ml-1">g</span></p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Revenue</p>
+              <p className="text-xl font-black text-stone-800 dark:text-white mt-0.5">₹{ownerSummary.totalRevenueInr.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+            </div>
+            <div className="rounded-2xl px-4 py-3 bg-white/85 dark:bg-gray-900 border border-amber-100 dark:border-gray-800">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-gray-400">Total Commission</p>
+              <p className="text-xl font-black text-green-700 dark:text-green-400 mt-0.5">₹{ownerSummary.totalCommissionInr.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
             </div>
           </div>
         </div>
@@ -590,6 +689,7 @@ export const HomeLanding: React.FC = () => {
           HERO
       ════════════════════════════════════════════════════════════════════ */}
           <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30">
+            <div className="absolute inset-0 pointer-events-none opacity-60" style={{ backgroundImage: 'radial-gradient(circle at 20% 15%, rgba(251,191,36,0.14) 0%, transparent 35%), radial-gradient(circle at 78% 25%, rgba(245,158,11,0.12) 0%, transparent 30%), radial-gradient(circle at 50% 80%, rgba(234,179,8,0.1) 0%, transparent 40%)' }} />
         {/* Decorative blur circles */}
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-yellow-300/30 dark:bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-300/30 dark:bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -637,12 +737,12 @@ export const HomeLanding: React.FC = () => {
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md">
+                <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
                   <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (999) / 10g</p>
                   <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
                   <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold24 ? gold24.ratePerGram.toFixed(4) : '—'} / gram</p>
                 </div>
-                <div className="bg-white/90 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md">
+                <div className="bg-white/90 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5">
                   <p className="text-gray-600 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-1">Silver 999 / 1kg</p>
                   <p className="text-2xl font-black text-gray-800 dark:text-gray-200">₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
                   <p className="text-xs text-gray-600/70 dark:text-gray-400">₹{silver24 ? silver24.ratePerGram.toFixed(4) : '—'} / gram</p>

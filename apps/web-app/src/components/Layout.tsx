@@ -158,6 +158,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   {userProfile?.shopName && (
                     <p className="text-[10px] text-amber-700 dark:text-yellow-500 truncate font-medium">{userProfile.shopName}</p>
                   )}
+                  {(userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF') && (userProfile as any)?.ownerCode && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400 truncate font-semibold">Owner Code: {(userProfile as any).ownerCode}</p>
+                  )}
                   <p className="text-[10px] text-amber-500 dark:text-gray-400 truncate">{currentUser.email}</p>
                 </div>
               </div>

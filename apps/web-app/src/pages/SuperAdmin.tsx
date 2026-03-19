@@ -4,7 +4,7 @@
  * Shows complete visibility across shops, users, orders, and commissions.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -175,7 +175,7 @@ const DetailGrid: React.FC<{ title: string; rows: Array<{ label: string; value: 
 );
 
 export function SuperAdmin() {
-  const { userProfile, signOut } = useAuth();
+  const { currentUser, userProfile, signOut } = useAuth();
   const [tab, setTab] = useState<Tab['key']>('shops');
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -188,6 +188,12 @@ export function SuperAdmin() {
   const [expandedShopId, setExpandedShopId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [actionDebug, setActionDebug] = useState<string[]>([]);
+
+  const pushDebug = (msg: string) => {
+    const t = new Date().toLocaleTimeString('en-IN');
+    setActionDebug((prev) => [`[${t}] ${msg}`, ...prev].slice(0, 40));
+  };
 
   if (userProfile?.role !== 'SUPER_ADMIN') {
     return (
@@ -327,20 +333,39 @@ export function SuperAdmin() {
     );
 
   const setShopVerification = async (shop: ShopRow, status: 'APPROVED' | 'REJECTED') => {
-    if (!userProfile?.uid) return;
+    const actorUid = currentUser?.uid || userProfile?.uid || '';
+    if (!actorUid) {
+      pushDebug('Abort approve/reject: missing actor uid.');
+      setActionMsg({ type: 'err', text: 'Cannot process action: missing super admin uid in session.' });
+      return;
+    }
     setActionLoading((prev) => ({ ...prev, [shop.id]: true }));
+    pushDebug(`Action started: ${status} | shopId=${shop.id} | shop=${shop.name || '-'} | actor=${actorUid}`);
     try {
       const note = (verifyNote[shop.id] ?? '').trim();
       await updateDoc(doc(db, 'shops', shop.id), {
         verificationStatus: status,
         shopVerificationStatus: status,
         verificationReviewedAt: serverTimestamp(),
-        verificationReviewedBy: userProfile.uid,
+        verificationReviewedBy: actorUid,
         verificationNote: note,
         shopVerificationNote: note,
         verified: status === 'APPROVED',
         updatedAt: serverTimestamp(),
       });
+      pushDebug('Shop document update: success');
+
+      try {
+        const shopAfter = await getDoc(doc(db, 'shops', shop.id));
+        const statusAfter = String(
+          shopAfter.data()?.verificationStatus
+          ?? shopAfter.data()?.shopVerificationStatus
+          ?? '-',
+        );
+        pushDebug(`Shop status after write: ${statusAfter}`);
+      } catch (e: any) {
+        pushDebug(`Shop readback failed: ${e?.message || 'unknown error'}`);
+      }
 
       const linkedUserIds = Array.from(new Set(
         users
@@ -357,17 +382,25 @@ export function SuperAdmin() {
           .map((u) => u.id)
           .concat(shop.ownerUid ? [shop.ownerUid] : []),
       ));
+      pushDebug(`Linked owner/staff users resolved: ${linkedUserIds.length}`);
 
-      await Promise.allSettled(linkedUserIds.map((uid) =>
+      const userWriteResults = await Promise.allSettled(linkedUserIds.map((uid) =>
         updateDoc(doc(db, 'users', uid), {
           shopVerificationStatus: status,
           shopVerificationReviewedAt: serverTimestamp(),
-          shopVerificationReviewedBy: userProfile.uid,
+          shopVerificationReviewedBy: actorUid,
           shopVerificationNote: note,
           shopVerified: status === 'APPROVED',
           updatedAt: serverTimestamp(),
         }),
       ));
+      const userWriteFailures = userWriteResults.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+      if (userWriteFailures.length > 0) {
+        pushDebug(`User updates had failures: ${userWriteFailures.length}`);
+        userWriteFailures.slice(0, 3).forEach((f, idx) => pushDebug(`User update error ${idx + 1}: ${String(f.reason?.message || f.reason)}`));
+      } else {
+        pushDebug('All linked user updates: success');
+      }
 
       // Optimistic local update so the status flips instantly in UI.
       setShops((prev) => prev.map((s) => s.id === shop.id ? {
@@ -389,11 +422,14 @@ export function SuperAdmin() {
       }
 
       setActionMsg({ type: 'ok', text: `You have successfully ${status === 'APPROVED' ? 'approved' : 'rejected'} ${shop.name || 'the shop'}.` });
-      setTimeout(() => setActionMsg(null), 5000);
+      setTimeout(() => setActionMsg(null), 9000);
+      pushDebug('Action completed successfully.');
       await loadData();
+      pushDebug('Data reload after action: success');
     } catch (err: any) {
       setActionMsg({ type: 'err', text: err?.message ?? 'Failed to update verification status.' });
-      setTimeout(() => setActionMsg(null), 6000);
+      setTimeout(() => setActionMsg(null), 10000);
+      pushDebug(`Action failed: ${err?.code || ''} ${err?.message || 'unknown error'}`);
     } finally {
       setActionLoading((prev) => ({ ...prev, [shop.id]: false }));
     }
@@ -506,6 +542,19 @@ export function SuperAdmin() {
                   <CardStat label="Shops With Orders" value={String(shops.filter((s) => ordersForShop(s).length > 0).length)} />
                 </div>
 
+                <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+                  <p className="text-xs font-bold text-stone-700 uppercase tracking-wide mb-2">Approval Debug Trace</p>
+                  {actionDebug.length === 0 ? (
+                    <p className="text-xs text-stone-500">No actions yet.</p>
+                  ) : (
+                    <div className="max-h-36 overflow-auto space-y-1">
+                      {actionDebug.map((line, idx) => (
+                        <p key={idx} className="text-[11px] font-mono text-stone-700">{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="rounded-3xl overflow-hidden shadow-sm border border-amber-100 bg-white/90 backdrop-blur">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[1100px]">
@@ -546,8 +595,7 @@ export function SuperAdmin() {
                                   <p className="text-xs text-stone-500">{s.email || '-'}</p>
                                 </td>
                                 <td className="px-4 py-3 text-stone-700">
-                                  <p className="text-xs font-mono">Shop: {s.bizShopId || '-'}</p>
-                                  <p className="text-xs font-mono">Owner: {s.ownerCode || '-'}</p>
+                                  <p className="text-xs font-mono">Owner Code: {s.ownerCode || '-'}</p>
                                 </td>
                                 <td className="px-4 py-3">{verificationBadge(getShopVerificationStatus(s))}</td>
                                 <td className="px-4 py-3 text-right font-semibold text-stone-700">{sOrders.length}</td>
