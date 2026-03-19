@@ -229,7 +229,6 @@ const AuthPage: React.FC = () => {
     if (form.password.length < 6)        { setError('Password must be at least 6 characters.'); return; }
     if (form.password !== confirmPass)   { setError('Passwords do not match.'); return; }
     if (form.role === 'OWNER' && !form.shopName.trim()) { setError('Please enter the shop / business name.'); return; }
-    if (form.role === 'CUSTOMER' && !form.ownerCode.trim()) { setError('Please enter the shop owner code.'); return; }
     // Phone validation: must be exactly 10 digits (after +91 prefix)
     const phoneDigits = phoneRaw.replace(/\D/g, '');
     if (phoneDigits.length !== 10) {
@@ -242,7 +241,7 @@ const AuthPage: React.FC = () => {
     }
 
     // For CUSTOMER role: validate that the owner code exists in Firestore.
-    if (form.role === 'CUSTOMER') {
+    if (form.role === 'CUSTOMER' && form.ownerCode.trim()) {
       try {
         setLoading(true);
         const code = form.ownerCode.trim().toUpperCase();
@@ -540,9 +539,9 @@ const AuthPage: React.FC = () => {
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Shop Owner Code *</label>
+                      <label className="block text-xs font-semibold text-amber-800 mb-1.5 tracking-wide">Shop Owner Code (Optional)</label>
                       <input
-                        type="text" required
+                        type="text"
                         value={form.ownerCode}
                         onChange={e => setForm(f => ({ ...f, ownerCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
                         placeholder="e.g. RAVI7K2Q"
@@ -551,7 +550,7 @@ const AuthPage: React.FC = () => {
                         onFocus={e=>{e.currentTarget.style.border='1.5px solid rgba(245,158,11,0.7)';e.currentTarget.style.boxShadow='0 0 0 3px rgba(251,191,36,0.15)';}}
                         onBlur={e=>{e.currentTarget.style.border='1.5px solid rgba(251,191,36,0.35)';e.currentTarget.style.boxShadow='inset 0 1px 3px rgba(180,120,0,0.06)';}}
                       />
-                      <p className="text-[10px] text-amber-400 mt-1 pl-1">Get this code from your jeweller shop owner.</p>
+                      <p className="text-[10px] text-amber-400 mt-1 pl-1">If left blank, your account is created under Unassigned Customers until linked later.</p>
                     </div>
                   )}
                   <GoldButton loading={false}>Continue →</GoldButton>

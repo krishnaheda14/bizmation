@@ -38,6 +38,9 @@ import {
 import { auth, db } from '../lib/firebase';
 import { generateCustomerId, generateShopId, generateOwnerCode } from '../utils/bizId';
 
+const UNASSIGNED_SHOP_NAME = 'unassigned-customers';
+const UNASSIGNED_SHOP_ID = 'UNASSIGNED';
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UserProfile {
@@ -214,14 +217,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (role === 'CUSTOMER') {
       if (!ownerCodeInput) {
-        throw new Error('Shop owner code is required.');
+        resolvedShopName = UNASSIGNED_SHOP_NAME;
+      } else {
+        const shopByCode = await getDocs(query(collection(db, 'shops'), where('ownerCode', '==', ownerCodeInput), limit(1)));
+        if (shopByCode.empty) {
+          throw new Error(`Owner code "${ownerCodeInput}" not found. Please confirm with your shop owner.`);
+        }
+        const found = shopByCode.docs[0];
+        resolvedShopName = String(found.data()?.name ?? '').trim().toLowerCase();
       }
-      const shopByCode = await getDocs(query(collection(db, 'shops'), where('ownerCode', '==', ownerCodeInput), limit(1)));
-      if (shopByCode.empty) {
-        throw new Error(`Owner code "${ownerCodeInput}" not found. Please confirm with your shop owner.`);
-      }
-      const found = shopByCode.docs[0];
-      resolvedShopName = String(found.data()?.name ?? '').trim().toLowerCase();
     }
 
     let ownerCode = ownerCodeInput;
@@ -289,6 +293,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role,
       ...(resolvedShopName ? { shopName: resolvedShopName } : {}),
       ...(role === 'OWNER' ? { shopId: createdUser.uid } : {}),
+      ...(role === 'CUSTOMER' && !ownerCode ? { shopId: UNASSIGNED_SHOP_ID } : {}),
       ...(ownerCode ? { ownerCode } : {}),
       ...(data.gstNumber ? { gstNumber: data.gstNumber.trim().toUpperCase() } : {}),
       ...(data.hallmarkLicenseNumber ? { hallmarkLicenseNumber: data.hallmarkLicenseNumber.trim().toUpperCase() } : {}),

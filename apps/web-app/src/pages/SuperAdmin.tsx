@@ -32,6 +32,8 @@ interface ShopRow {
   verificationReviewedAt?: any;
   verificationReviewedBy?: string;
   verificationNote?: string;
+  shopVerificationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  shopVerificationNote?: string;
   verified?: boolean;
   createdAt?: any;
   updatedAt?: any;
@@ -123,6 +125,54 @@ const fmtInr = (v: number, compact = true) => {
 };
 
 const normalize = (v: string | undefined) => String(v || '').trim().toLowerCase();
+const UNASSIGNED_SHOP_NAME = 'unassigned-customers';
+const UNASSIGNED_SHOP_ID = 'UNASSIGNED';
+
+const getShopVerificationStatus = (shop: ShopRow): 'PENDING' | 'APPROVED' | 'REJECTED' => {
+  const raw = String(shop.verificationStatus ?? shop.shopVerificationStatus ?? 'PENDING').toUpperCase();
+  if (raw === 'APPROVED' || raw === 'REJECTED') return raw;
+  return 'PENDING';
+};
+
+const displayValue = (v: unknown): string => {
+  if (v == null || v === '') return '-';
+  if (typeof v === 'object') {
+    const anyV = v as any;
+    if (anyV?.seconds) return fmtDate(anyV);
+    return JSON.stringify(v);
+  }
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return String(v);
+};
+
+const maskedValue = (key: string, v: unknown): string => {
+  const value = displayValue(v);
+  if (value === '-') return value;
+  const lower = key.toLowerCase();
+  if (lower.includes('aadhaar') && !lower.includes('last4')) {
+    const digits = value.replace(/\D/g, '');
+    const last4 = digits.slice(-4);
+    return last4 ? `********${last4}` : '************';
+  }
+  if (lower.includes('pan') && value.length >= 4) {
+    return `${value.slice(0, 2)}******${value.slice(-2)}`;
+  }
+  return value;
+};
+
+const DetailGrid: React.FC<{ title: string; rows: Array<{ label: string; value: string }> }> = ({ title, rows }) => (
+  <div className="rounded-2xl border border-amber-100 bg-white p-4">
+    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-3">{title}</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {rows.map((r) => (
+        <div key={r.label} className="rounded-xl bg-amber-50/60 px-3 py-2 border border-amber-100">
+          <p className="text-[10px] uppercase tracking-wide text-amber-600 font-semibold">{r.label}</p>
+          <p className="text-xs text-stone-700 break-words">{r.value}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 export function SuperAdmin() {
   const { userProfile, signOut } = useAuth();
@@ -137,6 +187,7 @@ export function SuperAdmin() {
   const [verifyNote, setVerifyNote] = useState<Record<string, string>>({});
   const [expandedShopId, setExpandedShopId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   if (userProfile?.role !== 'SUPER_ADMIN') {
     return (
@@ -204,8 +255,17 @@ export function SuperAdmin() {
   }, [orders]);
 
   const pendingShops = useMemo(
-    () => shops.filter((s) => (s.verificationStatus ?? 'PENDING') === 'PENDING'),
+    () => shops.filter((s) => getShopVerificationStatus(s) === 'PENDING'),
     [shops],
+  );
+
+  const unassignedCustomers = useMemo(
+    () => users.filter((u) => (u.role ?? '').toUpperCase() === 'CUSTOMER' && (
+      normalize(u.shopId) === normalize(UNASSIGNED_SHOP_ID)
+      || normalize(u.shopName) === normalize(UNASSIGNED_SHOP_NAME)
+      || (!u.shopId && !u.shopName)
+    )),
+    [users],
   );
 
   const filteredShops = useMemo(() => {
@@ -273,9 +333,11 @@ export function SuperAdmin() {
       const note = (verifyNote[shop.id] ?? '').trim();
       await updateDoc(doc(db, 'shops', shop.id), {
         verificationStatus: status,
+        shopVerificationStatus: status,
         verificationReviewedAt: serverTimestamp(),
         verificationReviewedBy: userProfile.uid,
         verificationNote: note,
+        shopVerificationNote: note,
         verified: status === 'APPROVED',
         updatedAt: serverTimestamp(),
       });
@@ -307,9 +369,31 @@ export function SuperAdmin() {
         }),
       ));
 
+      // Optimistic local update so the status flips instantly in UI.
+      setShops((prev) => prev.map((s) => s.id === shop.id ? {
+        ...s,
+        verificationStatus: status,
+        shopVerificationStatus: status,
+        verificationNote: note,
+        shopVerificationNote: note,
+        verified: status === 'APPROVED',
+      } : s));
+
+      if (linkedUserIds.length > 0) {
+        setUsers((prev) => prev.map((u) => linkedUserIds.includes(u.id) ? {
+          ...u,
+          shopVerificationStatus: status,
+          shopVerificationNote: note,
+          shopVerified: status === 'APPROVED',
+        } : u));
+      }
+
+      setActionMsg({ type: 'ok', text: `You have successfully ${status === 'APPROVED' ? 'approved' : 'rejected'} ${shop.name || 'the shop'}.` });
+      setTimeout(() => setActionMsg(null), 5000);
       await loadData();
     } catch (err: any) {
-      alert(err?.message ?? 'Failed to update verification status.');
+      setActionMsg({ type: 'err', text: err?.message ?? 'Failed to update verification status.' });
+      setTimeout(() => setActionMsg(null), 6000);
     } finally {
       setActionLoading((prev) => ({ ...prev, [shop.id]: false }));
     }
@@ -378,6 +462,11 @@ export function SuperAdmin() {
       </div>
 
       <div className="max-w-[1200px] mx-auto px-4 py-6">
+        {actionMsg && (
+          <div className={`mb-4 rounded-2xl px-4 py-3 text-sm border ${actionMsg.type === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+            {actionMsg.text}
+          </div>
+        )}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <div className="w-10 h-10 rounded-full border-4 border-amber-400 border-t-transparent animate-spin" />
@@ -413,7 +502,7 @@ export function SuperAdmin() {
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
                   <CardStat label="Total Shops" value={String(shops.length)} />
                   <CardStat label="Pending Verification" value={String(pendingShops.length)} valueClass="text-red-700" />
-                  <CardStat label="Approved Shops" value={String(shops.filter((s) => s.verificationStatus === 'APPROVED').length)} valueClass="text-green-700" />
+                  <CardStat label="Approved Shops" value={String(shops.filter((s) => getShopVerificationStatus(s) === 'APPROVED').length)} valueClass="text-green-700" />
                   <CardStat label="Shops With Orders" value={String(shops.filter((s) => ordersForShop(s).length > 0).length)} />
                 </div>
 
@@ -460,7 +549,7 @@ export function SuperAdmin() {
                                   <p className="text-xs font-mono">Shop: {s.bizShopId || '-'}</p>
                                   <p className="text-xs font-mono">Owner: {s.ownerCode || '-'}</p>
                                 </td>
-                                <td className="px-4 py-3">{verificationBadge(s.verificationStatus)}</td>
+                                <td className="px-4 py-3">{verificationBadge(getShopVerificationStatus(s))}</td>
                                 <td className="px-4 py-3 text-right font-semibold text-stone-700">{sOrders.length}</td>
                                 <td className="px-4 py-3 text-right font-bold text-amber-800">{fmtInr(sCommission)}</td>
                                 <td className="px-4 py-3">
@@ -477,12 +566,12 @@ export function SuperAdmin() {
                                         onClick={() => setShopVerification(s, 'APPROVED')}
                                         disabled={!!actionLoading[s.id]}
                                         className="px-2 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700 hover:bg-green-200 disabled:opacity-60"
-                                      >Approve</button>
+                                      >{actionLoading[s.id] ? 'Saving...' : 'Approve'}</button>
                                       <button
                                         onClick={() => setShopVerification(s, 'REJECTED')}
                                         disabled={!!actionLoading[s.id]}
                                         className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-60"
-                                      >Reject</button>
+                                      >{actionLoading[s.id] ? 'Saving...' : 'Reject'}</button>
                                     </div>
                                   </div>
                                 </td>
@@ -500,14 +589,30 @@ export function SuperAdmin() {
                                 <tr className="bg-white">
                                   <td colSpan={9} className="px-4 py-4 border-t border-amber-100">
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                      <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-3">
-                                        <p className="text-xs font-bold text-amber-800 uppercase mb-2">Shop Details</p>
-                                        <div className="space-y-1 text-xs text-stone-700">
-                                          {Object.entries(s).map(([k, v]) => (
-                                            <p key={k}><span className="font-semibold">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '-')}</p>
-                                          ))}
-                                        </div>
-                                      </div>
+                                      <DetailGrid
+                                        title="Shop Details"
+                                        rows={[
+                                          { label: 'Shop Name', value: maskedValue('name', s.name) },
+                                          { label: 'Shop ID', value: maskedValue('id', s.id) },
+                                          { label: 'Business Shop ID', value: maskedValue('bizShopId', s.bizShopId) },
+                                          { label: 'Owner Name', value: maskedValue('ownerName', s.ownerName) },
+                                          { label: 'Owner UID', value: maskedValue('ownerUid', s.ownerUid) },
+                                          { label: 'Owner Code', value: maskedValue('ownerCode', s.ownerCode) },
+                                          { label: 'Email', value: maskedValue('email', s.email) },
+                                          { label: 'Phone', value: maskedValue('phone', s.phone) },
+                                          { label: 'Business Address', value: maskedValue('businessAddress', s.businessAddress) },
+                                          { label: 'Pincode', value: maskedValue('businessPincode', s.businessPincode) },
+                                          { label: 'PAN', value: maskedValue('panNumber', s.panNumber) },
+                                          { label: 'GST', value: maskedValue('gstNumber', s.gstNumber) },
+                                          { label: 'Hallmark License', value: maskedValue('hallmarkLicenseNumber', s.hallmarkLicenseNumber) },
+                                          { label: 'Aadhaar', value: maskedValue('aadhaarNumber', s.aadhaarNumber) },
+                                          { label: 'Aadhaar Last 4', value: maskedValue('aadhaarLast4', s.aadhaarLast4) },
+                                          { label: 'Verification', value: getShopVerificationStatus(s) },
+                                          { label: 'Reviewed At', value: maskedValue('verificationReviewedAt', s.verificationReviewedAt) },
+                                          { label: 'Reviewed By', value: maskedValue('verificationReviewedBy', s.verificationReviewedBy) },
+                                          { label: 'Review Note', value: maskedValue('verificationNote', s.verificationNote ?? s.shopVerificationNote) },
+                                        ]}
+                                      />
                                       <div className="rounded-2xl border border-amber-100 bg-white p-3">
                                         <p className="text-xs font-bold text-amber-800 uppercase mb-2">Orders Under Shop ({sOrders.length})</p>
                                         <div className="overflow-x-auto">
@@ -560,6 +665,9 @@ export function SuperAdmin() {
                   <CardStat label="Customers" value={String(users.filter((u) => u.role === 'CUSTOMER').length)} />
                   <CardStat label="Owners" value={String(users.filter((u) => u.role === 'OWNER').length)} />
                   <CardStat label="Staff" value={String(users.filter((u) => u.role === 'STAFF').length)} />
+                </div>
+                <div className="mb-4">
+                  <CardStat label="Unassigned Customers" value={String(unassignedCustomers.length)} valueClass="text-amber-800" />
                 </div>
 
                 <div className="rounded-3xl overflow-hidden shadow-sm border border-amber-100 bg-white/90 backdrop-blur">
@@ -620,14 +728,34 @@ export function SuperAdmin() {
                                 <tr className="bg-white">
                                   <td colSpan={8} className="px-4 py-4 border-t border-amber-100">
                                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                      <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-3">
-                                        <p className="text-xs font-bold text-amber-800 uppercase mb-2">User Details</p>
-                                        <div className="space-y-1 text-xs text-stone-700 max-h-[320px] overflow-auto">
-                                          {Object.entries(u).map(([k, v]) => (
-                                            <p key={k}><span className="font-semibold">{k}:</span> {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '-')}</p>
-                                          ))}
-                                        </div>
-                                      </div>
+                                      <DetailGrid
+                                        title="User Details"
+                                        rows={[
+                                          { label: 'Name', value: maskedValue('name', u.name) },
+                                          { label: 'User ID', value: maskedValue('id', u.id) },
+                                          { label: 'UID', value: maskedValue('uid', u.uid) },
+                                          { label: 'Role', value: maskedValue('role', u.role) },
+                                          { label: 'Email', value: maskedValue('email', u.email) },
+                                          { label: 'Phone', value: maskedValue('phone', u.phone) },
+                                          { label: 'Shop Name', value: maskedValue('shopName', u.shopName) },
+                                          { label: 'Shop ID', value: maskedValue('shopId', u.shopId) },
+                                          { label: 'Owner Code', value: maskedValue('ownerCode', u.ownerCode) },
+                                          { label: 'Customer ID', value: maskedValue('bizCustomerId', u.bizCustomerId) },
+                                          { label: 'Business Shop ID', value: maskedValue('bizShopId', u.bizShopId) },
+                                          { label: 'City', value: maskedValue('city', u.city) },
+                                          { label: 'State', value: maskedValue('state', u.state) },
+                                          { label: 'Country', value: maskedValue('country', u.country) },
+                                          { label: 'KYC Status', value: maskedValue('kycStatus', u.kycStatus) },
+                                          { label: 'Shop Verification', value: maskedValue('shopVerificationStatus', u.shopVerificationStatus) },
+                                          { label: 'Shop Verification Note', value: maskedValue('shopVerificationNote', u.shopVerificationNote) },
+                                          { label: 'Phone Verified', value: maskedValue('phoneVerified', u.phoneVerified) },
+                                          { label: 'Gold Purchased (g)', value: maskedValue('totalGoldPurchasedGrams', Number(u.totalGoldPurchasedGrams || 0).toFixed(4)) },
+                                          { label: 'Silver Purchased (g)', value: maskedValue('totalSilverPurchasedGrams', Number(u.totalSilverPurchasedGrams || 0).toFixed(4)) },
+                                          { label: 'Total Invested', value: fmtInr(Number(u.totalInvestedInr || 0)) },
+                                          { label: 'Created At', value: maskedValue('createdAt', u.createdAt) },
+                                          { label: 'Updated At', value: maskedValue('updatedAt', u.updatedAt) },
+                                        ]}
+                                      />
 
                                       <div className="rounded-2xl border border-amber-100 bg-white p-3">
                                         <p className="text-xs font-bold text-amber-800 uppercase mb-2">All Orders For User ({uOrders.length})</p>
