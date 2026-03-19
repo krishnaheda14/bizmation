@@ -351,15 +351,17 @@ export const Parties: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                    <div className="mt-4 flex items-center gap-4">
-                      <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Freeze Transactions:</span>
-                      <button onClick={handleFreezeToggle} disabled={freezeLoading} className={shopFreeze ? 'px-4 py-2 rounded bg-red-500 text-white font-bold text-xs' : 'px-4 py-2 rounded bg-green-500 text-white font-bold text-xs'}>
-                        {freezeLoading ? 'Saving…' : shopFreeze ? 'Unfreeze (Allow Buy/Sell)' : 'Freeze (Pause Buy/Sell)'}
-                      </button>
-                      <span className={shopFreeze ? 'text-xs text-red-500 font-bold' : 'text-xs text-green-500 font-bold'}>
-                        {shopFreeze ? 'Currently Paused' : 'Transactions Allowed'}
-                      </span>
-                    </div>
+                    {(userProfile?.role as any) === 'SUPER_ADMIN' && (
+                      <div className="mt-4 flex items-center gap-4">
+                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Freeze Transactions:</span>
+                        <button onClick={handleFreezeToggle} disabled={freezeLoading} className={shopFreeze ? 'px-4 py-2 rounded bg-red-500 text-white font-bold text-xs' : 'px-4 py-2 rounded bg-green-500 text-white font-bold text-xs'}>
+                          {freezeLoading ? 'Saving…' : shopFreeze ? 'Unfreeze (Allow Buy/Sell)' : 'Freeze (Pause Buy/Sell)'}
+                        </button>
+                        <span className={shopFreeze ? 'text-xs text-red-500 font-bold' : 'text-xs text-green-500 font-bold'}>
+                          {shopFreeze ? 'Currently Paused' : 'Transactions Allowed'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
         {error && (
