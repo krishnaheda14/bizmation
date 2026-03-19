@@ -46,6 +46,8 @@ export interface BuyGoldOptions {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  customerUid?: string;
+  metal?: 'GOLD' | 'SILVER';
   onSuccess: (paymentId: string) => void;
   onFailure: (error: any) => void;
 }
@@ -63,12 +65,40 @@ export async function buyGold(options: BuyGoldOptions) {
     return;
   }
 
-  const amountInPaise = Math.round(options.grams * options.ratePerGram * 100); // Razorpay uses paise
+  const createRes = await fetch('/api/payments/create-buy-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grams: options.grams,
+      ratePerGram: options.ratePerGram,
+      customerName: options.customerName,
+      customerEmail: options.customerEmail,
+      customerPhone: options.customerPhone,
+      customerUid: options.customerUid ?? '',
+      metal: options.metal ?? 'GOLD',
+    }),
+  });
+
+  const createJson = await createRes.json().catch(() => ({}));
+  if (!createRes.ok || !createJson?.success) {
+    options.onFailure(new Error(createJson?.error || 'Could not create locked payment order.'));
+    return;
+  }
+
+  const lockId = String(createJson.data.lockId || '');
+  const razorpayOrderId = String(createJson.data.razorpayOrderId || '');
+  const amountInPaise = Number(createJson.data.amountPaise || 0);
+
+  if (!lockId || !razorpayOrderId || !amountInPaise) {
+    options.onFailure(new Error('Invalid payment lock response from server.'));
+    return;
+  }
 
   const razorpayOptions = {
     key: RAZORPAY_KEY_ID,
     amount: amountInPaise,
     currency: 'INR',
+    order_id: razorpayOrderId,
     name: 'Gold Purchase',
     description: `${options.grams}g of 24K Gold @ ₹${options.ratePerGram.toFixed(2)}/g`,
     image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/gem.svg',
@@ -80,8 +110,31 @@ export async function buyGold(options: BuyGoldOptions) {
     theme: {
       color: '#D97706', // amber-600
     },
-    handler: (response: any) => {
-      options.onSuccess(response.razorpay_payment_id);
+    handler: async (response: any) => {
+      try {
+        const verifyRes = await fetch('/api/payments/verify-buy-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lockId,
+            razorpay_order_id: response?.razorpay_order_id,
+            razorpay_payment_id: response?.razorpay_payment_id,
+            razorpay_signature: response?.razorpay_signature,
+          }),
+        });
+
+        const verifyJson = await verifyRes.json().catch(() => ({}));
+        if (!verifyRes.ok || !verifyJson?.success) {
+          throw new Error(verifyJson?.error || 'Payment verification failed.');
+        }
+        if (verifyJson?.data?.expired) {
+          throw new Error('Payment came after 2-minute lock and has been marked for refund.');
+        }
+
+        options.onSuccess(response.razorpay_payment_id);
+      } catch (err: any) {
+        options.onFailure(err);
+      }
     },
     modal: {
       ondismiss: () => {

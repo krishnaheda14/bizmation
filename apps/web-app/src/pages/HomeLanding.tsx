@@ -337,16 +337,25 @@ export const HomeLanding: React.FC = () => {
     const custPhone   = userProfile?.phone ?? '';
     const customerShopName = (userProfile as any)?.shopName ?? '';
     const customerShopId = (userProfile as any)?.shopId ?? '';
+
+    if (buyMetal === 'GOLD') {
+      // Lock the quote right before opening checkout.
+      setLockedRate(ratePerGram);
+    }
+
     setPaying(true);
     buyGold({
       grams, ratePerGram,
       customerName:  custName,
       customerEmail: custEmail,
       customerPhone: custPhone,
+      customerUid: currentUser?.uid ?? '',
+      metal: buyMetal,
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
+        setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
@@ -392,6 +401,8 @@ export const HomeLanding: React.FC = () => {
       },
       onFailure: (err) => {
         setPaying(false);
+        setSlideValue(0);
+        setLockedRate(null);
         if (err.message !== 'Payment cancelled') {
           alert(err.message);
         }
@@ -762,7 +773,7 @@ export const HomeLanding: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
-                    onClick={() => { setBuyMetal('GOLD'); if (goldBuyPrice) setLockedRate(goldBuyPrice); setModal({ type: 'buy' }); }}
+                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
                   >
                     <ShoppingCart size={18} />
@@ -1028,8 +1039,7 @@ export const HomeLanding: React.FC = () => {
                         <button
                           onClick={() => {
                             setBuyMetal(r.metalType);
-                            if (r.metalType === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice);
-                            else setLockedRate(null);
+                            setLockedRate(null);
                             setModal({ type: 'buy' });
                           }}
                           className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">
@@ -1130,7 +1140,7 @@ export const HomeLanding: React.FC = () => {
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); if (m === 'GOLD' && goldBuyPrice) setLockedRate(goldBuyPrice); else setLockedRate(null); }}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     buyMetal === m
                       ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
@@ -1148,6 +1158,9 @@ export const HomeLanding: React.FC = () => {
             <div className="rounded-2xl px-5 py-4 text-center" style={{ background:'linear-gradient(135deg,rgba(253,243,212,0.9),rgba(254,243,199,0.5))', border:'1px solid rgba(251,191,36,0.3)' }}>
               <p className="text-xs text-amber-600 font-semibold uppercase tracking-widest mb-0.5">Live {buyMetal === 'GOLD' ? 'Gold' : 'Silver'} Price</p>
               <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(4)}<span className="text-sm font-medium text-amber-600">/g</span></p>
+              {buyMetal === 'GOLD' && (
+                <p className="text-xs text-amber-700 mt-1.5">Price lock starts when you slide to pay. Complete payment within 2:00 or it will fail and refund if captured late.</p>
+              )}
               {lockedRate && buyMetal === 'GOLD' && lockSecondsLeft > 0 && (
                 <div className="flex items-center justify-center gap-1.5 mt-1">
                   <Timer size={13} className={lockSecondsLeft <= 30 ? 'text-red-500 animate-pulse' : 'text-green-600'} />
@@ -1211,14 +1224,27 @@ export const HomeLanding: React.FC = () => {
             )}
 
             {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified) && (
-              <button
-                onClick={handleBuy}
-                disabled={paying}
-                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
-              >
-                {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-                {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
-              </button>
+              buyMetal === 'GOLD' ? (
+                <div className="space-y-2">
+                  <SlideToConfirm
+                    label={paying ? 'Creating 2-minute price lock...' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
+                    value={slideValue}
+                    disabled={paying}
+                    onChange={setSlideValue}
+                    onConfirm={handleBuy}
+                  />
+                  <p className="text-[11px] text-amber-700 text-center">White-gold secure checkout: once locked, pay within 2:00.</p>
+                </div>
+              ) : (
+                <button
+                  onClick={handleBuy}
+                  disabled={paying}
+                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+                >
+                  {paying ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+                  {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
+                </button>
+              )
             )}
           </div>
         </BottomSheet>

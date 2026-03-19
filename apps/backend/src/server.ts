@@ -15,6 +15,7 @@ import { goldRateRouter } from './modules/gold-rate/gold-rate.controller';
 import { catalogRouter } from './modules/catalog/catalog.controller';
 import { partiesRouter } from './modules/parties/parties.controller';
 import { authRouter } from './modules/auth/auth.controller';
+import { paymentsRouter } from './modules/payments/payments.controller';
 import { CronJob } from 'cron';
 
 // Environment
@@ -64,6 +65,7 @@ app.use('/api/inventory', inventoryRouter(inventoryService));
 app.use('/api/gold-rates', goldRateRouter(goldRateService));
 app.use('/api/catalog', catalogRouter(db));
 app.use('/api/parties', partiesRouter(db));
+app.use('/api/payments', paymentsRouter());
 
 // 404
 app.use((req, res) => res.status(404).json({ success: false, error: 'Route not found', path: req.path }));

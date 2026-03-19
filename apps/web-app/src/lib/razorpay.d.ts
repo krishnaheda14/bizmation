@@ -29,6 +29,8 @@ export interface BuyGoldOptions {
     customerName: string;
     customerEmail: string;
     customerPhone: string;
+    customerUid?: string;
+    metal?: 'GOLD' | 'SILVER';
     onSuccess: (paymentId: string) => void;
     onFailure: (error: any) => void;
 }
