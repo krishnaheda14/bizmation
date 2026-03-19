@@ -110,6 +110,7 @@ export const HomeLanding: React.FC = () => {
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', amountInr: '', bank: '', account: '', ifsc: '',
   });
+  const [sellInputMode, setSellInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
   const [redeemMode, setRedeemMode] = useState<'REDEEM' | 'SELL_TO_JEWELLER'>('REDEEM');
   const [paying, setPaying] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -1248,10 +1249,31 @@ export const HomeLanding: React.FC = () => {
               <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">All gold redeem/sell requests are processed as 24K (995).</p>
             </div>
             <div>
+              <label className="fieldLabel">Redeem Input Type</label>
+              <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setSellInputMode('GRAMS')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'GRAMS' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+                >
+                  Enter Grams
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSellInputMode('AMOUNT')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'AMOUNT' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+                >
+                  Enter Amount
+                </button>
+              </div>
+            </div>
+            <div>
               <label className="fieldLabel">Weight (grams)</label>
-              <input type="number" min="0.1" step="0.1" placeholder="e.g. 10"
+              <input type="number" min="0.0001" step="0.0001" placeholder="e.g. 0.0013"
                 value={sellForm.grams}
+                readOnly={sellInputMode === 'AMOUNT'}
                 onChange={(e) => {
+                  setSellInputMode('GRAMS');
                   const gramsValue = e.target.value;
                   const gramsNum = parseFloat(gramsValue);
                   setSellForm((f) => ({
@@ -1269,7 +1291,9 @@ export const HomeLanding: React.FC = () => {
               <label className="fieldLabel">Amount (INR)</label>
               <input type="number" min="0" step="0.01" placeholder="e.g. 5000"
                 value={sellForm.amountInr}
+                readOnly={sellInputMode === 'GRAMS'}
                 onChange={(e) => {
+                  setSellInputMode('AMOUNT');
                   const amountValue = e.target.value;
                   const amountNum = parseFloat(amountValue);
                   setSellForm((f) => ({
@@ -1280,7 +1304,7 @@ export const HomeLanding: React.FC = () => {
                       : (amountValue ? f.grams : ''),
                   }));
                 }} className="fieldInput" />
-              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Enter grams or amount. The other field auto-calculates using live redeem rate.</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Only one field is editable at a time. The other value is auto-calculated using live redeem rate.</p>
             </div>
             {sellEst && (
               <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm">

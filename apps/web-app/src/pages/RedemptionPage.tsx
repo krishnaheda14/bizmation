@@ -101,6 +101,7 @@ export const RedemptionPage: React.FC = () => {
   const [purity, setPurity] = useState<number>(995);
   const [gramsStr, setGramsStr] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [inputMode, setInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -238,6 +239,7 @@ export const RedemptionPage: React.FC = () => {
   const maxRedeemableInr = heldGrams * redeemRatePerGram;
 
   const handleGramsChange = (value: string) => {
+    setInputMode('GRAMS');
     setGramsStr(value);
     const g = parseFloat(value);
     if (Number.isFinite(g) && g > 0 && redeemRatePerGram > 0) {
@@ -248,6 +250,7 @@ export const RedemptionPage: React.FC = () => {
   };
 
   const handleAmountChange = (value: string) => {
+    setInputMode('AMOUNT');
     setAmountStr(value);
     const amt = parseFloat(value);
     if (Number.isFinite(amt) && amt > 0 && redeemRatePerGram > 0) {
@@ -402,14 +405,43 @@ export const RedemptionPage: React.FC = () => {
           </div>
 
           <div>
+            <label className="block text-xs font-bold text-stone-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Redeem Input Type</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setInputMode('GRAMS')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  inputMode === 'GRAMS'
+                    ? 'border-amber-400 text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-gray-800'
+                    : 'border-stone-200 dark:border-gray-700 text-stone-500 dark:text-gray-400'
+                }`}
+              >
+                Enter Grams
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode('AMOUNT')}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  inputMode === 'AMOUNT'
+                    ? 'border-amber-400 text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-gray-800'
+                    : 'border-stone-200 dark:border-gray-700 text-stone-500 dark:text-gray-400'
+                }`}
+              >
+                Enter Amount
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs font-bold text-stone-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Grams to Redeem</label>
             <input
               type="number"
               value={gramsStr}
               onChange={(e) => handleGramsChange(e.target.value)}
+              readOnly={inputMode === 'AMOUNT'}
               placeholder="e.g. 2.500"
-              min="0"
-              step="0.001"
+              min="0.0001"
+              step="0.0001"
               className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 bg-stone-50 dark:bg-gray-800 text-stone-800 dark:text-white transition-colors ${
                 gramsError ? 'border-red-400' : 'border-stone-200 dark:border-gray-700'
               }`}
@@ -424,12 +456,13 @@ export const RedemptionPage: React.FC = () => {
               type="number"
               value={amountStr}
               onChange={(e) => handleAmountChange(e.target.value)}
+              readOnly={inputMode === 'GRAMS'}
               placeholder="e.g. 1000"
               min="0"
               step="0.01"
               className="w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 bg-stone-50 dark:bg-gray-800 text-stone-800 dark:text-white transition-colors border-stone-200 dark:border-gray-700"
             />
-            <p className="text-[11px] text-stone-500 mt-1">You can enter grams or amount; both auto-sync using live redeem rate.</p>
+            <p className="text-[11px] text-stone-500 mt-1">Only one field is editable at a time. The other value is auto-calculated using live redeem rate.</p>
           </div>
 
           <div className="rounded-xl px-4 py-3" style={{ background: 'linear-gradient(135deg,#fef9ee,#fde68a)', border: '1px solid rgba(251,191,36,0.4)' }}>

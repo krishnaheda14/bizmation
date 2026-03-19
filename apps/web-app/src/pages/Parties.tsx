@@ -184,10 +184,10 @@ export const Parties: React.FC = () => {
         results = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) } as CustomerParty));
       }
 
-      if (!results.length && shopNameVariants.length > 0) {
+      if (!results.length && shopName) {
         const byShopName = query(
           collection(db, 'users'),
-          where('shopName', 'in', shopNameVariants),
+          where('shopName', '==', shopName),
           where('role', '==', 'CUSTOMER'),
         );
         const snap = await getDocs(byShopName);
