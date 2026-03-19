@@ -66,14 +66,12 @@ function getWorkerUrl(): string {
   const raw = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOLD_WORKER_URL)
     ? String((import.meta as any).env.VITE_GOLD_WORKER_URL)
     : '';
-  return raw.trim().replace(/\/$/, '');
+  const cleaned = raw.trim().replace(/\/$/, '');
+  return cleaned || 'https://gold-rates-worker.namanchandak750.workers.dev';
 }
 
 export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
   const workerUrl = getWorkerUrl();
-  if (!workerUrl) {
-    throw new Error('VITE_GOLD_WORKER_URL is not configured.');
-  }
 
   try {
     const workerRes = await fetchJSON(`${workerUrl}/gold-rates`, 6000);
@@ -107,7 +105,6 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
  */
 export async function fetchWorkerData(): Promise<WorkerData | null> {
   const workerUrl = getWorkerUrl();
-  if (!workerUrl) return null;
   try {
     const res = await fetchJSON(`${workerUrl}/gold-rates`, 6000);
     const data: WorkerData = res?.data;

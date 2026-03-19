@@ -201,8 +201,7 @@ async function fetchAndCacheRates(env: Env): Promise<CachedRates> {
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = ['https://bizmation.pages.dev', 'https://bizmation.com', 'http://localhost:5173', 'http://localhost:4173'];
-  const allowOrigin = (origin && allowed.some(o => origin.startsWith(o.replace(/\/$/, '')))) ? origin : allowed[0];
+  const allowOrigin = origin ?? '*';
   return { 'Access-Control-Allow-Origin': allowOrigin, 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400' };
 }
 

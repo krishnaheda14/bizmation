@@ -74,7 +74,7 @@ export const CustomerPortfolio: React.FC = () => {
     } catch (err: any) {
       console.error('[Portfolio] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
-      setError(`Could not load portfolio${code}. Check debug details below.`);
+      setError(`Could not load portfolio${code}. Please try refresh again.`);
     }
     finally { setLoading(false); }
   }, [currentUser, userProfile]);

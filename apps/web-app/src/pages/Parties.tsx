@@ -164,20 +164,36 @@ export const Parties: React.FC = () => {
   const fetchCustomers = useCallback(async () => {
     if (!currentUser || !userProfile) return;
     const shopName = userProfile.shopName ?? '';
-    if (!shopName) {
-      console.warn('[Parties] No shopName on owner profile - cannot filter customers');
+    const shopId = (userProfile as any)?.shopId ?? '';
+    if (!shopName && !shopId) {
+      console.warn('[Parties] No shop mapping on owner profile - cannot filter customers');
       setCustomers([]);
       return;
     }
-    console.log('[Parties] Fetching customers for shopName:', shopName);
+    console.log('[Parties] Fetching customers for shop mapping:', { shopId, shopName });
     try {
-      const q = query(
-        collection(db, 'users'),
-        where('shopName', 'in', shopNameVariants),
-        where('role', '==', 'CUSTOMER'),
-      );
-      const snap = await getDocs(q);
-      const results = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) } as CustomerParty));
+      let results: CustomerParty[] = [];
+
+      if (shopId) {
+        const byShopId = query(
+          collection(db, 'users'),
+          where('shopId', '==', shopId),
+          where('role', '==', 'CUSTOMER'),
+        );
+        const snap = await getDocs(byShopId);
+        results = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) } as CustomerParty));
+      }
+
+      if (!results.length && shopNameVariants.length > 0) {
+        const byShopName = query(
+          collection(db, 'users'),
+          where('shopName', 'in', shopNameVariants),
+          where('role', '==', 'CUSTOMER'),
+        );
+        const snap = await getDocs(byShopName);
+        results = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) } as CustomerParty));
+      }
+
       console.log('[Parties] Customers fetched:', results.length, results.map(c => c.name));
       setCustomers(results);
     } catch (e: any) {
