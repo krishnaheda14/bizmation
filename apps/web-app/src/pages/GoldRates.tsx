@@ -1,11 +1,10 @@
 ﻿/**
  * Gold Rates Page
  *
- * Fetches live gold/silver rates via the Cloudflare Worker (primary) or
- * fawazahmed0 CDN (fallback).  NO BACKEND REQUIRED.
+ * Fetches live gold/silver rates via the configured Cloudflare Worker URL.
  *
- * Gold purity grades: 999 (24K), 995 (24K), 916 (22K), 750 (18K) â€” per 10g
- * Silver: 999 only â€” per 1kg
+ * Gold purity grades: 999 (24K), 995 (24K), 916 (22K), 750 (18K) per 10g
+ * Silver: 999 only per 1kg
  */
 
 import React, { useState, useEffect } from 'react';
@@ -23,6 +22,7 @@ export const GoldRates: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [errorLog, setErrorLog] = useState<string[]>([]);
   const [sourceLabel, setSourceLabel] = useState<string>('Unknown');
+  const workerUrl = (import.meta.env.VITE_GOLD_WORKER_URL || '').replace(/\/$/, '');
 
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -39,12 +39,11 @@ export const GoldRates: React.FC = () => {
   };
 
   useEffect(() => {
-    addDebugLog('ðŸ”§ GoldRates component mounted');
-    const workerUrl = import.meta.env.VITE_GOLD_WORKER_URL;
+    addDebugLog('GoldRates component mounted');
     if (workerUrl) {
-      addDebugLog(`âš¡ Cloudflare Worker: ${workerUrl}`);
+      addDebugLog(`Cloudflare Worker: ${workerUrl}`);
     } else {
-      addDebugLog('ðŸŒ No Worker URL â€” fetching from CDN');
+      addDebugLog('No worker URL configured in VITE_GOLD_WORKER_URL');
     }
     fetchRates();
 
@@ -291,19 +290,19 @@ export const GoldRates: React.FC = () => {
 
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400 space-y-1">
-          <p>Gold: 999 Â· 995 Â· 916 (22K) Â· 750 (18K) â€” Prices include 9% import duty</p>
-          <p>Silver: 999 purity Â· Prices include 9% import duty</p>
+          <p>Gold: 999, 995, 916 (22K), 750 (18K) prices include 9% import duty</p>
+          <p>Silver: 999 purity prices include 9% import duty</p>
           <p className="flex items-center justify-center gap-1.5">
-            Data: Cloudflare Worker â†’
+            Data: Cloudflare Worker {'->'}
             <a
-              href="https://gold-rates-worker.namanchandak750.workers.dev/gold-rates"
+              href={workerUrl ? `${workerUrl}/gold-rates` : '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-0.5"
             >
               Worker <ExternalLink size={12} />
             </a>
-            Â· fawazahmed0 Currency API Â· Swissquote (fallback)
+            · Swissquote (XAU/XAG) + Yahoo Finance (USD/INR) via worker pipeline
           </p>
         </div>
       </div>

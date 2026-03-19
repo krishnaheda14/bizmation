@@ -14,7 +14,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
-import { fetchCustomerOrdersWithDebug, normalizeGoldPurity, type CustomerOrderFetchDebug } from '../lib/customerOrders';
+import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
 
 interface GoldOrder {
   id: string;
@@ -46,7 +46,6 @@ export const CustomerPortfolio: React.FC = () => {
   const [rates,       setRates]      = useState<MetalRate[]>([]);
   const [loading,     setLoading]    = useState(true);
   const [error,       setError]      = useState('');
-  const [debugInfo,   setDebugInfo]  = useState<CustomerOrderFetchDebug | null>(null);
   const [shopFrozen,  setShopFrozen] = useState(false);
 
   // Shop freeze check
@@ -66,13 +65,12 @@ export const CustomerPortfolio: React.FC = () => {
       const rateData = await fetchLiveMetalRates();
       setRates(rateData);
 
-      const result = await fetchCustomerOrdersWithDebug({
+      const result = await fetchCustomerOrders({
         uid: currentUser.uid,
         email: currentUser.email ?? userProfile?.email ?? '',
         phone: userProfile?.phone ?? '',
       });
-      setDebugInfo(result.debug);
-      setOrders(result.orders as GoldOrder[]);
+      setOrders(result as GoldOrder[]);
     } catch (err: any) {
       console.error('[Portfolio] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
@@ -177,23 +175,6 @@ export const CustomerPortfolio: React.FC = () => {
           <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3">
             <AlertCircle className="text-red-500" size={18} />
             <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-          </div>
-        )}
-
-        {debugInfo && (
-          <div className="bg-stone-100 dark:bg-gray-900 border border-stone-200 dark:border-gray-700 rounded-xl px-4 py-3 text-xs text-stone-700 dark:text-gray-300 space-y-1">
-            <p className="font-bold">Fetch Debug</p>
-            <p>UID: {debugInfo.uid}</p>
-            <p>Email: {debugInfo.email || '-'}</p>
-            <p>Phone: {debugInfo.phone || '-'}</p>
-            <p>Unique Orders: {debugInfo.totalUnique}</p>
-            {debugInfo.steps.map((s, i) => (
-              <p key={i}>
-                {s.ok ? 'OK' : 'FAIL'} | {s.label} | count={s.count}
-                {s.errorCode ? ` | ${s.errorCode}` : ''}
-                {s.errorMessage ? ` | ${s.errorMessage}` : ''}
-              </p>
-            ))}
           </div>
         )}
 

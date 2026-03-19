@@ -97,6 +97,19 @@ body {
   60%  { transform: scale(0.98); }
   100% { transform: scale(1); }
 }
+@keyframes hero-pan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes fade-up-soft {
+  0% { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes gold-breathe {
+  0%, 100% { box-shadow: 0 6px 18px rgba(245, 158, 11, 0.20); }
+  50% { box-shadow: 0 10px 30px rgba(245, 158, 11, 0.40); }
+}
 
 .animate-shimmer {
   background-size: 200% auto;
@@ -107,6 +120,32 @@ body {
 .animate-gold-pulse   { animation: gold-pulse     2.5s ease-in-out infinite; }
 .animate-particle-rise { animation: particle-rise 3s ease-in-out infinite; }
 .animate-price-tick   { animation: price-tick     0.3s ease-out; }
+.animate-hero-pan {
+  background-size: 140% 140%;
+  animation: hero-pan 16s ease-in-out infinite;
+}
+.animate-fade-up-soft {
+  opacity: 0;
+  animation: fade-up-soft 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.animate-gold-breathe {
+  animation: gold-breathe 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-pan,
+  .animate-fade-up-soft,
+  .animate-gold-breathe,
+  .animate-sparkle,
+  .animate-float,
+  .animate-gold-pulse,
+  .animate-particle-rise,
+  .animate-shimmer,
+  .animate-price-tick {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
 
 /* ── Hover card lift ── */
 .card-hover {

@@ -19,6 +19,7 @@ import {
   Save,
   FileText,
 } from 'lucide-react';
+import { fetchLiveMetalRates } from '../lib/goldPrices';
 
 interface OldGoldItem {
   id: string;
@@ -75,17 +76,11 @@ export const OldGoldExchange: React.FC = () => {
 
   const fetchGoldRates = async () => {
     try {
-      // Fetch from CDN (fawazahmed0) with cache-bust to avoid stale CDN/browser cache
-      const bust = `?_=${Date.now()}`;
-      const xauRes = await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json' + bust, { cache: 'no-store' });
-      const xauData = await xauRes.json();
-      const xauInr = xauData?.xau?.inr;
-      if (!xauInr || isNaN(xauInr)) throw new Error('Invalid XAU→INR from CDN');
+      const liveRates = await fetchLiveMetalRates();
+      const gold999 = liveRates.find((r) => r.metalType === 'GOLD' && r.purity === 999)?.ratePerGram ?? 0;
+      if (!gold999 || isNaN(gold999)) throw new Error('Invalid gold rate from worker feed');
 
-      // Conversion constants
-      const TROY_OZ_GRAMS = 31.1035;
-      const IMPORT_DUTY = 1.09;
-      const gold24 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+      const gold24 = gold999;
 
       setGoldRates({
         purity24k: gold24,

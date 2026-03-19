@@ -95,7 +95,7 @@ export async function fetchCustomerOrdersWithDebug(params: CustomerOrderQueryPar
   }
 
   const phoneValue = (phone ?? '').trim();
-  if (phoneValue) {
+  if (phoneValue && Object.keys(dedup).length === 0) {
     const candidates = Array.from(new Set([phoneValue]));
     for (const candidate of candidates) {
       await runQuery(
@@ -104,6 +104,13 @@ export async function fetchCustomerOrdersWithDebug(params: CustomerOrderQueryPar
         true,
       );
     }
+  } else if (phoneValue) {
+    steps.push({
+      label: `fallback:customerPhone:${phoneValue}`,
+      ok: true,
+      count: 0,
+      errorMessage: 'skipped (already matched by userId/customerUid/email)',
+    });
   }
 
   const orders = Object.values(dedup).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));

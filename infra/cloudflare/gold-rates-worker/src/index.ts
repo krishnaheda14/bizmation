@@ -19,14 +19,10 @@ export interface Env {
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY = 1.09;
 
-const CDN_XAU_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json';
-const CDN_XAU_MIRROR  = 'https://latest.currency-api.pages.dev/v1/currencies/xau.json';
-const CDN_XAG_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json';
-const CDN_XAG_MIRROR  = 'https://latest.currency-api.pages.dev/v1/currencies/xag.json';
-const USD_TO_INR_URL  = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
-
 const SWISSQUOTE_XAU = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD';
 const SWISSQUOTE_XAG = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD';
+const YAHOO_USDINR_CHART = 'https://query1.finance.yahoo.com/v8/finance/chart/INR=X?interval=1m&range=1d';
+const YAHOO_USDINR_QUOTE = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=INR=X';
 
 interface MetalRate {
   metalType: 'GOLD' | 'SILVER';
@@ -55,6 +51,16 @@ interface CachedRates {
   xagUsd: number;
   /** USD → INR conversion rate used */
   usdToInr: number;
+  inputs: {
+    xauUsd: { value: number; source: string; url: string };
+    xagUsd: { value: number; source: string; url: string };
+    usdToInr: { value: number; source: string; url: string };
+    derived: {
+      xauInrPerTroyOz: number;
+      xagInrPerTroyOz: number;
+      formula: string;
+    };
+  };
 }
 
 async function fetchJSON(url: string, timeoutMs = 8000): Promise<any> {
@@ -87,20 +93,25 @@ function parseSwissquoteMid(data: any[]): number {
   throw new Error('Could not parse bid/ask from Swissquote');
 }
 
-async function fetchViaCDN(): Promise<{ xauInr: number; xagInr: number; xauUsd: number; xagUsd: number; usdToInr: number; source: string }> {
-  const bust = `?_=${Date.now()}`;
-  const [xauData, xagData, usdData] = await Promise.all([
-    fetchWithFallback(CDN_XAU_PRIMARY + bust, CDN_XAU_MIRROR + bust),
-    fetchWithFallback(CDN_XAG_PRIMARY + bust, CDN_XAG_MIRROR + bust),
-    fetchJSON(USD_TO_INR_URL + bust),
-  ]);
-  const xauInr: number = xauData?.xau?.inr;
-  const xagInr: number = xagData?.xag?.inr;
-  const usdToInr: number = Number(usdData?.usd?.inr);
-  if (!xauInr || isNaN(xauInr) || xauInr < 1000) throw new Error(`Invalid XAU→INR from CDN: ${xauInr}`);
-  if (!xagInr || isNaN(xagInr) || xagInr < 1) throw new Error(`Invalid XAG→INR from CDN: ${xagInr}`);
-  if (!isFinite(usdToInr) || usdToInr <= 0) throw new Error(`Invalid USD→INR from CDN: ${usdToInr}`);
-  return { xauInr, xagInr, xauUsd: xauInr / usdToInr, xagUsd: xagInr / usdToInr, usdToInr, source: 'fawazahmed0-CDN' };
+async function fetchYahooUsdInr(): Promise<number> {
+  const bust = `&_=${Date.now()}`;
+  const chartData = await fetchJSON(`${YAHOO_USDINR_CHART}${bust}`);
+  const result = chartData?.chart?.result?.[0];
+
+  const metaPrice = Number(result?.meta?.regularMarketPrice);
+  if (isFinite(metaPrice) && metaPrice > 0) return metaPrice;
+
+  const closes: any[] = result?.indicators?.quote?.[0]?.close ?? [];
+  for (let i = closes.length - 1; i >= 0; i -= 1) {
+    const v = Number(closes[i]);
+    if (isFinite(v) && v > 0) return v;
+  }
+
+  const quoteData = await fetchJSON(`${YAHOO_USDINR_QUOTE}&_=${Date.now()}`);
+  const q = Number(quoteData?.quoteResponse?.result?.[0]?.regularMarketPrice);
+  if (isFinite(q) && q > 0) return q;
+
+  throw new Error('No valid USD/INR from Yahoo Finance');
 }
 
 async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; xauUsd: number; xagUsd: number; usdToInr: number; source: string }> {
@@ -108,13 +119,17 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; x
   const [xauData, xagData, usdData] = await Promise.all([
     fetchJSON(SWISSQUOTE_XAU + bust),
     fetchJSON(SWISSQUOTE_XAG + bust),
-    fetchJSON(USD_TO_INR_URL + bust),
+    fetchYahooUsdInr(),
   ]);
   const xauUsd = parseSwissquoteMid(xauData);
   const xagUsd = parseSwissquoteMid(xagData);
-  const usdToInr: number = Number(usdData?.usd?.inr);
+
+  if (!isFinite(xauUsd) || xauUsd < 500 || xauUsd > 10000) throw new Error(`Invalid XAU/USD from Swissquote: ${xauUsd}`);
+  if (!isFinite(xagUsd) || xagUsd < 1 || xagUsd > 200) throw new Error(`Invalid XAG/USD from Swissquote: ${xagUsd}`);
+
+  const usdToInr: number = Number(usdData);
   if (!isFinite(usdToInr) || usdToInr <= 0) throw new Error('No valid USD→INR rate');
-  return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, xauUsd, xagUsd, usdToInr, source: 'Swissquote+fawazahmed0' };
+  return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, xauUsd, xagUsd, usdToInr, source: 'Swissquote+YahooFinance' };
 }
 
 /**
@@ -152,14 +167,29 @@ function buildRates(xauInr: number, xagInr: number, source: string, now: string)
 async function fetchAndCacheRates(env: Env): Promise<CachedRates> {
   const now = new Date().toISOString();
   let xauInr: number, xagInr: number, xauUsd: number, xagUsd: number, usdToInr: number, source: string;
-  try { ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaCDN()); }
-  catch (cdnErr) {
-    console.error('[Worker] CDN fetch failed, trying Swissquote:', cdnErr);
-    try { ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaSwissquote()); }
-    catch (swissErr) { console.error('[Worker] Swissquote fetch also failed:', swissErr); throw new Error(`All price sources failed.`); }
-  }
+  ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaSwissquote());
+
   const rates = buildRates(xauInr, xagInr, source, now);
-  const cached: CachedRates = { rates, fetchedAt: now, source, xauInr, xagInr, xauUsd, xagUsd, usdToInr };
+  const cached: CachedRates = {
+    rates,
+    fetchedAt: now,
+    source,
+    xauInr,
+    xagInr,
+    xauUsd,
+    xagUsd,
+    usdToInr,
+    inputs: {
+      xauUsd: { value: xauUsd, source: 'Swissquote BBO midpoint', url: SWISSQUOTE_XAU },
+      xagUsd: { value: xagUsd, source: 'Swissquote BBO midpoint', url: SWISSQUOTE_XAG },
+      usdToInr: { value: usdToInr, source: 'Yahoo Finance INR=X', url: YAHOO_USDINR_CHART },
+      derived: {
+        xauInrPerTroyOz: xauInr,
+        xagInrPerTroyOz: xagInr,
+        formula: 'metalInrPerTroyOz = metalUsdPerTroyOz * usdToInr',
+      },
+    },
+  };
   try {
     if (!env.GOLD_RATES_KV) throw new Error('GOLD_RATES_KV binding not found');
     await env.GOLD_RATES_KV.put('gold_rates_cache', JSON.stringify(cached), { expirationTtl: 600 });

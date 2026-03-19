@@ -100,6 +100,7 @@ export const RedemptionPage: React.FC = () => {
   const [metal, setMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [purity, setPurity] = useState<number>(995);
   const [gramsStr, setGramsStr] = useState('');
+  const [amountStr, setAmountStr] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -142,7 +143,10 @@ export const RedemptionPage: React.FC = () => {
         const m = (o.metal ?? '').toUpperCase();
         if (m !== 'GOLD' && m !== 'SILVER') return;
         const pRaw = Number(o.purity) || 0;
-        const p = m === 'GOLD' ? normalizeGoldPurity(pRaw) : pRaw;
+        const normalizedGoldPurity = normalizeGoldPurity(pRaw);
+        const p = m === 'GOLD'
+          ? ((normalizedGoldPurity === 999 || normalizedGoldPurity === 995) ? 995 : normalizedGoldPurity)
+          : pRaw;
         if (!p) return;
         const key = `${m}|${p}`;
         if (!ledger[key]) ledger[key] = { grams: 0, totalInr: 0 };
@@ -204,6 +208,7 @@ export const RedemptionPage: React.FC = () => {
   }, [currentUser]);
 
   const grams = parseFloat(gramsStr) || 0;
+  const enteredAmount = parseFloat(amountStr) || 0;
 
   const heldEntry = useMemo(
     () => portfolio.find((p) => p.metal === metal && p.purity === purity),
@@ -230,14 +235,35 @@ export const RedemptionPage: React.FC = () => {
   const estimatedInr = grams * redeemRatePerGram;
   const heldGrams = heldEntry?.grams ?? 0;
   const gramsError = grams > 0 && grams > heldGrams;
+  const maxRedeemableInr = heldGrams * redeemRatePerGram;
+
+  const handleGramsChange = (value: string) => {
+    setGramsStr(value);
+    const g = parseFloat(value);
+    if (Number.isFinite(g) && g > 0 && redeemRatePerGram > 0) {
+      setAmountStr((g * redeemRatePerGram).toFixed(4));
+    } else if (!value) {
+      setAmountStr('');
+    }
+  };
+
+  const handleAmountChange = (value: string) => {
+    setAmountStr(value);
+    const amt = parseFloat(value);
+    if (Number.isFinite(amt) && amt > 0 && redeemRatePerGram > 0) {
+      setGramsStr((amt / redeemRatePerGram).toFixed(4));
+    } else if (!value) {
+      setGramsStr('');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitMsg(null);
     if (!currentUser || !userProfile) return;
 
-    if (grams <= 0) {
-      setSubmitMsg({ type: 'err', text: 'Enter valid grams to redeem.' });
+    if (grams <= 0 || estimatedInr <= 0) {
+      setSubmitMsg({ type: 'err', text: 'Enter valid grams or amount to redeem.' });
       return;
     }
     if (gramsError) {
@@ -266,6 +292,7 @@ export const RedemptionPage: React.FC = () => {
         redeemGstReductionPercent: 3,
         redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
         estimatedInr,
+        customerRequestedInr: enteredAmount > 0 ? enteredAmount : estimatedInr,
         availableBalanceAtRequestGrams: heldGrams,
         status: 'PENDING',
         createdAt: serverTimestamp(),
@@ -276,6 +303,7 @@ export const RedemptionPage: React.FC = () => {
         text: `Request submitted. ${fmtG(grams)} at ${fmtInr(redeemRatePerGram)}/g. Estimated ${fmtInr(estimatedInr)}.`,
       });
       setGramsStr('');
+      setAmountStr('');
     } catch (err: any) {
       setSubmitMsg({ type: 'err', text: err?.message ?? 'Failed to submit. Try again.' });
     } finally {
@@ -378,7 +406,7 @@ export const RedemptionPage: React.FC = () => {
             <input
               type="number"
               value={gramsStr}
-              onChange={(e) => setGramsStr(e.target.value)}
+              onChange={(e) => handleGramsChange(e.target.value)}
               placeholder="e.g. 2.500"
               min="0"
               step="0.001"
@@ -386,7 +414,22 @@ export const RedemptionPage: React.FC = () => {
                 gramsError ? 'border-red-400' : 'border-stone-200 dark:border-gray-700'
               }`}
             />
-            {gramsError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle size={11} />Max redeemable: {fmtG(heldGrams)}</p>}
+            <p className="text-[11px] text-stone-500 mt-1">Max redeemable: {fmtG(heldGrams)} ({fmtInr(maxRedeemableInr)})</p>
+            {gramsError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertTriangle size={11} />Requested quantity exceeds your redeemable balance.</p>}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-stone-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Amount to Redeem (INR)</label>
+            <input
+              type="number"
+              value={amountStr}
+              onChange={(e) => handleAmountChange(e.target.value)}
+              placeholder="e.g. 1000"
+              min="0"
+              step="0.01"
+              className="w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 bg-stone-50 dark:bg-gray-800 text-stone-800 dark:text-white transition-colors border-stone-200 dark:border-gray-700"
+            />
+            <p className="text-[11px] text-stone-500 mt-1">You can enter grams or amount; both auto-sync using live redeem rate.</p>
           </div>
 
           <div className="rounded-xl px-4 py-3" style={{ background: 'linear-gradient(135deg,#fef9ee,#fde68a)', border: '1px solid rgba(251,191,36,0.4)' }}>
