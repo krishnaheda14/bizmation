@@ -28,6 +28,15 @@ export function PlatformTab({ shops, users, orders, currentUser, userProfile, ha
     silver: orders.filter((o) => (o.metal ?? '').toUpperCase() === 'SILVER').reduce((s, o) => s + (Number(o.shopCommissionInr) || 0), 0)
   };
 
+  const totalVolume = orders.reduce((s, o) => s + (Number(o.totalAmountInr) || 0), 0);
+  const avgOrderValue = orders.length > 0 ? totalVolume / orders.length : 0;
+  
+  const totalGoldGrams = orders.filter((o) => (o.metal ?? '').toUpperCase() === 'GOLD').reduce((s, o) => s + (Number(o.grams) || 0), 0);
+  const totalSilverGrams = orders.filter((o) => (o.metal ?? '').toUpperCase() === 'SILVER').reduce((s, o) => s + (Number(o.grams) || 0), 0);
+  
+  const approvedShops = shops.filter(s => getShopVerificationStatus(s) === 'APPROVED').length;
+  const shopAdoptionRate = shops.length > 0 ? ((approvedShops / shops.length) * 100).toFixed(1) : '0';
+
   useEffect(() => {
     let mounted = true;
     getDoc(doc(db, 'config', 'platform')).then(snapshot => {
@@ -75,7 +84,7 @@ export function PlatformTab({ shops, users, orders, currentUser, userProfile, ha
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-10">
       
       <div className="bg-white rounded-3xl p-6 border border-amber-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-6">
         <div>
@@ -103,18 +112,39 @@ export function PlatformTab({ shops, users, orders, currentUser, userProfile, ha
         </div>
       </div>
 
-      <div>
-        <h3 className="text-[13px] font-bold text-stone-400 tracking-widest uppercase mb-4 px-2">Platform Overview</h3>
+      <div className="bg-gradient-to-br from-amber-50 to-orange-50/50 rounded-3xl p-6 border border-amber-200/50 shadow-sm">
+        <h3 className="text-[13px] font-bold text-amber-900/60 tracking-widest uppercase mb-6 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-500"></span> Financial Overview
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-center">
+            <p className="text-[11px] font-bold text-stone-500 uppercase tracking-widest mb-1">Total Trade Vol.</p>
+            <p className="text-2xl font-black text-stone-800 tracking-tight">{fmtInr(totalVolume)}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-center">
+            <p className="text-[11px] font-bold text-stone-500 uppercase tracking-widest mb-1">Avg Order Value</p>
+            <p className="text-2xl font-black text-amber-700 tracking-tight">{fmtInr(avgOrderValue)}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-center">
+            <p className="text-[11px] font-bold text-stone-500 uppercase tracking-widest mb-1">Platform Commission</p>
+            <p className="text-2xl font-black text-green-600 tracking-tight">{fmtInr(totalCommission)}</p>
+          </div>
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-center">
+            <p className="text-[11px] font-bold text-stone-500 uppercase tracking-widest mb-1">Shop Adoption</p>
+            <p className="text-2xl font-black text-blue-600 tracking-tight">{shopAdoptionRate}%</p>
+          </div>
+        </div>
+
+        <h3 className="text-[13px] font-bold text-stone-400 tracking-widest uppercase mb-4 px-2">Operational Metrics</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          <CardStat label="Total Income (Com.)" value={fmtInr(totalCommission)} valueClass="text-amber-700" />
-          <CardStat label="Gold Margin" value={fmtInr(commissionByMetal.gold)} valueClass="text-amber-600" />
-          <CardStat label="Silver Margin" value={fmtInr(commissionByMetal.silver)} valueClass="text-slate-600" />
+          <CardStat label="Total Orders" value={String(orders.length)} />
+          <CardStat label="Gold Transacted" value={`${totalGoldGrams.toFixed(4)}g`} valueClass="text-amber-600" />
+          <CardStat label="Silver Transacted" value={`${totalSilverGrams.toFixed(4)}g`} valueClass="text-slate-600" />
           
           <CardStat label="Total Shops" value={String(shops.length)} />
           <CardStat label="Total Users" value={String(users.length)} />
-          <CardStat label="Total Orders" value={String(orders.length)} />
           
-          <CardStat label="Pending Shop KYC" value={String(pendingShops)} valueClass="text-amber-600" />
+          <CardStat label="Pending Shop KYC" value={String(pendingShops)} valueClass={pendingShops > 0 ? "text-amber-600" : "text-stone-700"} />
           <CardStat label="Frozen Shops" value={String(frozenShops)} valueClass={frozenShops > 0 ? "text-red-600" : "text-stone-700"} />
           <CardStat label="Blocked Users" value={String(blockedUsers)} valueClass={blockedUsers > 0 ? "text-red-600" : "text-stone-700"} />
         </div>

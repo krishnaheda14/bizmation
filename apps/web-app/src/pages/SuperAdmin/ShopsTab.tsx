@@ -225,9 +225,9 @@ export function ShopsTab({ shops, setShops, users, setUsers, orders, search, cur
                             <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col">
                               <p className="text-[11px] font-bold text-stone-500 uppercase mb-3 px-1">Recent Shop Orders ({sOrders.length})</p>
                               {sOrders.length === 0 ? (
-                                <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">No orders yet</div>
+                                <div className="flex items-center justify-center text-stone-400 text-sm py-16">No orders yet</div>
                               ) : (
-                                <div className="overflow-auto flex-1 max-h-[350px] pr-2 custom-scrollbar">
+                                <div className="overflow-auto max-h-[600px] pr-2 custom-scrollbar">
                                   <div className="space-y-2">
                                     {sOrders.slice(0, 50).map((o) => (
                                       <div key={o.id} className="bg-stone-50 border border-stone-100 p-3 rounded-xl flex justify-between items-center hover:bg-amber-50/50 transition-colors">

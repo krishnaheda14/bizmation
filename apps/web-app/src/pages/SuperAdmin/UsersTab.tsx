@@ -20,26 +20,51 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
   const [editUserId, setEditUserId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<UserRow>>({});
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  
+  // New UI Filters
+  const [roleFilter, setRoleFilter] = useState<string>('ALL');
+  const [shopFilter, setShopFilter] = useState<string>('ALL');
 
   const unassignedCustomers = useMemo(() => users.filter((u) => 
     (u.role ?? '').toUpperCase() === 'CUSTOMER' && 
     (normalize(u.shopId) === normalize(UNASSIGNED_SHOP_ID) || normalize(u.shopName) === normalize(UNASSIGNED_SHOP_NAME) || (!u.shopId && !u.shopName))
   ), [users]);
 
+  // Unique shops for filter
+  const uniqueShops = useMemo(() => {
+    const shops = new Set<string>();
+    users.forEach(u => {
+      if (u.shopName && u.shopName.trim() !== '') shops.add(u.shopName);
+    });
+    return Array.from(shops).sort();
+  }, [users]);
+
   const filteredUsers = useMemo(() => {
     const q = search.toLowerCase();
-    if (!q) return users;
-    return users.filter((u) =>
-      (u.name ?? '').toLowerCase().includes(q)
-      || (u.email ?? '').toLowerCase().includes(q)
-      || (u.phone ?? '').toLowerCase().includes(q)
-      || (u.role ?? '').toLowerCase().includes(q)
-      || (u.shopName ?? '').toLowerCase().includes(q)
-      || (u.shopId ?? '').toLowerCase().includes(q)
-      || (u.bizCustomerId ?? '').toLowerCase().includes(q)
-      || (u.bizShopId ?? '').toLowerCase().includes(q),
-    );
-  }, [users, search]);
+    return users.filter((u) => {
+      // Role Filter
+      if (roleFilter !== 'ALL' && roleFilter !== 'UNASSIGNED') {
+        if ((u.role || 'CUSTOMER').toUpperCase() !== roleFilter) return false;
+      }
+      if (roleFilter === 'UNASSIGNED') {
+        const isUnassigned = (u.role ?? '').toUpperCase() === 'CUSTOMER' && (normalize(u.shopId) === normalize(UNASSIGNED_SHOP_ID) || normalize(u.shopName) === normalize(UNASSIGNED_SHOP_NAME) || (!u.shopId && !u.shopName));
+        if (!isUnassigned) return false;
+      }
+      // Shop Filter
+      if (shopFilter !== 'ALL' && u.shopName !== shopFilter) return false;
+
+      // Text Search
+      if (!q) return true;
+      return (u.name ?? '').toLowerCase().includes(q)
+        || (u.email ?? '').toLowerCase().includes(q)
+        || (u.phone ?? '').toLowerCase().includes(q)
+        || (u.role ?? '').toLowerCase().includes(q)
+        || (u.shopName ?? '').toLowerCase().includes(q)
+        || (u.shopId ?? '').toLowerCase().includes(q)
+        || (u.bizCustomerId ?? '').toLowerCase().includes(q)
+        || (u.bizShopId ?? '').toLowerCase().includes(q);
+    });
+  }, [users, search, roleFilter, shopFilter]);
 
   const ordersForUser = (user: UserRow) => orders.filter((o) =>
     (o.userId && o.userId === user.id)
@@ -94,6 +119,20 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
         <CardStat label="Owners" value={String(users.filter((u) => u.role === 'OWNER').length)} valueClass="text-amber-700" />
         <CardStat label="Staff" value={String(users.filter((u) => u.role === 'STAFF').length)} valueClass="text-blue-700" />
         <CardStat label="Unassigned" value={String(unassignedCustomers.length)} valueClass="text-red-600" />
+      </div>
+
+      <div className="flex flex-wrap gap-4 mb-4 bg-white/50 p-3 rounded-2xl border border-amber-100/50">
+        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="border border-amber-200 rounded-xl px-4 py-2 text-sm bg-white text-stone-700 shadow-sm focus:outline-none focus:border-amber-400 min-w-[180px]">
+          <option value="ALL">All Roles</option>
+          <option value="CUSTOMER">Customers</option>
+          <option value="OWNER">Shop Owners</option>
+          <option value="STAFF">Staff</option>
+          <option value="UNASSIGNED">Unassigned Customers</option>
+        </select>
+        <select value={shopFilter} onChange={e => setShopFilter(e.target.value)} className="border border-amber-200 rounded-xl px-4 py-2 text-sm bg-white text-stone-700 shadow-sm focus:outline-none focus:border-amber-400 min-w-[180px] max-w-xs">
+          <option value="ALL">All Linked Shops</option>
+          {uniqueShops.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
       </div>
 
       <div className="rounded-3xl shadow-sm border border-amber-100 bg-white/90 backdrop-blur pb-2">
@@ -251,15 +290,15 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
                             </div>
 
                             {/* USER ORDERS MINI-INVOICE LIST */}
-                            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col h-full">
+                            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm flex flex-col">
                               <p className="text-[11px] font-bold text-stone-500 uppercase mb-3 px-1 flex items-center justify-between">
                                 Customer Orders ({uOrders.length})
                                 <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9px]">Total Inv: {fmtInr(Number(u.totalInvestedInr || 0))}</span>
                               </p>
                               {uOrders.length === 0 ? (
-                                <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">No transaction history</div>
+                                <div className="flex items-center justify-center text-stone-400 text-sm py-16">No transaction history</div>
                               ) : (
-                                <div className="overflow-auto flex-1 max-h-[420px] pr-2 custom-scrollbar">
+                                <div className="overflow-auto max-h-[600px] pr-2 custom-scrollbar">
                                   <div className="space-y-3">
                                     {uOrders.slice(0, 50).map((o) => (
                                       <div key={o.id} className="bg-gradient-to-br from-white to-stone-50 border border-stone-200 p-3 rounded-xl hover:shadow-[0_4px_12px_rgba(251,191,36,0.1)] transition-all">

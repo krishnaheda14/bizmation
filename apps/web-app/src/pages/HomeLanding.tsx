@@ -387,7 +387,7 @@ export const HomeLanding: React.FC = () => {
             createdAt:         serverTimestamp(),
             updatedAt:         serverTimestamp(),
           });
-          // Update aggregate counters on the user document
+          // Update aggregate counters on the user document (customer)
           if (currentUser) {
             const updateData: any = {
               totalInvestedInr: increment(totalAmount),
@@ -396,6 +396,30 @@ export const HomeLanding: React.FC = () => {
             if (buyMetal === 'GOLD') updateData.totalGoldPurchasedGrams   = increment(grams);
             else                     updateData.totalSilverPurchasedGrams = increment(grams);
             await updateDoc(doc(db, 'users', currentUser.uid), updateData);
+          }
+          
+          // Credit commission explicitly to the Shop Owner's account
+          if (customerShopId) {
+            try {
+              // 1. Update the shop document
+              await updateDoc(doc(db, 'shops', customerShopId), {
+                totalCommissionEarned: increment(shopCommissionInr),
+                updatedAt: serverTimestamp()
+              });
+              
+              // 2. Fetch the owner's UID from the shop document and update their user account
+              const { getDoc } = await import('firebase/firestore');
+              const shopSnap = await getDoc(doc(db, 'shops', customerShopId));
+              if (shopSnap.exists() && shopSnap.data().ownerUid) {
+                const ownerUid = shopSnap.data().ownerUid;
+                await updateDoc(doc(db, 'users', ownerUid), {
+                  totalCommissionEarned: increment(shopCommissionInr),
+                  updatedAt: serverTimestamp()
+                });
+              }
+            } catch (err) {
+              console.error('Failed to credit commission to shop owner account:', err);
+            }
           }
         } catch { /* non-blocking */ }
       },
