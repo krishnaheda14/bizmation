@@ -37,7 +37,7 @@ Bizmation Gold uses a **distributed microservices architecture** with 5 independ
             │                     │
             ▼                     ▼
 ┌──────────────────────────────────────────────────────────────┐
-│              APPLICATION LAYER (Railway)                      │
+│              APPLICATION LAYER (Cloudflare Workers)                      │
 │  ┌──────────────────────────────────────────────────────────┐│
 │  │  Express Backend (TypeScript)                            ││
 │  │  ├── Auth Module (Twilio Verify)                         ││
@@ -52,7 +52,7 @@ Bizmation Gold uses a **distributed microservices architecture** with 5 independ
             ▼                     ▼
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │ PostgreSQL (SQL)  │  │ Firebase          │  │ AI Services      │
-│ Railway plugin    │  │ Auth + Firestore  │  │ FastAPI (Python)  │
+│ Cloudflare Workers    │  │ Auth + Firestore  │  │ FastAPI (Python)  │
 │                   │  │ (NoSQL)           │  │ Render/Docker     │
 │ - gold_rates      │  │ - users           │  │ - YOLO v8         │
 │ - products        │  │ - shops           │  │ - ResNet-50       │

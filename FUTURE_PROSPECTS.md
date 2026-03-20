@@ -234,16 +234,7 @@ CLV = (Avg Order Value × Purchase Frequency × Customer Lifespan)
   Example: ₹35,000 × 3 times/year × 10 years = ₹10,50,000
 ```
 
-#### 6. 🏷️ Try-On AR (Augmented Reality)
-```
-Features:
-├── Customer uploads selfie → earrings/necklace overlaid
-├── Share try-on photo with family via WhatsApp
-├── Save favorite try-ons → convert to purchase
-└── Ring sizing via AR (measure finger from photo)
 
-Tech: TensorFlow.js / MediaPipe face mesh
-```
 
 #### 7. 📦 Logistics & Delivery Integration
 ```
