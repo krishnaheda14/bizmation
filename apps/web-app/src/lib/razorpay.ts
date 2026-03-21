@@ -80,9 +80,14 @@ export async function buyGold(options: BuyGoldOptions) {
     }),
   });
 
-  const createJson = await createRes.json().catch(() => ({}));
+  const createJson = await createRes.json().catch(async () => {
+    const text = await createRes.text().catch(() => '');
+    return { error: text || 'Failed to parse backend error response' };
+  });
+
   if (!createRes.ok || !createJson?.success) {
-    options.onFailure(new Error(createJson?.error || 'Could not create locked payment order.'));
+    const errMsg = createJson?.error || createJson?.message || `Could not create locked payment order (${createRes.status} ${createRes.statusText})`;
+    options.onFailure(new Error(errMsg));
     return;
   }
 

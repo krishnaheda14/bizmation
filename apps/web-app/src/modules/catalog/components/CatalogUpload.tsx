@@ -68,10 +68,12 @@ export const CatalogUpload: React.FC = () => {
       // Wait for next tick to ensure modal is rendered
       setTimeout(() => {
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(err => // console.error('Play failed:', err));
-          streamRef.current = stream;
-        }
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(err => {
+              // console.error('Play failed:', err);
+            });
+            streamRef.current = stream;
+          }
       }, 100);
     } catch (error) {
       // console.error('Failed to start camera:', error);
