@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { ShopRow, UserRow, PlatformOrderRow } from './types';
 import { getShopVerificationStatus, normalize, fmtInr, fmtDate, maskedValue } from './utils';
@@ -77,6 +77,20 @@ export function ShopsTab({ shops, setShops, users, setUsers, orders, search, cur
       handleActionMsg(`Shop ${newVal ? 'frozen/blocked' : 'unfrozen/unblocked'} successfully`, 'ok');
     } catch (err: any) {
       handleActionMsg(err.message ?? 'Update failed', 'err');
+    } finally {
+      setActionLoading((p) => ({ ...p, [shop.id]: false }));
+    }
+  };
+
+  const handleDelete = async (shop: ShopRow) => {
+    if (!confirm(`WARNING: Are you sure you want to PERMANENTLY delete shop ${shop.name}? This cannot be undone.`)) return;
+    setActionLoading((p) => ({ ...p, [shop.id]: true }));
+    try {
+      await deleteDoc(doc(db, 'shops', shop.id));
+      setShops((prev) => prev.filter((s) => s.id !== shop.id));
+      handleActionMsg('Shop deleted successfully', 'ok');
+    } catch (err: any) {
+      handleActionMsg(err.message ?? 'Delete failed', 'err');
     } finally {
       setActionLoading((p) => ({ ...p, [shop.id]: false }));
     }
@@ -215,6 +229,9 @@ export function ShopsTab({ shops, setShops, users, setUsers, orders, search, cur
                                     </button>
                                     <button onClick={() => { if(confirm(`Are you sure you want to ${s.blocked ? 'unblock' : 'block'} this shop?`)) toggleFlag(s, 'blocked'); }} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${s.blocked ? 'bg-red-100 text-red-800 border-red-200' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}>
                                       {s.blocked ? '🛑 Unblock Shop' : '🛑 Block Shop'}
+                                    </button>
+                                    <button onClick={() => handleDelete(s)} disabled={isLoading} className="px-4 py-2 font-bold bg-stone-800 text-white rounded-xl text-xs flex-1 min-w-[120px] hover:bg-stone-900 transition-colors">
+                                      🗑️ Delete Shop
                                     </button>
                                   </div>
                                 </>

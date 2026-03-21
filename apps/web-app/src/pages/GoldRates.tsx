@@ -27,14 +27,14 @@ export const GoldRates: React.FC = () => {
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
+    // console.log(logMessage);
     setDebugInfo(prev => [...prev, logMessage]);
   };
 
   const addErrorLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] âŒ ${message}`;
-    console.error(logMessage);
+    // console.error(logMessage);
     setErrorLog(prev => [...prev, logMessage]);
   };
 

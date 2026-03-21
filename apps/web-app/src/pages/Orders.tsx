@@ -171,7 +171,7 @@ export const Orders: React.FC = () => {
       });
       setOrders(result as GoldOrder[]);
     } catch (err: any) {
-      console.error('[Orders] fetch failed', err);
+      // console.error('[Orders] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
       setError(`Could not load orders${code}. Check debug details below.`);
     } finally {

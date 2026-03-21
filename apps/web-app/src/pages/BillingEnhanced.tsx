@@ -31,7 +31,7 @@ export const BillingEnhanced: React.FC = () => {
         alert('Failed to generate invoice');
       }
     } catch (error) {
-      console.error('Failed to submit invoice:', error);
+      // console.error('Failed to submit invoice:', error);
       alert('Failed to submit invoice. Please try again.');
     }
   };

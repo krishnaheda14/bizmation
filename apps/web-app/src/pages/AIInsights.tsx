@@ -64,7 +64,7 @@ export const AIInsights: React.FC = () => {
         setInsights(data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch insights:', error);
+      // console.error('Failed to fetch insights:', error);
     } finally {
       setLoading(false);
     }

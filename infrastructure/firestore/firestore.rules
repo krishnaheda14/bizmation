@@ -62,7 +62,7 @@ service cloud.firestore {
         request.auth.uid == uid
         || isSuperAdmin()
       );
-      allow delete: if false; // no self-deletion via client
+      allow delete: if isSuperAdmin(); // Super admin can delete users
     }
 
     // ── /shops/{shopId} ──────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ service cloud.firestore {
         || request.auth.uid == shopId
         || isSuperAdmin()
       );
-      allow delete: if false;
+      allow delete: if isSuperAdmin();
 
       // ── /shops/{shopId}/customers/{customerId} ────────────────────────────
       // SUPER_ADMIN can read all. Owners/staff can read customers in their shop.
@@ -220,6 +220,12 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.uid;
       allow update: if isAuth() && request.auth.uid == resource.data.uid;
       allow delete: if false;
+    }
+
+    // ── /config/{id} ────────────────────────────────────────────────────────
+    match /config/{id} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
     }
 
     // ── Catch-all: deny everything else ─────────────────────────────────────

@@ -72,7 +72,7 @@ export const CustomerPortfolio: React.FC = () => {
       });
       setOrders(result as GoldOrder[]);
     } catch (err: any) {
-      console.error('[Portfolio] fetch failed', err);
+      // console.error('[Portfolio] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
       setError(`Could not load portfolio${code}. Please try refresh again.`);
     }

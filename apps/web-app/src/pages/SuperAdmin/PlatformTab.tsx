@@ -47,7 +47,7 @@ export function PlatformTab({ shops, users, orders, currentUser, userProfile, ha
         setFreezeLoading(false);
       }
     }).catch(err => {
-      console.error('Failed to get platform config', err);
+      // console.error('Failed to get platform config', err);
       if (mounted) setFreezeLoading(false);
     });
     return () => { mounted = false; };

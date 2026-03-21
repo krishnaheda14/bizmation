@@ -166,11 +166,11 @@ export const Parties: React.FC = () => {
     const shopName = userProfile.shopName ?? '';
     const shopId = (userProfile as any)?.shopId ?? '';
     if (!shopName && !shopId) {
-      console.warn('[Parties] No shop mapping on owner profile - cannot filter customers');
+      // console.warn('[Parties] No shop mapping on owner profile - cannot filter customers');
       setCustomers([]);
       return;
     }
-    console.log('[Parties] Fetching customers for shop mapping:', { shopId, shopName });
+    // console.log('[Parties] Fetching customers for shop mapping:', { shopId, shopName });
     try {
       let results: CustomerParty[] = [];
 
@@ -194,24 +194,24 @@ export const Parties: React.FC = () => {
         results = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) } as CustomerParty));
       }
 
-      console.log('[Parties] Customers fetched:', results.length, results.map(c => c.name));
+      // console.log('[Parties] Customers fetched:', results.length, results.map(c => c.name));
       setCustomers(results);
     } catch (e: any) {
-      console.error('[Parties] Error fetching customers:', e);
+      // console.error('[Parties] Error fetching customers:', e);
       setError('Failed to load customers. Check Firestore rules: ' + (e?.message ?? ''));
     }
   }, [currentUser, userProfile, shopNameVariants]);
 
   const fetchShops = useCallback(async () => {
     if (!currentUser) return;
-    console.log('[Parties] Fetching shops from Firestore...');
+    // console.log('[Parties] Fetching shops from Firestore...');
     try {
       const snap = await getDocs(collection(db, 'shops'));
       const results = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as ShopParty));
-      console.log('[Parties] Shops fetched:', results.length, results.map(s => s.name));
+      // console.log('[Parties] Shops fetched:', results.length, results.map(s => s.name));
       setShops(results);
     } catch (e: any) {
-      console.error('[Parties] Error fetching shops:', e);
+      // console.error('[Parties] Error fetching shops:', e);
     }
   }, [currentUser]);
 
@@ -230,7 +230,7 @@ export const Parties: React.FC = () => {
     }
     setExpandedUid(customer.uid);
     setOrdersLoading(customer.uid);
-    console.log('[Parties] Loading orders for customer:', customer.name, customer.uid);
+    // console.log('[Parties] Loading orders for customer:', customer.name, customer.uid);
     try {
       // Query by userId first, then email/phone fallback; dedupe by doc id.
       const all: Record<string, Order> = {};
@@ -244,9 +244,9 @@ export const Parties: React.FC = () => {
           const q = query(collection(db, 'goldOnlineOrders'), where('customerEmail', '==', customer.email));
           const s = await getDocs(q);
           s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
-          console.log('[Parties] Orders by email for', customer.name, ':', s.size);
+          // console.log('[Parties] Orders by email for', customer.name, ':', s.size);
         } catch (err) {
-          console.warn('[Parties] Email fallback query skipped:', err);
+          // console.warn('[Parties] Email fallback query skipped:', err);
         }
       }
       if (customer.phone) {
@@ -255,14 +255,14 @@ export const Parties: React.FC = () => {
           const s = await getDocs(q);
           s.docs.forEach(d => { all[d.id] = { id: d.id, ...(d.data() as any) }; });
         } catch (err) {
-          console.warn('[Parties] Phone fallback query skipped:', err);
+          // console.warn('[Parties] Phone fallback query skipped:', err);
         }
       }
       const sorted = Object.values(all).sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
-      console.log('[Parties] Total unique orders for', customer.name, ':', sorted.length);
+      // console.log('[Parties] Total unique orders for', customer.name, ':', sorted.length);
       setOrdersMap(prev => ({ ...prev, [customer.uid]: sorted }));
     } catch (e: any) {
-      console.error('[Parties] Error loading orders:', e);
+      // console.error('[Parties] Error loading orders:', e);
       setOrdersMap(prev => ({ ...prev, [customer.uid]: [] }));
     } finally {
       setOrdersLoading(null);

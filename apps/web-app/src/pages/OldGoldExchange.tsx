@@ -93,7 +93,7 @@ export const OldGoldExchange: React.FC = () => {
         lastUpdated: new Date(),
       });
     } catch (error) {
-      console.error('Failed to fetch gold rates:', error);
+      // console.error('Failed to fetch gold rates:', error);
       // Use fallback rates
       
     }

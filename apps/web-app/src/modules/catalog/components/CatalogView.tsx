@@ -66,7 +66,7 @@ export const CatalogView: React.FC = () => {
         setItems(data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch catalog items:', error);
+      // console.error('Failed to fetch catalog items:', error);
     } finally {
       setLoading(false);
     }

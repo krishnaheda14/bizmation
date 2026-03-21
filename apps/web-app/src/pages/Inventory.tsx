@@ -47,7 +47,7 @@ export const Inventory: React.FC = () => {
         setItems(data.data || []);
       }
     } catch (error) {
-      console.error('Failed to fetch inventory:', error);
+      // console.error('Failed to fetch inventory:', error);
     } finally {
       setLoading(false);
     }
@@ -274,7 +274,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ onClose, onSuccess }) => {
         alert('Failed to add item');
       }
     } catch (error) {
-      console.error('Failed to add item:', error);
+      // console.error('Failed to add item:', error);
       alert('Failed to add item. Please try again.');
     }
   };

@@ -69,12 +69,12 @@ export const CatalogUpload: React.FC = () => {
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(err => console.error('Play failed:', err));
+          videoRef.current.play().catch(err => // console.error('Play failed:', err));
           streamRef.current = stream;
         }
       }, 100);
     } catch (error) {
-      console.error('Failed to start camera:', error);
+      // console.error('Failed to start camera:', error);
       alert('Failed to access camera. Please check permissions and ensure you\'re using HTTPS.');
     }
   };
@@ -167,7 +167,7 @@ export const CatalogUpload: React.FC = () => {
         });
 
         if (!response.ok) {
-          console.warn(`${service.name} failed with status ${response.status}, trying next...`);
+          // console.warn(`${service.name} failed with status ${response.status}, trying next...`);
           continue;
         }
 
@@ -195,7 +195,7 @@ export const CatalogUpload: React.FC = () => {
           return; // Success - exit function
         }
       } catch (error) {
-        console.warn(`${service.name} failed:`, error);
+        // console.warn(`${service.name} failed:`, error);
         // Continue to next service
       }
     }
@@ -235,7 +235,7 @@ export const CatalogUpload: React.FC = () => {
         alert('Failed to add catalog item');
       }
     } catch (error) {
-      console.error('Upload failed:', error);
+      // console.error('Upload failed:', error);
       alert('Failed to upload. Please try again.');
     }
   };

@@ -418,7 +418,7 @@ export const HomeLanding: React.FC = () => {
                 });
               }
             } catch (err) {
-              console.error('Failed to credit commission to shop owner account:', err);
+              // console.error('Failed to credit commission to shop owner account:', err);
             }
           }
         } catch { /* non-blocking */ }

@@ -24,7 +24,7 @@ export const Billing: React.FC = () => {
         alert('Failed to create invoice');
       }
     } catch (error) {
-      console.error('Invoice submission failed:', error);
+      // console.error('Invoice submission failed:', error);
       alert('Failed to submit invoice. Please try again.');
     }
   };

@@ -188,7 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await loadProfile(user);
       } else {
         setUserProfile(null);
-        console.log('[AuthContext] User signed out, profile cleared');
+        // console.log('[AuthContext] User signed out, profile cleared');
       }
       setLoadingAuth(false);
     });
@@ -270,7 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await sendEmailVerification(createdUser);
       onProgress?.('verify-email', 'done');
     } catch (err: any) {
-      console.warn('[signUp] sendEmailVerification failed (non-fatal):', err?.message);
+      // console.warn('[signUp] sendEmailVerification failed (non-fatal):', err?.message);
       onProgress?.('verify-email', 'done'); // treat as non-fatal
     }
 
@@ -340,8 +340,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : (fsErr?.message ?? 'Unknown error');
 
       onProgress?.('save-profile', 'error', detail + (tokenDiag ? ` | tokenDiag: ${JSON.stringify(tokenDiag)}` : ''));
-      console.error('[signUp] Firestore profile write failed:', fsErr?.code, fsErr?.message, fsErr);
-      console.error('[signUp] Token diagnostic:', tokenDiag);
+      // console.error('[signUp] Firestore profile write failed:', fsErr?.code, fsErr?.message, fsErr);
+      // console.error('[signUp] Token diagnostic:', tokenDiag);
       await firebaseSignOut(auth).catch(() => {});
       throw new Error('Failed to save profile: ' + (fsErr?.message ?? 'permission-denied'));
     }
@@ -355,9 +355,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email:     data.email,
           uid:       createdUser.uid,
           updatedAt: serverTimestamp(),
-        }).catch((e: any) => console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
+        }).catch((e: any) => // console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
       } catch (e) {
-        console.warn('[signUp] phone normalization failed:', e);
+        // console.warn('[signUp] phone normalization failed:', e);
       }
     }
 
@@ -395,7 +395,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       } catch (err) {
-        console.warn('[AuthContext] Backend party sync failed (non-fatal):', err);
+        // console.warn('[AuthContext] Backend party sync failed (non-fatal):', err);
       }
     })();
 
@@ -460,13 +460,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           onProgress?.('link-shop', 'done');
         } else {
           onProgress?.('link-shop', 'error', `Owner code "${profile.ownerCode}" not found.`);
-          console.warn('[signUp] No shop found with ownerCode:', profile.ownerCode);
+          // console.warn('[signUp] No shop found with ownerCode:', profile.ownerCode);
         }
       }
     } catch (err: any) {
       const stepId = profile.role === 'OWNER' ? 'setup-shop' : 'link-shop';
       onProgress?.(stepId, 'error', err?.message);
-      console.warn('[AuthContext] Shop/customer setup failed (non-fatal):', err?.message);
+      // console.warn('[AuthContext] Shop/customer setup failed (non-fatal):', err?.message);
     }
 
     // Sign the user OUT — they must verify email before using the app
@@ -521,7 +521,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   function twilioWorkerBase(): string {
     const url = (import.meta.env.VITE_TWILIO_WORKER_URL as string) || '';
     if (!url) {
-      console.warn(
+      // console.warn(
         '[OTP] VITE_TWILIO_WORKER_URL is not set.\n'
         + '  Add it in Cloudflare Pages → Settings → Environment Variables\n'
         + '  Value: https://twilio-otp-worker.<subdomain>.workers.dev'
@@ -534,7 +534,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const base = twilioWorkerBase();
     const normalizedPhone = normalizePhone(phone);
     const url = `${base}/api/auth/send-otp`;
-    console.log('[sendPhoneOtp] →', url, normalizedPhone);
+    // console.log('[sendPhoneOtp] →', url, normalizedPhone);
 
     let res: Response;
     try {
@@ -544,13 +544,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body   : JSON.stringify({ phone: normalizedPhone }),
       });
     } catch (fetchErr: any) {
-      console.error('[sendPhoneOtp] Network error:', fetchErr);
+      // console.error('[sendPhoneOtp] Network error:', fetchErr);
       throw new Error(`Network error calling Twilio Worker. Check VITE_TWILIO_WORKER_URL. (${fetchErr?.message})`);
     }
 
     let json: any;
     try { json = await res.json(); } catch { json = {}; }
-    console.log('[sendPhoneOtp] status:', res.status, json);
+    // console.log('[sendPhoneOtp] status:', res.status, json);
     if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
   };
 
@@ -558,7 +558,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const base = twilioWorkerBase();
     const normalizedPhone = normalizePhone(phone);
     const url = `${base}/api/auth/verify-otp`;
-    console.log('[verifyPhoneOtp] →', url);
+    // console.log('[verifyPhoneOtp] →', url);
 
     let res: Response;
     try {
@@ -573,7 +573,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let json: any;
     try { json = await res.json(); } catch { json = {}; }
-    console.log('[verifyPhoneOtp] status:', res.status, json);
+    // console.log('[verifyPhoneOtp] status:', res.status, json);
     if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
     return { valid: json.valid ?? false };
   };
@@ -587,7 +587,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const base = twilioWorkerBase();
     const normalizedPhone = normalizePhone(phone);
     const url = `${base}/api/auth/phone-login`;
-    console.log('[verifyPhoneOtpAndLogin] →', url);
+    // console.log('[verifyPhoneOtpAndLogin] →', url);
 
     let res: Response;
     try {
@@ -602,7 +602,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let json: any;
     try { json = await res.json(); } catch { json = {}; }
-    console.log('[verifyPhoneOtpAndLogin] status:', res.status, json);
+    // console.log('[verifyPhoneOtpAndLogin] status:', res.status, json);
     if (!res.ok || !json.success) throw new Error(json.error || `HTTP ${res.status}`);
     if (!json.customToken) throw new Error('Phone login failed — no token received.');
 
@@ -616,7 +616,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const result = await signInWithPopup(auth, provider);
         const googleUser = result.user;
-        console.log('[AuthContext] signInWithGoogle', googleUser);
+        // console.log('[AuthContext] signInWithGoogle', googleUser);
         // If new user, create Firestore profile
         const ref = doc(db, 'users', googleUser.uid);
         const snap = await getDoc(ref);
@@ -631,7 +631,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
           };
           await setDoc(ref, profile);
-          console.log('[AuthContext] Google user profile created', googleUser.uid);
+          // console.log('[AuthContext] Google user profile created', googleUser.uid);
           // Sync to backend customers table
           (async () => {
             try {
@@ -649,7 +649,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }),
               });
             } catch (err) {
-              console.warn('[AuthContext] Failed to sync Google user to backend', err);
+              // console.warn('[AuthContext] Failed to sync Google user to backend', err);
             }
           })();
           // Also create shop doc for owners or register customer under shop in Firestore
@@ -687,11 +687,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             }
           } catch (err) {
-            console.warn('[AuthContext] Failed to create shop/customer in Firestore for Google user', err);
+            // console.warn('[AuthContext] Failed to create shop/customer in Firestore for Google user', err);
           }
         }
       } catch (err) {
-        console.error('[AuthContext] Google sign-in error', err);
+        // console.error('[AuthContext] Google sign-in error', err);
         throw err;
       }
     };
@@ -717,7 +717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     await firebaseSignOut(auth);
     setUserProfile(null);
-    console.log('[AuthContext] signOut called');
+    // console.log('[AuthContext] signOut called');
   };
 
   // ── Update last login timestamp ──────────────────────────────────────────
@@ -727,7 +727,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastLoginAt: serverTimestamp(),
         updatedAt:   serverTimestamp(),
       }).catch(() => {}); // silently ignore if doc doesn't exist yet
-      console.log('[AuthContext] Updated lastLoginAt for', currentUser.uid);
+      // console.log('[AuthContext] Updated lastLoginAt for', currentUser.uid);
     }
   }, [currentUser]);
 

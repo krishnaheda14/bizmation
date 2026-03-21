@@ -112,7 +112,7 @@ export const ShopCustomers: React.FC = () => {
           const s2 = await getDocs(q2);
           s2.docs.forEach(d => { seen[d.id] = { id: d.id, ...(d.data() as any) } as Order; });
         } catch (err) {
-          console.warn('[ShopCustomers] Email fallback query skipped:', err);
+          // console.warn('[ShopCustomers] Email fallback query skipped:', err);
         }
       }
       const sorted = Object.values(seen).sort((a, b) => {

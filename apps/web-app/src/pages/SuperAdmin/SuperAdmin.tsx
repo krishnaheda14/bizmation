@@ -59,7 +59,7 @@ export function SuperAdmin() {
       setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as UserRow)));
       setOrders(ordersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as PlatformOrderRow)));
     } catch (err: any) {
-      console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
+      // console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
       setLoadErr(err?.message ?? 'Failed to load data.');
     } finally {
       setLoading(false);

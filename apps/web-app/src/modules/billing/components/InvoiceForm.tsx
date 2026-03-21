@@ -106,10 +106,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
     try {
       setFetchingRate(true);
       setRateError('');
-      console.log('[InvoiceForm] Fetching live metal rates via goldPrices.ts util...');
+      // console.log('[InvoiceForm] Fetching live metal rates via goldPrices.ts util...');
 
       const metalRates = await fetchLiveMetalRates();
-      console.log('[InvoiceForm] Metal rates fetched:', metalRates);
+      // console.log('[InvoiceForm] Metal rates fetched:', metalRates);
 
       const now = new Date();
       const rates: Record<string, GoldRate> = {};
@@ -130,9 +130,9 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       });
 
       setGoldRates(rates);
-      console.log('[InvoiceForm] Gold rates set successfully:', rates);
+      // console.log('[InvoiceForm] Gold rates set successfully:', rates);
     } catch (error: any) {
-      console.error('[InvoiceForm] Failed to fetch gold rates:', error);
+      // console.error('[InvoiceForm] Failed to fetch gold rates:', error);
       setRateError('Could not load live gold rates. Rates may be stale — please refresh or enter manually.');
     } finally {
       setFetchingRate(false);
@@ -151,7 +151,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         setCustomers(data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch customers:', error);
+      // console.error('Failed to fetch customers:', error);
     }
   };
 
@@ -178,7 +178,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         calculateItemAmount(index);
       }
     } catch (error) {
-      console.error('Failed to search product:', error);
+      // console.error('Failed to search product:', error);
     } finally {
       setSearchingProduct(null);
     }
@@ -261,7 +261,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         customerDetails: customerDetails,
       });
     } catch (error) {
-      console.error('Failed to submit invoice:', error);
+      // console.error('Failed to submit invoice:', error);
     } finally {
       setIsSubmitting(false);
     }

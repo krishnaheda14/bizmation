@@ -23,9 +23,12 @@ import {
   Gift,
   LayoutDashboard,
   Shield,
+  AlertTriangle,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -42,6 +45,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme();
   const { currentUser, userProfile, signOut } = useAuth();
+  const [platformFrozen, setPlatformFrozen] = useState(false);
+
+  React.useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'config', 'platform'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().platformFrozen === true) {
+        setPlatformFrozen(true);
+      } else {
+        setPlatformFrozen(false);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -223,7 +238,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
 
         {/* Page content */}
-        <main className="min-h-screen bg-stone-50 dark:bg-gray-900">
+        <main className="min-h-screen bg-stone-50 dark:bg-gray-900 flex flex-col relative">
+          {platformFrozen && (
+            <div className="bg-red-600 text-white px-4 py-3 shadow-md flex items-center justify-center gap-3 text-sm font-bold sticky top-0 z-40 lg:static">
+              <AlertTriangle size={20} className="animate-pulse flex-shrink-0" />
+              <p className="text-center">
+                Due to unavoidable circumstances, transactions are paused. Sorry for the inconvenience. (Admin has paused transactions)
+              </p>
+            </div>
+          )}
           {children}
         </main>
       </div>

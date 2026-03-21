@@ -44,7 +44,7 @@ export const Dashboard: React.FC = () => {
         const gold999 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
         if (gold999) setGoldRate(gold999.ratePerGram);
     } catch (error) {
-      console.error('Failed to fetch gold rate:', error);
+      // console.error('Failed to fetch gold rate:', error);
     } finally {
       setLoading(false);
     }

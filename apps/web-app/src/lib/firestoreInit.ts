@@ -194,10 +194,10 @@ export async function initializeCollections(): Promise<void> {
     }
 
     await batch.commit();
-    console.log(`✅ Committed batch ${Math.floor(i / BATCH_SIZE) + 1}: ${chunk.length} docs`);
+    // console.log(`✅ Committed batch ${Math.floor(i / BATCH_SIZE) + 1}: ${chunk.length} docs`);
   }
 
-  console.log('🎉 All Firestore collections initialised!');
+  // console.log('🎉 All Firestore collections initialised!');
 }
 
 // ─── One-liner you can run from the browser console ──────────────────────────

@@ -26,8 +26,8 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 // Debug: surface minimal non-secret Firebase info to the console so we can
 // quickly verify the app is pointing to the expected project in deployed logs.
 try {
-  console.log('[firebase] projectId:', firebaseConfig.projectId || 'NOT SET');
-  console.log('[firebase] authDomain:', firebaseConfig.authDomain || 'NOT SET');
+  // console.log('[firebase] projectId:', firebaseConfig.projectId || 'NOT SET');
+  // console.log('[firebase] authDomain:', firebaseConfig.authDomain || 'NOT SET');
 } catch (e) {
   // ignore in non-browser environments
 }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { UserRow, PlatformOrderRow } from './types';
 import { normalize, fmtInr, fmtDate, maskedValue, UNASSIGNED_SHOP_ID, UNASSIGNED_SHOP_NAME } from './utils';
@@ -106,6 +106,20 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
       handleActionMsg(`User ${newVal ? 'frozen/blocked' : 'unfrozen/unblocked'} successfully`, 'ok');
     } catch (err: any) {
       handleActionMsg(err.message ?? 'Update failed', 'err');
+    } finally {
+      setActionLoading((p) => ({ ...p, [user.id]: false }));
+    }
+  };
+
+  const handleDelete = async (user: UserRow) => {
+    if (!confirm(`WARNING: Are you sure you want to PERMANENTLY delete user ${user.name || user.email}? This cannot be undone.`)) return;
+    setActionLoading((p) => ({ ...p, [user.id]: true }));
+    try {
+      await deleteDoc(doc(db, 'users', user.id));
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      handleActionMsg('User deleted successfully', 'ok');
+    } catch (err: any) {
+      handleActionMsg(err.message ?? 'Delete failed', 'err');
     } finally {
       setActionLoading((p) => ({ ...p, [user.id]: false }));
     }
@@ -283,6 +297,9 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
                                     </button>
                                     <button onClick={() => { if(confirm(`Are you sure you want to ${u.blocked ? 'unblock' : 'block'} this user?`)) toggleFlag(u, 'blocked'); }} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.blocked ? 'bg-red-100 text-red-800 border-red-200' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}>
                                       {u.blocked ? '🛑 Unblock User' : '🛑 Block Platform Access'}
+                                    </button>
+                                    <button onClick={() => handleDelete(u)} disabled={isLoading} className="px-4 py-2 bg-stone-800 text-white font-bold rounded-xl text-xs flex-1 min-w-[120px] hover:bg-stone-900 transition-colors">
+                                      🗑️ Delete User
                                     </button>
                                   </div>
                                 </>
