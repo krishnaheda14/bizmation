@@ -86,6 +86,7 @@ export interface UserProfile {
     updatedAt?: any;
   };
   phoneVerified?: boolean;
+  manualEmailVerified?: boolean;
   totalGoldPurchasedGrams: number;
   totalSilverPurchasedGrams: number;
   totalInvestedInr: number;
@@ -355,7 +356,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email:     data.email,
           uid:       createdUser.uid,
           updatedAt: serverTimestamp(),
-        }).catch((e: any) => // console.warn('[signUp] phoneIndex write (non-fatal):', e?.message));
+        }).catch((e: any) => {}); // console.warn('[signUp] phoneIndex write (non-fatal):', e?.message);
       } catch (e) {
         // console.warn('[signUp] phone normalization failed:', e);
       }
@@ -522,10 +523,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const url = (import.meta.env.VITE_TWILIO_WORKER_URL as string) || '';
     if (!url) {
       // console.warn(
-        '[OTP] VITE_TWILIO_WORKER_URL is not set.\n'
-        + '  Add it in Cloudflare Pages → Settings → Environment Variables\n'
-        + '  Value: https://twilio-otp-worker.<subdomain>.workers.dev'
-      );
+      //  '[OTP] VITE_TWILIO_WORKER_URL is not set.\n'
+      //  + '  Add it in Cloudflare Pages → Settings → Environment Variables\n'
+      //  + '  Value: https://twilio-otp-worker.<subdomain>.workers.dev'
+      //);
     }
     return url;
   }

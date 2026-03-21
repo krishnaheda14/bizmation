@@ -55,6 +55,7 @@ export interface UserRow {
   shopVerificationStatus?: string;
   shopVerificationNote?: string;
   shopVerified?: boolean;
+  manualEmailVerified?: boolean;  // NEW
   blocked?: boolean;               // NEW
   transactionsFrozen?: boolean;    // NEW
   createdAt?: any;

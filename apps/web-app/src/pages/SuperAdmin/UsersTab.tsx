@@ -94,7 +94,7 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
     }
   };
 
-  const toggleFlag = async (user: UserRow, field: 'blocked' | 'transactionsFrozen') => {
+  const toggleFlag = async (user: UserRow, field: 'blocked' | 'transactionsFrozen' | 'manualEmailVerified') => {
     const newVal = !user[field];
     setActionLoading((p) => ({ ...p, [user.id]: true }));
     try {
@@ -103,7 +103,8 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
         updatedAt: serverTimestamp(),
       });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, [field]: newVal } : u));
-      handleActionMsg(`User ${newVal ? 'frozen/blocked' : 'unfrozen/unblocked'} successfully`, 'ok');
+      const msg = field === 'manualEmailVerified' ? `User email manually verified: ${newVal}` : `User ${newVal ? 'frozen/blocked' : 'unfrozen/unblocked'} successfully`;
+      handleActionMsg(msg, 'ok');
     } catch (err: any) {
       handleActionMsg(err.message ?? 'Update failed', 'err');
     } finally {
@@ -290,18 +291,21 @@ export function UsersTab({ users, setUsers, orders, search, currentUser, userPro
                                       <p className="text-xl font-black text-slate-600">{Number(u.totalSilverPurchasedGrams || 0).toFixed(4)}<span className="text-xs ml-0.5 text-stone-400">g</span></p>
                                     </div>
                                   </div>
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    <button onClick={() => startEdit(u)} className="px-4 py-2 bg-amber-100 text-amber-800 font-bold border border-amber-200 rounded-xl text-xs flex-1 min-w-[120px] hover:bg-amber-200 transition-colors">✏️ Edit Profile</button>
-                                    <button onClick={() => toggleFlag(u, 'transactionsFrozen')} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.transactionsFrozen ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'}`}>
-                                      {u.transactionsFrozen ? '❄️ Unfreeze Txs' : '❄️ Freeze Txs'}
-                                    </button>
-                                    <button onClick={() => { if(confirm(`Are you sure you want to ${u.blocked ? 'unblock' : 'block'} this user?`)) toggleFlag(u, 'blocked'); }} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.blocked ? 'bg-red-100 text-red-800 border-red-200' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}>
-                                      {u.blocked ? '🛑 Unblock User' : '🛑 Block Platform Access'}
-                                    </button>
-                                    <button onClick={() => handleDelete(u)} disabled={isLoading} className="px-4 py-2 bg-stone-800 text-white font-bold rounded-xl text-xs flex-1 min-w-[120px] hover:bg-stone-900 transition-colors">
-                                      🗑️ Delete User
-                                    </button>
-                                  </div>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      <button onClick={() => startEdit(u)} className="px-4 py-2 bg-amber-100 text-amber-800 font-bold border border-amber-200 rounded-xl text-xs flex-1 min-w-[120px] hover:bg-amber-200 transition-colors">✏️ Edit Profile</button>
+                                      <button onClick={() => { if(confirm(`Mark email as manually verified? This bypasses standard verification.`)) toggleFlag(u, 'manualEmailVerified'); }} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.manualEmailVerified ? 'bg-green-100 text-green-800 border-green-200' : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'}`}>
+                                        {u.manualEmailVerified ? '✅ Email Verified' : 'Verify Email Manually'}
+                                      </button>
+                                      <button onClick={() => toggleFlag(u, 'transactionsFrozen')} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.transactionsFrozen ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'}`}>
+                                        {u.transactionsFrozen ? '❄️ Unfreeze Txs' : '❄️ Freeze Txs'}
+                                      </button>
+                                      <button onClick={() => { if(confirm(`Are you sure you want to ${u.blocked ? 'unblock' : 'block'} this user?`)) toggleFlag(u, 'blocked'); }} disabled={isLoading} className={`px-4 py-2 font-bold border rounded-xl text-xs flex-1 min-w-[120px] transition-colors ${u.blocked ? 'bg-red-100 text-red-800 border-red-200' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}>
+                                        {u.blocked ? '🛑 Unblock User' : '🛑 Block Platform Access'}
+                                      </button>
+                                      <button onClick={() => handleDelete(u)} disabled={isLoading} className="px-4 py-2 bg-stone-800 text-white font-bold rounded-xl text-xs flex-1 min-w-[120px] hover:bg-stone-900 transition-colors">
+                                        🗑️ Delete User
+                                      </button>
+                                    </div>
                                 </>
                               )}
                             </div>

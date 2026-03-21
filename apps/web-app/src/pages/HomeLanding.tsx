@@ -482,7 +482,7 @@ export const HomeLanding: React.FC = () => {
 
   // ── Redeem / Sell-to-jeweller request ────────────────────────────────────
   const handleSell = async () => {
-    if (!currentUser?.emailVerified) {
+    if (!currentUser?.emailVerified && !userProfile?.manualEmailVerified) {
       setSuccessMsg('Please verify your email before you can submit this request.');
       setTimeout(() => setSuccessMsg(''), 8000);
       return;
@@ -1236,7 +1236,7 @@ export const HomeLanding: React.FC = () => {
             </div>
 
             {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && (
+            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex flex-col gap-2">
                 <span>Verify your email to buy. Check your inbox.</span>
                 <button onClick={handleResendVerification} disabled={resending}
@@ -1247,7 +1247,7 @@ export const HomeLanding: React.FC = () => {
               </div>
             )}
 
-            {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified) && (
+            {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified) && (
               buyMetal === 'GOLD' ? (
                 <div className="space-y-2">
                   <SlideToConfirm
@@ -1379,7 +1379,7 @@ export const HomeLanding: React.FC = () => {
               </div>
             )}
             {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && (
+            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
                 <span>
                   Please verify your email before submitting this request. Check your inbox for a verification link.
@@ -1411,7 +1411,7 @@ export const HomeLanding: React.FC = () => {
             </div>
             <button
               onClick={handleSell}
-              disabled={Boolean((!sellForm.grams && !sellForm.amountInr) || (currentUser && currentUser.emailVerified === false))}
+              disabled={Boolean((!sellForm.grams && !sellForm.amountInr) || (currentUser && currentUser.emailVerified === false && !userProfile?.manualEmailVerified))}
               className="w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               <ArrowUpRight size={18} />
@@ -1465,7 +1465,7 @@ export const HomeLanding: React.FC = () => {
               </div>
             )}
             {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && (
+            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
                 <span>
                   Please verify your email to setup AutoPay. Check your inbox for a verification link.
@@ -1483,7 +1483,7 @@ export const HomeLanding: React.FC = () => {
 
             <button
               onClick={handleAutoPay}
-              disabled={Boolean(paying || !autoPayForm.amount || (currentUser && currentUser.emailVerified === false))}
+              disabled={Boolean(paying || !autoPayForm.amount || (currentUser && currentUser.emailVerified === false && !userProfile?.manualEmailVerified))}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}
