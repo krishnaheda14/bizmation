@@ -137,16 +137,15 @@ export const HomeLanding: React.FC = () => {
   const startLockTimer = () => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
     setLockSecondsLeft(LOCK_DURATION);
+    let remaining = LOCK_DURATION;
     lockIntervalRef.current = setInterval(() => {
-      setLockSecondsLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(lockIntervalRef.current!);
-          lockIntervalRef.current = null;
-          setLockedRate(null); // price expired
-          return 0;
-        }
-        return prev - 1;
-      });
+      remaining -= 1;
+      setLockSecondsLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(lockIntervalRef.current!);
+        lockIntervalRef.current = null;
+        setLockedRate(null); // price expired
+      }
     }, 1000);
   };
 
@@ -1254,6 +1253,7 @@ export const HomeLanding: React.FC = () => {
                     label={paying ? 'Creating 2-minute price lock...' : lockSecondsLeft === 0 && lockedRate ? 'Price expired — refresh to continue' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
                     value={slideValue}
                     disabled={paying || (lockedRate !== null && lockSecondsLeft === 0)}
+                    paying={paying}
                     onChange={setSlideValue}
                     onConfirm={handleBuy}
                   />
@@ -1578,9 +1578,9 @@ const BottomSheet: React.FC<{ title: string; onClose: () => void; children: Reac
 // Slide to Confirm — cinematic gold slider with SVG arrow
 // ────────────────────────────────────────────────────────────────────────────
 const SlideToConfirm: React.FC<{
-  label: string; value: number; disabled: boolean;
+  label: string; value: number; disabled: boolean; paying: boolean;
   onChange: (v: number) => void; onConfirm: () => void;
-}> = ({ label, value, disabled, onChange, onConfirm }) => {
+}> = ({ label, value, disabled, paying, onChange, onConfirm }) => {
   const confirmed = value >= 95;
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -1617,19 +1617,19 @@ const SlideToConfirm: React.FC<{
     <div className="relative select-none" ref={trackRef}>
       {/* Track */}
       <div
-        className={`relative h-16 rounded-2xl overflow-hidden transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`relative h-16 rounded-2xl overflow-hidden transition-all ${disabled && !paying ? 'opacity-50 cursor-not-allowed' : ''}`}
         style={{
-          background: disabled
+          background: disabled && !paying
             ? 'linear-gradient(135deg,#9ca3af 0%,#a1a5aa 100%)'
             : confirmed
             ? 'linear-gradient(90deg,#16a34a,#22c55e)'
             : 'linear-gradient(135deg,#1c1c1c 0%,#2a2a2a 100%)',
-          border: disabled
+          border: disabled && !paying
             ? '1.5px solid rgba(156,163,175,0.5)'
             : confirmed
             ? '1.5px solid #22c55e'
             : '1.5px solid rgba(251,191,36,0.5)',
-          boxShadow: disabled
+          boxShadow: disabled && !paying
             ? '0 0 10px rgba(156,163,175,0.1), inset 0 1px 0 rgba(255,255,255,0.05)'
             : confirmed
             ? '0 0 20px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.1)'
@@ -1642,7 +1642,7 @@ const SlideToConfirm: React.FC<{
           className="absolute inset-y-0 left-0 rounded-2xl transition-colors"
           style={{
             width: `${value}%`,
-            background: disabled
+            background: disabled && !paying
               ? 'rgba(156,163,175,0.2)'
               : confirmed
               ? 'rgba(34,197,94,0.3)'
@@ -1663,9 +1663,9 @@ const SlideToConfirm: React.FC<{
         {/* Centre label */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none pl-14">
           <span className={`text-sm font-bold tracking-wide transition-colors ${
-            disabled ? 'text-gray-600' : confirmed ? 'text-white' : 'text-amber-300 dark:text-yellow-400'
+            disabled && !paying ? 'text-gray-600' : confirmed ? 'text-white' : 'text-amber-300 dark:text-yellow-400'
           }`}>
-            {disabled ? 'Slide unavailable' : confirmed ? 'Confirmed — opening payment...' : label}
+            {disabled && !paying ? 'Slide unavailable' : confirmed ? 'Confirmed — opening payment...' : label}
           </span>
         </div>
 
@@ -1680,22 +1680,22 @@ const SlideToConfirm: React.FC<{
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center shadow-xl transition-all"
             style={{
-              background: disabled
+              background: disabled && !paying
                 ? 'linear-gradient(135deg,#d1d5db,#bfdbfe)'
                 : confirmed
                 ? 'linear-gradient(135deg,#22c55e,#16a34a)'
                 : 'linear-gradient(135deg,#fde68a 0%,#f59e0b 60%,#d97706 100%)',
               border: '2px solid rgba(255,255,255,0.25)',
-              boxShadow: disabled
+              boxShadow: disabled && !paying
                 ? '0 4px 12px rgba(156,163,175,0.3)'
                 : confirmed
                 ? '0 4px 16px rgba(34,197,94,0.5)'
                 : '0 4px 16px rgba(245,158,11,0.6), 0 0 0 3px rgba(251,191,36,0.2)',
-              color: disabled ? '#6b7280' : confirmed ? '#fff' : '#451a03',
-              transform: disabled ? 'scale(1)' : 'scale(1.05)',
+              color: disabled && !paying ? '#6b7280' : confirmed ? '#fff' : '#451a03',
+              transform: disabled && !paying ? 'scale(1)' : 'scale(1.05)',
             }}
           >
-            {disabled ? <svg viewBox="0 0 24 24" fill="currentColor" strokeWidth={2} className="w-5 h-5"><rect x="6" y="4" width="12" height="14" rx="2"/><path d="M9 14h6" stroke="currentColor" fill="none" strokeLinecap="round"/></svg> : confirmed ? <CheckSVG /> : <ChevronSVG />}
+            {disabled && !paying ? <svg viewBox="0 0 24 24" fill="currentColor" strokeWidth={2} className="w-5 h-5"><rect x="6" y="4" width="12" height="14" rx="2"/><path d="M9 14h6" stroke="currentColor" fill="none" strokeLinecap="round"/></svg> : confirmed ? <CheckSVG /> : <ChevronSVG />}
           </div>
         </div>
 
@@ -1709,10 +1709,10 @@ const SlideToConfirm: React.FC<{
         />
       </div>
       <p className={`text-center text-xs mt-1.5 flex items-center justify-center gap-1 transition-colors ${
-        disabled ? 'text-gray-400 dark:text-gray-600' : 'text-amber-500/70 dark:text-amber-400/70'
+        disabled && !paying ? 'text-gray-400 dark:text-gray-600' : 'text-amber-500/70 dark:text-amber-400/70'
       }`}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        {disabled ? 'Price lock expired' : 'Slide right to confirm purchase'}
+        {paying ? 'Processing payment...' : disabled ? 'Price lock expired' : 'Slide right to confirm purchase'}
       </p>
     </div>
   );
