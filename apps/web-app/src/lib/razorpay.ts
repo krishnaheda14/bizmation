@@ -50,6 +50,7 @@ export interface BuyGoldOptions {
   metal?: 'GOLD' | 'SILVER';
   onSuccess: (paymentId: string) => void;
   onFailure: (error: any) => void;
+  onLockCreated?: (lockData: { lockId: string; expiresAtMs: number; createdAtMs: number }) => void;
 }
 
 /** Open Razorpay checkout for buying gold */
@@ -88,10 +89,22 @@ export async function buyGold(options: BuyGoldOptions) {
   const lockId = String(createJson.data.lockId || '');
   const razorpayOrderId = String(createJson.data.razorpayOrderId || '');
   const amountInPaise = Number(createJson.data.amountPaise || 0);
+  const expiresAtMs = Number(createJson.data.expiresAtMs || 0);
+  const createdAtMs = Number(createJson.data.createdAtMs || 0);
 
-  if (!lockId || !razorpayOrderId || !amountInPaise) {
+  if (!lockId || !razorpayOrderId || !amountInPaise || !expiresAtMs) {
     options.onFailure(new Error('Invalid payment lock response from server.'));
     return;
+  }
+
+  // Notify the frontend that the lock has been created on the server
+  // This allows the timer to be synchronized with server time
+  if (options.onLockCreated) {
+    options.onLockCreated({
+      lockId,
+      expiresAtMs,
+      createdAtMs,
+    });
   }
 
   const razorpayOptions = {

@@ -132,21 +132,32 @@ export const HomeLanding: React.FC = () => {
   // ── Price-lock countdown ──────────────────────────────────────────
   const LOCK_DURATION = 120; // seconds
   const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
+  const [lockExpiresAtMs, setLockExpiresAtMs] = useState<number | null>(null);
   const lockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startLockTimer = () => {
+  const startLockTimer = (expiresAtMs: number) => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    setLockSecondsLeft(LOCK_DURATION);
+    setLockExpiresAtMs(expiresAtMs);
+    
+    // Calculate initial remaining time based on server timestamp
+    const nowMs = Date.now();
+    const secondsLeft = Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
+    setLockSecondsLeft(secondsLeft);
+    
     lockIntervalRef.current = setInterval(() => {
-      setLockSecondsLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(lockIntervalRef.current!);
-          lockIntervalRef.current = null;
-          setLockedRate(null); // price expired
-          return 0;
-        }
-        return prev - 1;
-      });
+      const currentMs = Date.now();
+      const remainingMs = expiresAtMs - currentMs;
+      const secondsRemaining = Math.max(0, Math.ceil(remainingMs / 1000));
+      
+      if (remainingMs <= 0) {
+        clearInterval(lockIntervalRef.current!);
+        lockIntervalRef.current = null;
+        setLockSecondsLeft(0);
+        setLockedRate(null); // price expired
+        return;
+      }
+      
+      setLockSecondsLeft(secondsRemaining);
     }, 1000);
   };
 
@@ -154,20 +165,21 @@ export const HomeLanding: React.FC = () => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
     lockIntervalRef.current = null;
     setLockSecondsLeft(0);
+    setLockExpiresAtMs(null);
   };
 
   // Cleanup on unmount
   useEffect(() => () => clearLockTimer(), []);
 
-  // Auto-start timer whenever a rate is locked
+  // Auto-start timer whenever a rate is locked and we have expiry time
   useEffect(() => {
-    if (lockedRate) {
-      startLockTimer();
+    if (lockedRate && lockExpiresAtMs) {
+      startLockTimer(lockExpiresAtMs);
     } else {
       clearLockTimer();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lockedRate]);
+  }, [lockedRate, lockExpiresAtMs]);
   // Show 999 rates to users, but execute gold buy/sell on 995 operational rate.
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
   const gold995 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995);
@@ -338,11 +350,6 @@ export const HomeLanding: React.FC = () => {
     const customerShopName = (userProfile as any)?.shopName ?? '';
     const customerShopId = (userProfile as any)?.shopId ?? '';
 
-    if (buyMetal === 'GOLD') {
-      // Lock the quote right before opening checkout.
-      setLockedRate(ratePerGram);
-    }
-
     setPaying(true);
     buyGold({
       grams, ratePerGram,
@@ -351,10 +358,18 @@ export const HomeLanding: React.FC = () => {
       customerPhone: custPhone,
       customerUid: currentUser?.uid ?? '',
       metal: buyMetal,
+      onLockCreated: (lockData) => {
+        // Only NOW (after backend confirms) do we set the locked rate and start timer
+        if (buyMetal === 'GOLD') {
+          setLockedRate(ratePerGram);
+          setLockExpiresAtMs(lockData.expiresAtMs);
+        }
+      },
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
+        setLockExpiresAtMs(null);
         setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
@@ -427,6 +442,7 @@ export const HomeLanding: React.FC = () => {
         setPaying(false);
         setSlideValue(0);
         setLockedRate(null);
+        setLockExpiresAtMs(null);
         if (err.message !== 'Payment cancelled') {
           alert(err.message);
         }
@@ -797,14 +813,14 @@ export const HomeLanding: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
-                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
                   >
                     <ShoppingCart size={18} />
                     Buy Gold Now
                   </button>
                   <button
-                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
                   >
                     <ShoppingCart size={18} />
@@ -1064,6 +1080,7 @@ export const HomeLanding: React.FC = () => {
                           onClick={() => {
                             setBuyMetal(r.metalType);
                             setLockedRate(null);
+                            setLockExpiresAtMs(null);
                             setModal({ type: 'buy' });
                           }}
                           className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">
@@ -1164,7 +1181,7 @@ export const HomeLanding: React.FC = () => {
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); }}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); setLockExpiresAtMs(null); }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     buyMetal === m
                       ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
@@ -1195,9 +1212,9 @@ export const HomeLanding: React.FC = () => {
               )}
               {lockedRate && lockSecondsLeft === 0 && (
                 <div className="mt-1 flex flex-col items-center gap-1">
-                  <span className="text-xs text-red-600 font-bold">Price expired — refresh to lock again</span>
-                  <button onClick={() => { if (goldBuyPrice) setLockedRate(goldBuyPrice); }} className="text-[10px] font-semibold text-amber-700 underline">
-                    Refresh price
+                  <span className="text-xs text-red-600 font-bold">Price expired — slide again to lock a new rate</span>
+                  <button onClick={() => { setLockedRate(null); setLockExpiresAtMs(null); }} className="text-[10px] font-semibold text-amber-700 underline">
+                    Retry
                   </button>
                 </div>
               )}

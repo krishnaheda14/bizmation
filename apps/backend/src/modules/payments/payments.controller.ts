@@ -102,7 +102,9 @@ export function paymentsRouter(): Router {
           amountPaise,
           currency: 'INR',
           lockWindowSeconds: LOCK_WINDOW_SECONDS,
+          expiresAtMs,
           expiresAt: new Date(expiresAtMs).toISOString(),
+          createdAtMs: nowMs,
         },
       });
     } catch (err: any) {
