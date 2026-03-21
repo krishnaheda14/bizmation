@@ -54,97 +54,97 @@ export interface BuyGoldOptions {
 
 /** Open Razorpay checkout for buying gold */
 export async function buyGold(options: BuyGoldOptions) {
-  const loaded = await loadRazorpayScript();
-  if (!loaded) {
-    options.onFailure(new Error('Failed to load Razorpay SDK'));
-    return;
-  }
+  try {
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      throw new Error('Failed to load Razorpay SDK');
+    }
 
-  if (!RAZORPAY_KEY_ID) {
-    options.onFailure(new Error('Razorpay Key ID not configured. Please add VITE_RAZORPAY_KEY_ID to your .env file.'));
-    return;
-  }
+    if (!RAZORPAY_KEY_ID) {
+      throw new Error('Razorpay Key ID not configured. Please add VITE_RAZORPAY_KEY_ID to your .env file.');
+    }
 
-  const createRes = await fetch('/api/payments/create-buy-order', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grams: options.grams,
-      ratePerGram: options.ratePerGram,
-      customerName: options.customerName,
-      customerEmail: options.customerEmail,
-      customerPhone: options.customerPhone,
-      customerUid: options.customerUid ?? '',
-      metal: options.metal ?? 'GOLD',
-    }),
-  });
+    const createRes = await fetch('/api/payments/create-buy-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grams: options.grams,
+        ratePerGram: options.ratePerGram,
+        customerName: options.customerName,
+        customerEmail: options.customerEmail,
+        customerPhone: options.customerPhone,
+        customerUid: options.customerUid ?? '',
+        metal: options.metal ?? 'GOLD',
+      }),
+    });
 
-  const createJson = await createRes.json().catch(() => ({}));
-  if (!createRes.ok || !createJson?.success) {
-    options.onFailure(new Error(createJson?.error || 'Could not create locked payment order.'));
-    return;
-  }
+    const createJson = await createRes.json().catch(() => ({}));
+    if (!createRes.ok || !createJson?.success) {
+      throw new Error(createJson?.error || 'Could not create locked payment order.');
+    }
 
-  const lockId = String(createJson.data.lockId || '');
-  const razorpayOrderId = String(createJson.data.razorpayOrderId || '');
-  const amountInPaise = Number(createJson.data.amountPaise || 0);
+    const lockId = String(createJson.data.lockId || '');
+    const razorpayOrderId = String(createJson.data.razorpayOrderId || '');
+    const amountInPaise = Number(createJson.data.amountPaise || 0);
 
-  if (!lockId || !razorpayOrderId || !amountInPaise) {
-    options.onFailure(new Error('Invalid payment lock response from server.'));
-    return;
-  }
+    if (!lockId || !razorpayOrderId || !amountInPaise) {
+      throw new Error('Invalid payment lock response from server.');
+    }
 
-  const razorpayOptions = {
-    key: RAZORPAY_KEY_ID,
-    amount: amountInPaise,
-    currency: 'INR',
-    order_id: razorpayOrderId,
-    name: 'Gold Purchase',
-    description: `${options.grams}g of 24K Gold @ ₹${options.ratePerGram.toFixed(2)}/g`,
-    image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/gem.svg',
-    prefill: {
-      name: options.customerName,
-      email: options.customerEmail,
-      contact: options.customerPhone,
-    },
-    theme: {
-      color: '#D97706', // amber-600
-    },
-    handler: async (response: any) => {
-      try {
-        const verifyRes = await fetch('/api/payments/verify-buy-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lockId,
-            razorpay_order_id: response?.razorpay_order_id,
-            razorpay_payment_id: response?.razorpay_payment_id,
-            razorpay_signature: response?.razorpay_signature,
-          }),
-        });
-
-        const verifyJson = await verifyRes.json().catch(() => ({}));
-        if (!verifyRes.ok || !verifyJson?.success) {
-          throw new Error(verifyJson?.error || 'Payment verification failed.');
-        }
-        if (verifyJson?.data?.expired) {
-          throw new Error('Payment came after 2-minute lock and has been marked for refund.');
-        }
-
-        options.onSuccess(response.razorpay_payment_id);
-      } catch (err: any) {
-        options.onFailure(err);
-      }
-    },
-    modal: {
-      ondismiss: () => {
-        options.onFailure(new Error('Payment cancelled'));
+    const razorpayOptions = {
+      key: RAZORPAY_KEY_ID,
+      amount: amountInPaise,
+      currency: 'INR',
+      order_id: razorpayOrderId,
+      name: 'Gold Purchase',
+      description: `${options.grams}g of 24K Gold @ ₹${options.ratePerGram.toFixed(2)}/g`,
+      image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/gem.svg',
+      prefill: {
+        name: options.customerName,
+        email: options.customerEmail,
+        contact: options.customerPhone,
       },
-    },
-  };
+      theme: {
+        color: '#D97706', // amber-600
+      },
+      handler: async (response: any) => {
+        try {
+          const verifyRes = await fetch('/api/payments/verify-buy-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lockId,
+              razorpay_order_id: response?.razorpay_order_id,
+              razorpay_payment_id: response?.razorpay_payment_id,
+              razorpay_signature: response?.razorpay_signature,
+            }),
+          });
 
-  const rzp = new window.Razorpay(razorpayOptions);
-  rzp.open();
+          const verifyJson = await verifyRes.json().catch(() => ({}));
+          if (!verifyRes.ok || !verifyJson?.success) {
+            throw new Error(verifyJson?.error || 'Payment verification failed.');
+          }
+          if (verifyJson?.data?.expired) {
+            throw new Error('Payment came after 2-minute lock and has been marked for refund.');
+          }
+
+          options.onSuccess(response.razorpay_payment_id);
+        } catch (err: any) {
+          options.onFailure(err);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          options.onFailure(new Error('Payment cancelled'));
+        },
+      },
+    };
+
+    const rzp = new window.Razorpay(razorpayOptions);
+    rzp.open();
+  } catch (err: any) {
+    options.onFailure(err);
+  }
 }
 
 export interface AutoPayOptions {

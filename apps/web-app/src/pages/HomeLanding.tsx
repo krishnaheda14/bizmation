@@ -1665,7 +1665,7 @@ const SlideToConfirm: React.FC<{
           <span className={`text-sm font-bold tracking-wide transition-colors ${
             disabled ? 'text-gray-600' : confirmed ? 'text-white' : 'text-amber-300 dark:text-yellow-400'
           }`}>
-            {disabled ? 'Slide unavailable' : confirmed ? 'Confirmed — opening payment...' : label}
+            {confirmed ? 'Confirmed — opening payment...' : label}
           </span>
         </div>
 
@@ -1712,9 +1712,8 @@ const SlideToConfirm: React.FC<{
         disabled ? 'text-gray-400 dark:text-gray-600' : 'text-amber-500/70 dark:text-amber-400/70'
       }`}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        {disabled ? 'Price lock expired' : 'Slide right to confirm purchase'}
+        {disabled ? label : 'Slide right to confirm purchase'}
       </p>
     </div>
   );
 };
-
