@@ -13,7 +13,7 @@ import {
   X, Loader2, Phone, Mail, User, Timer,
 } from 'lucide-react';
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
-import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
+import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -50,6 +50,7 @@ const COIN_OPTIONS: Record<CoinMetal, number[]> = {
   GOLD: [0.5, 1, 2, 10, 20, 50],
   SILVER: [10, 20, 50, 100, 250, 500, 1000],
 };
+const COIN_MAKING_CHARGE_PER_UNIT = 300;
 
 // Component
 // ────────────────────────────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ export const HomeLanding: React.FC = () => {
   const [coinDeliveryCity, setCoinDeliveryCity] = useState('');
   const [coinNote, setCoinNote] = useState('');
   const [coinSubmitting, setCoinSubmitting] = useState(false);
+  const [coinSuccessOverlay, setCoinSuccessOverlay] = useState(false);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -649,7 +651,7 @@ export const HomeLanding: React.FC = () => {
     : null;
 
   const activeCoinRate = coinMetal === 'GOLD' ? goldBuyPrice : silverBuyPrice;
-  const estimatedCoinAmount = Math.max(0, activeCoinRate * coinWeightGrams * coinQuantity);
+  const estimatedCoinAmount = Math.max(0, (activeCoinRate * coinWeightGrams * coinQuantity) + (COIN_MAKING_CHARGE_PER_UNIT * coinQuantity));
 
   const submitCoinRequest = async () => {
     if (!currentUser || !userProfile) {
@@ -666,42 +668,72 @@ export const HomeLanding: React.FC = () => {
     }
 
     setCoinSubmitting(true);
-    try {
-      const customerShopName = (userProfile as any)?.shopName ?? '';
-      const customerShopId = (userProfile as any)?.shopId ?? '';
-      await addDoc(collection(db, 'coinPurchaseRequests'), {
-        source: 'HOME_SCREEN',
-        status: 'PENDING',
-        metal: coinMetal,
-        weightGrams: coinWeightGrams,
-        quantity: coinQuantity,
-        estimatedRatePerGram: activeCoinRate,
-        estimatedAmountInr: Math.round(estimatedCoinAmount * 100) / 100,
-        customerUid: currentUser.uid,
-        customerName: userProfile.name ?? currentUser.displayName ?? '',
-        customerEmail: userProfile.email ?? currentUser.email ?? '',
-        customerPhone: userProfile.phone ?? '',
-        deliveryCity: coinDeliveryCity.trim(),
-        customerNote: coinNote.trim(),
-        shopName: customerShopName,
-        shopId: customerShopId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    const customerShopName = (userProfile as any)?.shopName ?? '';
+    const customerShopId = (userProfile as any)?.shopId ?? '';
+    const customerName = userProfile.name ?? currentUser.displayName ?? '';
+    const customerEmail = userProfile.email ?? currentUser.email ?? '';
+    const customerPhone = userProfile.phone ?? '';
 
-      setSuccessMsg(`Coin request sent for ${coinQuantity} x ${coinWeightGrams}g ${coinMetal.toLowerCase()} coin(s). Super Admin will review shortly.`);
-      setTimeout(() => setSuccessMsg(''), 8000);
-      setModal({ type: null });
-      setCoinNote('');
-      setCoinDeliveryCity('');
-      setCoinQuantity(1);
-      setCoinWeightGrams(coinMetal === 'GOLD' ? 0.5 : 10);
-    } catch (err: any) {
-      setError(`Failed to submit coin request: ${err?.message || 'Unknown error'}`);
-      setTimeout(() => setError(''), 8000);
-    } finally {
-      setCoinSubmitting(false);
-    }
+    buyCoins({
+      metal: coinMetal,
+      gramsPerCoin: coinWeightGrams,
+      quantity: coinQuantity,
+      ratePerGram: activeCoinRate,
+      makingChargesPerCoinInr: COIN_MAKING_CHARGE_PER_UNIT,
+      customerName,
+      customerEmail,
+      customerPhone,
+      customerUid: currentUser.uid,
+      onSuccess: async (paymentId, paymentDetails) => {
+        try {
+          await addDoc(collection(db, 'coinPurchaseOrders'), {
+            source: 'HOME_SCREEN',
+            status: 'ACCEPTED',
+            orderStatusTimeline: [{ status: 'ACCEPTED', at: new Date().toISOString(), by: 'SYSTEM_PAYMENT_SUCCESS' }],
+            paymentStatus: 'PAID',
+            paymentLockId: paymentDetails.lockId,
+            razorpayPaymentId: paymentId,
+            metal: coinMetal,
+            weightGrams: coinWeightGrams,
+            quantity: coinQuantity,
+            estimatedRatePerGram: activeCoinRate,
+            makingChargesPerUnitInr: COIN_MAKING_CHARGE_PER_UNIT,
+            makingChargesTotalInr: COIN_MAKING_CHARGE_PER_UNIT * coinQuantity,
+            totalAmountInr: Math.round(paymentDetails.totalAmountInr * 100) / 100,
+            customerUid: currentUser.uid,
+            customerName,
+            customerEmail,
+            customerPhone,
+            deliveryCity: coinDeliveryCity.trim(),
+            customerNote: coinNote.trim(),
+            shopName: customerShopName,
+            shopId: customerShopId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          setCoinSuccessOverlay(true);
+          setTimeout(() => setCoinSuccessOverlay(false), 1800);
+          setSuccessMsg(`Coin order placed and paid successfully. Track it in Orders under Coin Purchase Orders.`);
+          setTimeout(() => setSuccessMsg(''), 8000);
+          setModal({ type: null });
+          setCoinNote('');
+          setCoinDeliveryCity('');
+          setCoinQuantity(1);
+          setCoinWeightGrams(coinMetal === 'GOLD' ? 0.5 : 10);
+        } catch (err: any) {
+          setError(`Payment succeeded but order save failed: ${err?.message || 'Unknown error'}`);
+          setTimeout(() => setError(''), 9000);
+        } finally {
+          setCoinSubmitting(false);
+        }
+      },
+      onFailure: (err: any) => {
+        setCoinSubmitting(false);
+        setError(`Coin payment failed: ${err?.message || 'Unknown error'}`);
+        setTimeout(() => setError(''), 8000);
+      },
+    });
   };
 
   const noKey = !RAZORPAY_KEY_ID;
@@ -808,6 +840,18 @@ export const HomeLanding: React.FC = () => {
           <button onClick={() => setSuccessMsg('')} className="ml-auto">
             <X size={16} />
           </button>
+        </div>
+      )}
+
+      {coinSuccessOverlay && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-3 animate-fade-up-soft">
+            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle size={34} className="text-green-600" />
+            </div>
+            <p className="text-sm font-bold text-stone-800">Request Submitted Successfully</p>
+            <p className="text-xs text-stone-500">Payment received. Order is now in Accepted stage.</p>
+          </div>
         </div>
       )}
 
@@ -1390,7 +1434,7 @@ export const HomeLanding: React.FC = () => {
         <BottomSheet title="Buy Gold / Silver Coins" onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800">
-              Coin purchases are reviewed by Super Admin before final confirmation. Rates are indicative and may vary at confirmation time.
+              After payment, order starts as ACCEPTED. Super Admin may move it through APPROVED, PREPARING, READY_TO_DISPATCH and DEPARTED stages.
             </div>
 
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 border border-amber-200">
@@ -1471,7 +1515,7 @@ export const HomeLanding: React.FC = () => {
             <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm flex items-center justify-between">
               <div>
                 <p className="text-green-800 font-semibold">Estimated Request Value</p>
-                <p className="text-[11px] text-green-700">{coinQuantity} × {coinWeightGrams}g @ ₹{activeCoinRate.toFixed(4)}/g</p>
+                <p className="text-[11px] text-green-700">{coinQuantity} × {coinWeightGrams}g @ ₹{activeCoinRate.toFixed(4)}/g + ₹{COIN_MAKING_CHARGE_PER_UNIT} making/coin</p>
               </div>
               <p className="text-lg font-black text-green-900">₹{estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
@@ -1482,7 +1526,7 @@ export const HomeLanding: React.FC = () => {
               className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               {coinSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Coins size={18} />}
-              {coinSubmitting ? 'Submitting Request...' : 'Submit Coin Purchase Request'}
+              {coinSubmitting ? 'Opening Payment...' : `Pay ₹${estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} & Submit Order`}
             </button>
           </div>
         </BottomSheet>

@@ -13,7 +13,7 @@ const TABS: TabType[] = [
   { key: 'shops', label: 'Shops' },
   { key: 'customers', label: 'Users' },
   { key: 'orders', label: 'Orders' },
-  { key: 'coin-requests', label: 'Coin Requests' },
+  { key: 'coin-requests', label: 'Coin Orders' },
   { key: 'stats', label: 'Platform' },
 ];
 
@@ -57,7 +57,7 @@ export function SuperAdmin() {
         getDocs(query(collection(db, 'shops'), orderBy('name'))),
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'goldOnlineOrders'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'coinPurchaseRequests'), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'coinPurchaseOrders'), orderBy('createdAt', 'desc'))),
       ]);
       setShops(shopsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as ShopRow)));
       setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as UserRow)));

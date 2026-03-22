@@ -93,13 +93,19 @@ export interface PlatformOrderRow {
 
 export interface CoinPurchaseRequestRow {
   id: string;
-  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CONTACTED';
+  status?: 'ACCEPTED' | 'APPROVED' | 'PREPARING' | 'READY_TO_DISPATCH' | 'DEPARTED' | 'REJECTED';
   source?: string;
   metal?: 'GOLD' | 'SILVER';
   weightGrams?: number;
   quantity?: number;
   estimatedRatePerGram?: number;
-  estimatedAmountInr?: number;
+  makingChargesPerUnitInr?: number;
+  makingChargesTotalInr?: number;
+  totalAmountInr?: number;
+  paymentStatus?: 'PAID' | 'FAILED' | 'PENDING';
+  razorpayPaymentId?: string;
+  paymentLockId?: string;
+  orderStatusTimeline?: Array<{ status: string; at: string; by: string }>;
   customerUid?: string;
   customerName?: string;
   customerEmail?: string;

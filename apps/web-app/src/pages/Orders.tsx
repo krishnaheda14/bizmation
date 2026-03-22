@@ -38,9 +38,13 @@ interface CoinRequest {
   metal?: 'GOLD' | 'SILVER';
   weightGrams?: number;
   quantity?: number;
-  status?: string;
-  estimatedAmountInr?: number;
+  status?: 'ACCEPTED' | 'APPROVED' | 'PREPARING' | 'READY_TO_DISPATCH' | 'DEPARTED' | 'REJECTED';
+  totalAmountInr?: number;
+  paymentStatus?: 'PAID' | 'FAILED' | 'PENDING';
+  razorpayPaymentId?: string;
+  makingChargesTotalInr?: number;
   deliveryCity?: string;
+  orderStatusTimeline?: Array<{ status: string; at: string; by: string }>;
   createdAt?: any;
 }
 
@@ -184,7 +188,7 @@ export const Orders: React.FC = () => {
           email: currentUser.email ?? userProfile?.email ?? '',
           phone: userProfile?.phone ?? '',
         }),
-        getDocs(query(collection(db, 'coinPurchaseRequests'), where('customerUid', '==', currentUser.uid))),
+        getDocs(query(collection(db, 'coinPurchaseOrders'), where('customerUid', '==', currentUser.uid))),
       ]);
       setOrders(result as GoldOrder[]);
       const coinRows = coinSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as CoinRequest));
@@ -376,12 +380,12 @@ export const Orders: React.FC = () => {
         <div className="bg-white dark:bg-gray-950 border border-stone-100 dark:border-gray-800 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-black text-stone-800 dark:text-white flex items-center gap-2">
-              <Coins size={16} className="text-amber-500" /> Coin Purchase Requests
+              <Coins size={16} className="text-amber-500" /> Coin Purchase Orders
             </h2>
-            <span className="text-xs text-stone-500">{coinRequests.length} request(s)</span>
+            <span className="text-xs text-stone-500">{coinRequests.length} order(s)</span>
           </div>
           {coinRequests.length === 0 ? (
-            <p className="text-sm text-stone-500">No coin purchase requests yet. Raise one from Home → Buy Coins.</p>
+            <p className="text-sm text-stone-500">No coin orders yet. Place one from Home → Buy Coins.</p>
           ) : (
             <div className="space-y-2.5">
               {coinRequests.map((r) => {
@@ -393,10 +397,11 @@ export const Orders: React.FC = () => {
                     <div>
                       <p className="text-sm font-bold text-amber-900">{r.quantity || 0} × {r.weightGrams || 0}g {r.metal || '-'} coin</p>
                       <p className="text-xs text-amber-700">{dt} · Delivery: {r.deliveryCity || '-'}</p>
+                      <p className="text-[11px] text-stone-600 mt-1">Payment: {r.paymentStatus || 'PAID'}{r.razorpayPaymentId ? ` · ${r.razorpayPaymentId}` : ''}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-black text-stone-900">₹{Number(r.estimatedAmountInr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                      <p className="text-xs font-semibold text-stone-600">Status: {r.status || 'PENDING'}</p>
+                      <p className="text-sm font-black text-stone-900">₹{Number(r.totalAmountInr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      <p className="text-xs font-semibold text-stone-600">Status: {r.status || 'ACCEPTED'}</p>
                     </div>
                   </div>
                 );

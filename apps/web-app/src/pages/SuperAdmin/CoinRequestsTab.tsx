@@ -13,7 +13,7 @@ interface Props {
   handleActionMsg: (text: string, type: 'ok' | 'err') => void;
 }
 
-const STATUS_ORDER = ['PENDING', 'CONTACTED', 'APPROVED', 'REJECTED'] as const;
+const STATUS_ORDER = ['ACCEPTED', 'APPROVED', 'PREPARING', 'READY_TO_DISPATCH', 'DEPARTED', 'REJECTED'] as const;
 
 export function CoinRequestsTab({ requests, setRequests, search, currentUser, userProfile, handleActionMsg }: Props) {
   const [statusDraft, setStatusDraft] = useState<Record<string, string>>({});
@@ -36,19 +36,19 @@ export function CoinRequestsTab({ requests, setRequests, search, currentUser, us
 
   const counts = useMemo(() => {
     return requests.reduce((acc, r) => {
-      const key = String(r.status || 'PENDING').toUpperCase();
+      const key = String(r.status || 'ACCEPTED').toUpperCase();
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
   }, [requests]);
 
   const saveStatus = async (req: CoinPurchaseRequestRow) => {
-    const nextStatus = (statusDraft[req.id] || req.status || 'PENDING').toUpperCase() as CoinPurchaseRequestRow['status'];
+    const nextStatus = (statusDraft[req.id] || req.status || 'ACCEPTED').toUpperCase() as CoinPurchaseRequestRow['status'];
     const nextNote = (noteDraft[req.id] ?? req.adminNote ?? '').trim();
 
     try {
       setSavingId(req.id);
-      await updateDoc(doc(db, 'coinPurchaseRequests', req.id), {
+      await updateDoc(doc(db, 'coinPurchaseOrders', req.id), {
         status: nextStatus,
         adminNote: nextNote,
         reviewedByUid: currentUser?.uid || '',
@@ -66,10 +66,18 @@ export function CoinRequestsTab({ requests, setRequests, search, currentUser, us
               reviewedByUid: currentUser?.uid || '',
               reviewedByName: userProfile?.name || userProfile?.email || 'Super Admin',
               reviewedAt: new Date().toISOString(),
+              orderStatusTimeline: [
+                ...((Array.isArray(r.orderStatusTimeline) ? r.orderStatusTimeline : [])),
+                {
+                  status: String(nextStatus),
+                  at: new Date().toISOString(),
+                  by: userProfile?.name || userProfile?.email || 'Super Admin',
+                },
+              ],
             }
           : r
       )));
-      handleActionMsg(`Coin request ${req.id.slice(0, 8)} updated to ${nextStatus}.`, 'ok');
+      handleActionMsg(`Coin order ${req.id.slice(0, 8)} updated to ${nextStatus}.`, 'ok');
     } catch (err: any) {
       handleActionMsg(`Failed to update request: ${err?.message || 'Unknown error'}`, 'err');
     } finally {
@@ -105,11 +113,11 @@ export function CoinRequestsTab({ requests, setRequests, search, currentUser, us
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-14 text-stone-400 font-medium">No coin requests found.</td>
+                  <td colSpan={7} className="text-center py-14 text-stone-400 font-medium">No coin orders found.</td>
                 </tr>
               )}
               {filtered.map((r, idx) => {
-                const selectedStatus = statusDraft[r.id] || String(r.status || 'PENDING').toUpperCase();
+                const selectedStatus = statusDraft[r.id] || String(r.status || 'ACCEPTED').toUpperCase();
                 return (
                   <tr key={r.id} className={`border-b border-stone-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-stone-50/40'}`}>
                     <td className="px-4 py-3 align-top">
@@ -123,7 +131,8 @@ export function CoinRequestsTab({ requests, setRequests, search, currentUser, us
                     </td>
                     <td className="px-4 py-3 align-top">
                       <p className="font-semibold text-stone-800">{r.quantity || 0} × {r.weightGrams || 0}g {r.metal || '-'}</p>
-                      <p className="text-xs text-stone-500">Indicative amount: {fmtInr(Number(r.estimatedAmountInr || 0), false)}</p>
+                      <p className="text-xs text-stone-500">Order value: {fmtInr(Number(r.totalAmountInr || 0), false)}</p>
+                      <p className="text-xs text-stone-500">Payment: {(r.paymentStatus || 'PAID')} {r.razorpayPaymentId ? `(${r.razorpayPaymentId})` : ''}</p>
                       <p className="text-[11px] text-stone-500 mt-1">Shop: {r.shopName || 'N/A'}</p>
                     </td>
                     <td className="px-4 py-3 align-top">
