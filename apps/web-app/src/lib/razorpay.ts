@@ -71,11 +71,20 @@ export interface BuyCoinsOptions {
 }
 
 function getApiBaseUrl(): string {
-  const explicit = String(import.meta.env.VITE_PAYMENTS_API_URL || import.meta.env.VITE_BACKEND_API_URL || '').trim();
-  const fallback = String(import.meta.env.VITE_API_URL || '').trim();
-  const raw = explicit || fallback;
+  const raw = String(import.meta.env.VITE_API_URL || '').trim();
   if (!raw) return '';
   return raw.replace(/\/$/, '');
+}
+
+function isLocalhostRuntime(): boolean {
+  return typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+}
+
+function resolveApiUrl(path: string): string {
+  const base = getApiBaseUrl();
+  if (base) return `${base}${path}`;
+  if (isLocalhostRuntime()) return path;
+  throw new Error('VITE_API_URL is not configured for production payment calls.');
 }
 
 function toApiUrl(path: string): string {
@@ -86,11 +95,8 @@ function toApiUrl(path: string): string {
 
 function getApiCandidates(path: string): string[] {
   const base = getApiBaseUrl();
-  const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-  if (!base) return [path];
-  const primary = `${base}${path}`;
-  // In local dev, allow /api fallback via Vite proxy. In production, never silently fallback.
-  return isLocal ? [primary, path] : [primary];
+  if (base) return [`${base}${path}`];
+  return isLocalhostRuntime() ? [path] : [];
 }
 
 async function fetchWithFallback(
@@ -99,6 +105,9 @@ async function fetchWithFallback(
   onDebug?: (details: string) => void,
 ): Promise<{ res: Response; url: string }> {
   const candidates = getApiCandidates(path);
+  if (candidates.length === 0) {
+    throw new Error('VITE_API_URL is missing in production. Configure Cloudflare Pages env and redeploy.');
+  }
   let lastErr: any = null;
   for (const url of candidates) {
     try {

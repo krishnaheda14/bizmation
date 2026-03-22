@@ -7,8 +7,6 @@ export interface Env {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string; // full PEM, \n can be literal or escaped
-  // Backend API used for forwarding payment endpoints when frontend points to this worker.
-  BACKEND_API_URL?: string;
 }
 
 // ─── Firebase custom token (RS256 JWT signed via Web Crypto) ─────────────────
@@ -92,11 +90,6 @@ function jsonResponse(body: unknown, status = 200, origin: string | null = null)
   return new Response(JSON.stringify(body), { status, headers: corsHeaders(origin) });
 }
 
-function makeProxyTarget(baseUrl: string, pathWithQuery: string): string {
-  const cleanBase = baseUrl.replace(/\/$/, '');
-  return `${cleanBase}${pathWithQuery}`;
-}
-
 function basicAuthHeader(accountSid: string, authToken: string) {
   // btoa available in Workers
   return 'Basic ' + btoa(`${accountSid}:${authToken}`);
@@ -108,47 +101,6 @@ export default {
     console.log(`[TwilioWorker] ${request.method} ${new URL(request.url).pathname} from Origin: ${origin}`);
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
-
-    // ── Payments proxy (optional) ──────────────────────────────────────────
-    // Useful when frontend base URL points to this worker. We forward payment
-    // APIs to the backend service configured in BACKEND_API_URL.
-    if (url.pathname.startsWith('/api/payments/') && request.method === 'POST') {
-      const backendBase = String(env.BACKEND_API_URL || '').trim();
-      if (!backendBase) {
-        return jsonResponse({
-          success: false,
-          error: 'Payment proxy not configured on worker. Set BACKEND_API_URL secret.',
-        }, 500, origin);
-      }
-
-      const target = makeProxyTarget(backendBase, `${url.pathname}${url.search}`);
-      const bodyText = await request.text().catch(() => '');
-      try {
-        const upstream = await fetch(target, {
-          method: 'POST',
-          headers: {
-            'Content-Type': request.headers.get('Content-Type') || 'application/json',
-          },
-          body: bodyText,
-        });
-
-        const responseBody = await upstream.text().catch(() => '');
-        const headers = corsHeaders(origin);
-        const upstreamType = upstream.headers.get('content-type');
-        if (upstreamType) headers['Content-Type'] = upstreamType;
-
-        return new Response(responseBody, {
-          status: upstream.status,
-          headers,
-        });
-      } catch (err: any) {
-        return jsonResponse({
-          success: false,
-          error: `Payment proxy failed: ${String(err?.message || err)}`,
-          target,
-        }, 502, origin);
-      }
-    }
 
     if (url.pathname === '/api/auth/send-otp' && request.method === 'POST') {
       const body = await request.json().catch(() => ({}));
