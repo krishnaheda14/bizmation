@@ -23,7 +23,7 @@ import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders'
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 interface ModalState {
-  type: 'buy' | 'sell' | 'autopay' | null;
+  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | null;
 }
 
 interface BuyFormData {
@@ -43,6 +43,14 @@ interface SellFormData {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+
+type CoinMetal = 'GOLD' | 'SILVER';
+
+const COIN_OPTIONS: Record<CoinMetal, number[]> = {
+  GOLD: [0.5, 1, 2, 10, 20, 50],
+  SILVER: [10, 20, 50, 100, 250, 500, 1000],
+};
+
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
@@ -50,34 +58,34 @@ export const HomeLanding: React.FC = () => {
   const REDEEM_DEDUCTION_PER_GRAM = 50;
   const GOLD_COMMISSION_PER_GRAM = 20;   // Rs 200 per 10g
   const SILVER_COMMISSION_PER_GRAM = 2;  // Rs 2000 per 1kg
-    // Detailed live price breakdown state
-    const [priceFeed, setPriceFeed] = useState<any>(null);
-    const fetchDetailedFeed = useCallback(async () => {
-      try {
-        const d = await fetchWorkerData();
-        if (d?.xauUsd) {
-          setPriceFeed({
-            xauInr:    d.xauInr,
-            xagInr:    d.xagInr,
-            xauUsd:    d.xauUsd,
-            xagUsd:    d.xagUsd,
-            usdInr:    d.usdToInr,
-            source:    d.source,
-            fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
-          });
-          return;
-        }
-        setPriceFeed(null);
-      } catch {
-        setPriceFeed(null);
+  // Detailed live price breakdown state
+  const [priceFeed, setPriceFeed] = useState<any>(null);
+  const fetchDetailedFeed = useCallback(async () => {
+    try {
+      const d = await fetchWorkerData();
+      if (d?.xauUsd) {
+        setPriceFeed({
+          xauInr:    d.xauInr,
+          xagInr:    d.xagInr,
+          xauUsd:    d.xauUsd,
+          xagUsd:    d.xagUsd,
+          usdInr:    d.usdToInr,
+          source:    d.source,
+          fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
+        });
+        return;
       }
-    }, []);
+      setPriceFeed(null);
+    } catch {
+      setPriceFeed(null);
+    }
+  }, []);
 
-    useEffect(() => {
-      fetchDetailedFeed();
-      const interval = setInterval(fetchDetailedFeed, 5 * 60 * 1000); // refresh every 5 min (match worker cron)
-      return () => clearInterval(interval);
-    }, [fetchDetailedFeed]);
+  useEffect(() => {
+    fetchDetailedFeed();
+    const interval = setInterval(fetchDetailedFeed, 5 * 60 * 1000); // refresh every 5 min (match worker cron)
+    return () => clearInterval(interval);
+  }, [fetchDetailedFeed]);
   const { currentUser, userProfile } = useAuth();
   const ownerVerificationStatus = ((userProfile as any)?.shopVerificationStatus ?? '').toUpperCase();
   const ownerIsUnverified = (userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF')
@@ -116,6 +124,13 @@ export const HomeLanding: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [slideValue, setSlideValue] = useState(0);
+  const [paymentDebugLines, setPaymentDebugLines] = useState<string[]>([]);
+  const [coinMetal, setCoinMetal] = useState<CoinMetal>('GOLD');
+  const [coinWeightGrams, setCoinWeightGrams] = useState<number>(0.5);
+  const [coinQuantity, setCoinQuantity] = useState<number>(1);
+  const [coinDeliveryCity, setCoinDeliveryCity] = useState('');
+  const [coinNote, setCoinNote] = useState('');
+  const [coinSubmitting, setCoinSubmitting] = useState(false);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -166,6 +181,14 @@ export const HomeLanding: React.FC = () => {
     lockIntervalRef.current = null;
     setLockSecondsLeft(0);
     setLockExpiresAtMs(null);
+  };
+
+  const pushPaymentDebug = (line: string) => {
+    const stamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
+    setPaymentDebugLines((prev) => {
+      const next = [...prev, `${stamp}  ${line}`];
+      return next.slice(-8);
+    });
   };
 
   // Cleanup on unmount
@@ -351,6 +374,8 @@ export const HomeLanding: React.FC = () => {
     const customerShopId = (userProfile as any)?.shopId ?? '';
 
     setPaying(true);
+    setPaymentDebugLines([]);
+    pushPaymentDebug(`Buy request started for ${buyMetal} (${buyForm.grams}g)`);
     buyGold({
       grams, ratePerGram,
       customerName:  custName,
@@ -359,13 +384,25 @@ export const HomeLanding: React.FC = () => {
       customerUid: currentUser?.uid ?? '',
       metal: buyMetal,
       onLockCreated: (lockData) => {
+        pushPaymentDebug(`Price lock created. Lock ID: ${lockData.lockId.slice(0, 10)}... Expires in ~2 min.`);
         // Only NOW (after backend confirms) do we set the locked rate and start timer
         if (buyMetal === 'GOLD') {
           setLockedRate(ratePerGram);
           setLockExpiresAtMs(lockData.expiresAtMs);
         }
       },
+      onFailure: (err) => {
+        setPaying(false);
+        setLockedRate(null);
+        setLockExpiresAtMs(null);
+        setSlideValue(0);
+        pushPaymentDebug(`Failure: ${err?.message || 'Unknown payment error'}`);
+        setError(`Payment failed: ${err.message}. Please try again. If issue continues, share payment debug details from this screen.`);
+        setTimeout(() => setError(''), 8000);
+      },
+      onDebug: (details) => pushPaymentDebug(details),
       onSuccess: async (id) => {
+        pushPaymentDebug(`Payment captured successfully. Payment ID: ${id}`);
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
@@ -437,15 +474,6 @@ export const HomeLanding: React.FC = () => {
             }
           }
         } catch { /* non-blocking */ }
-      },
-      onFailure: (err) => {
-        setPaying(false);
-        setSlideValue(0);
-        setLockedRate(null);
-        setLockExpiresAtMs(null);
-        if (err.message !== 'Payment cancelled') {
-          alert(err.message);
-        }
       },
     });
   };
@@ -619,6 +647,62 @@ export const HomeLanding: React.FC = () => {
   const sellEst = sellDerivedGrams > 0 && sellRedeemRate > 0
     ? (sellDerivedGrams * sellRedeemRate).toFixed(4)
     : null;
+
+  const activeCoinRate = coinMetal === 'GOLD' ? goldBuyPrice : silverBuyPrice;
+  const estimatedCoinAmount = Math.max(0, activeCoinRate * coinWeightGrams * coinQuantity);
+
+  const submitCoinRequest = async () => {
+    if (!currentUser || !userProfile) {
+      setError('Please sign in again and retry coin request.');
+      return;
+    }
+    if (!coinDeliveryCity.trim()) {
+      setError('Please enter delivery city for coin request.');
+      return;
+    }
+    if (!coinWeightGrams || coinQuantity <= 0 || !activeCoinRate) {
+      setError('Please select a valid coin size and quantity.');
+      return;
+    }
+
+    setCoinSubmitting(true);
+    try {
+      const customerShopName = (userProfile as any)?.shopName ?? '';
+      const customerShopId = (userProfile as any)?.shopId ?? '';
+      await addDoc(collection(db, 'coinPurchaseRequests'), {
+        source: 'HOME_SCREEN',
+        status: 'PENDING',
+        metal: coinMetal,
+        weightGrams: coinWeightGrams,
+        quantity: coinQuantity,
+        estimatedRatePerGram: activeCoinRate,
+        estimatedAmountInr: Math.round(estimatedCoinAmount * 100) / 100,
+        customerUid: currentUser.uid,
+        customerName: userProfile.name ?? currentUser.displayName ?? '',
+        customerEmail: userProfile.email ?? currentUser.email ?? '',
+        customerPhone: userProfile.phone ?? '',
+        deliveryCity: coinDeliveryCity.trim(),
+        customerNote: coinNote.trim(),
+        shopName: customerShopName,
+        shopId: customerShopId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setSuccessMsg(`Coin request sent for ${coinQuantity} x ${coinWeightGrams}g ${coinMetal.toLowerCase()} coin(s). Super Admin will review shortly.`);
+      setTimeout(() => setSuccessMsg(''), 8000);
+      setModal({ type: null });
+      setCoinNote('');
+      setCoinDeliveryCity('');
+      setCoinQuantity(1);
+      setCoinWeightGrams(coinMetal === 'GOLD' ? 0.5 : 10);
+    } catch (err: any) {
+      setError(`Failed to submit coin request: ${err?.message || 'Unknown error'}`);
+      setTimeout(() => setError(''), 8000);
+    } finally {
+      setCoinSubmitting(false);
+    }
+  };
 
   const noKey = !RAZORPAY_KEY_ID;
 
@@ -806,7 +890,7 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
                     onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
@@ -834,6 +918,20 @@ export const HomeLanding: React.FC = () => {
                   >
                     <Repeat size={18} />
                     Setup AutoPay
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCoinMetal('GOLD');
+                      setCoinWeightGrams(0.5);
+                      setCoinQuantity(1);
+                      setCoinDeliveryCity((userProfile?.city ?? '').trim());
+                      setCoinNote('');
+                      setModal({ type: 'coin-request' });
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-stone-900 to-stone-700 hover:from-black hover:to-stone-900 text-amber-200 font-bold rounded-xl shadow-lg hover:shadow-stone-500/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Coins size={18} />
+                    Buy Coins
                   </button>
               </div>
 
@@ -1272,6 +1370,120 @@ export const HomeLanding: React.FC = () => {
                 </button>
               )
             )}
+
+            {paymentDebugLines.length > 0 && (
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3">
+                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-1.5">Payment Debug (Safe to Share)</p>
+                <div className="space-y-1">
+                  {paymentDebugLines.map((line, idx) => (
+                    <p key={`${idx}-${line.slice(0, 16)}`} className="text-[11px] text-amber-900/90 break-words">• {line}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* Coin Purchase Request Modal */}
+      {modal.type === 'coin-request' && (
+        <BottomSheet title="Buy Gold / Silver Coins" onClose={() => setModal({ type: null })}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800">
+              Coin purchases are reviewed by Super Admin before final confirmation. Rates are indicative and may vary at confirmation time.
+            </div>
+
+            <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 border border-amber-200">
+              {(['GOLD', 'SILVER'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setCoinMetal(m);
+                    setCoinWeightGrams(COIN_OPTIONS[m][0]);
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${coinMetal === m ? 'bg-amber-500 text-black' : 'text-amber-700 hover:bg-amber-100'}`}
+                >
+                  {m === 'GOLD' ? 'Gold Coins' : 'Silver Coins'}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <p className="text-xs text-amber-700 font-semibold mb-2">Select Coin Weight</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {COIN_OPTIONS[coinMetal].map((weight) => {
+                  const selected = coinWeightGrams === weight;
+                  return (
+                    <button
+                      type="button"
+                      key={`${coinMetal}-${weight}`}
+                      onClick={() => setCoinWeightGrams(weight)}
+                      className={`rounded-xl border p-2 text-left transition-all ${selected ? 'border-amber-500 bg-amber-50 shadow' : 'border-amber-200 bg-white hover:border-amber-400'}`}
+                    >
+                      <img
+                        src={coinMetal === 'GOLD' ? '/coins/gold-coin.svg' : '/coins/silver-coin.svg'}
+                        alt={`${coinMetal} coin`}
+                        className="w-full h-16 object-contain"
+                      />
+                      <p className="mt-1 text-sm font-black text-amber-900">{weight}g</p>
+                      <p className="text-[11px] text-amber-700">{coinMetal}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="fieldLabel">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={coinQuantity}
+                onChange={(e) => setCoinQuantity(Math.max(1, Number(e.target.value || 1)))}
+                className="fieldInput"
+              />
+            </div>
+
+            <div>
+              <label className="fieldLabel">Delivery City</label>
+              <input
+                type="text"
+                value={coinDeliveryCity}
+                onChange={(e) => setCoinDeliveryCity(e.target.value)}
+                placeholder="e.g. Mumbai"
+                className="fieldInput"
+              />
+            </div>
+
+            <div>
+              <label className="fieldLabel">Additional Note (optional)</label>
+              <textarea
+                value={coinNote}
+                onChange={(e) => setCoinNote(e.target.value)}
+                rows={3}
+                placeholder="Any preferred delivery timing or branch pickup note"
+                className="w-full rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+
+            <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm flex items-center justify-between">
+              <div>
+                <p className="text-green-800 font-semibold">Estimated Request Value</p>
+                <p className="text-[11px] text-green-700">{coinQuantity} × {coinWeightGrams}g @ ₹{activeCoinRate.toFixed(4)}/g</p>
+              </div>
+              <p className="text-lg font-black text-green-900">₹{estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+
+            <button
+              onClick={submitCoinRequest}
+              disabled={coinSubmitting || !coinDeliveryCity.trim()}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+            >
+              {coinSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Coins size={18} />}
+              {coinSubmitting ? 'Submitting Request...' : 'Submit Coin Purchase Request'}
+            </button>
           </div>
         </BottomSheet>
       )}

@@ -91,7 +91,33 @@ export interface PlatformOrderRow {
   [k: string]: any;
 }
 
+export interface CoinPurchaseRequestRow {
+  id: string;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CONTACTED';
+  source?: string;
+  metal?: 'GOLD' | 'SILVER';
+  weightGrams?: number;
+  quantity?: number;
+  estimatedRatePerGram?: number;
+  estimatedAmountInr?: number;
+  customerUid?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  deliveryCity?: string;
+  customerNote?: string;
+  adminNote?: string;
+  reviewedByUid?: string;
+  reviewedByName?: string;
+  reviewedAt?: any;
+  shopId?: string;
+  shopName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  [k: string]: any;
+}
+
 export interface TabType {
-  key: 'shops' | 'customers' | 'orders' | 'stats';
+  key: 'shops' | 'customers' | 'orders' | 'coin-requests' | 'stats';
   label: string;
 }

@@ -51,6 +51,35 @@ export interface BuyGoldOptions {
   onSuccess: (paymentId: string) => void;
   onFailure: (error: any) => void;
   onLockCreated?: (lockData: { lockId: string; expiresAtMs: number; createdAtMs: number }) => void;
+  onDebug?: (details: string) => void;
+}
+
+function getApiBaseUrl(): string {
+  const raw = String(import.meta.env.VITE_API_URL || '').trim();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
+
+function toApiUrl(path: string): string {
+  const base = getApiBaseUrl();
+  if (!base) return path;
+  return `${base}${path}`;
+}
+
+async function readApiResponse(res: Response): Promise<{ json: any; text: string; contentType: string }> {
+  const contentType = String(res.headers.get('content-type') || '');
+  const text = await res.text().catch(() => '');
+  if (!text) return { json: null, text: '', contentType };
+  try {
+    return { json: JSON.parse(text), text, contentType };
+  } catch {
+    return { json: null, text, contentType };
+  }
+}
+
+function responseSnippet(text: string): string {
+  if (!text) return '(empty response body)';
+  const compact = text.replace(/\s+/g, ' ').trim();
+  return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact;
 }
 
 /** Open Razorpay checkout for buying gold */
@@ -66,7 +95,9 @@ export async function buyGold(options: BuyGoldOptions) {
     return;
   }
 
-  const createRes = await fetch('/api/payments/create-buy-order', {
+  const createOrderUrl = toApiUrl('/api/payments/create-buy-order');
+  options.onDebug?.(`Creating payment lock: ${createOrderUrl}`);
+  const createRes = await fetch(createOrderUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -80,13 +111,17 @@ export async function buyGold(options: BuyGoldOptions) {
     }),
   });
 
-  const createJson = await createRes.json().catch(async () => {
-    const text = await createRes.text().catch(() => '');
-    return { error: text || 'Failed to parse backend error response' };
-  });
+  const createParsed = await readApiResponse(createRes);
+  const createJson = createParsed.json;
+  options.onDebug?.(
+    `Create order response: HTTP ${createRes.status} ${createRes.statusText} | Content-Type: ${createParsed.contentType || 'unknown'} | Body: ${responseSnippet(createParsed.text)}`,
+  );
 
   if (!createRes.ok || !createJson?.success) {
-    const errMsg = createJson?.error || createJson?.message || `Could not create locked payment order (${createRes.status} ${createRes.statusText})`;
+    const fallback = !createJson
+      ? `Payment service returned non-JSON response (${createRes.status} ${createRes.statusText}). Check VITE_API_URL/backend routing.`
+      : `Could not create locked payment order (${createRes.status} ${createRes.statusText})`;
+    const errMsg = createJson?.error || createJson?.message || fallback;
     options.onFailure(new Error(errMsg));
     return;
   }
@@ -130,7 +165,9 @@ export async function buyGold(options: BuyGoldOptions) {
     },
     handler: async (response: any) => {
       try {
-        const verifyRes = await fetch('/api/payments/verify-buy-payment', {
+        const verifyUrl = toApiUrl('/api/payments/verify-buy-payment');
+        options.onDebug?.(`Verifying payment: ${verifyUrl}`);
+        const verifyRes = await fetch(verifyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -141,9 +178,16 @@ export async function buyGold(options: BuyGoldOptions) {
           }),
         });
 
-        const verifyJson = await verifyRes.json().catch(() => ({}));
+        const verifyParsed = await readApiResponse(verifyRes);
+        const verifyJson = verifyParsed.json;
+        options.onDebug?.(
+          `Verify payment response: HTTP ${verifyRes.status} ${verifyRes.statusText} | Content-Type: ${verifyParsed.contentType || 'unknown'} | Body: ${responseSnippet(verifyParsed.text)}`,
+        );
         if (!verifyRes.ok || !verifyJson?.success) {
-          throw new Error(verifyJson?.error || 'Payment verification failed.');
+          const fallback = !verifyJson
+            ? `Payment verification returned non-JSON response (${verifyRes.status} ${verifyRes.statusText}).`
+            : 'Payment verification failed.';
+          throw new Error(verifyJson?.error || fallback);
         }
         if (verifyJson?.data?.expired) {
           throw new Error('Payment came after 2-minute lock and has been marked for refund.');

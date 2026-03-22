@@ -2,16 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, orderBy, query, updateDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { ShopRow, UserRow, PlatformOrderRow, TabType } from './types';
+import { ShopRow, UserRow, PlatformOrderRow, CoinPurchaseRequestRow, TabType } from './types';
 import { ShopsTab } from './ShopsTab';
 import { UsersTab } from './UsersTab';
 import { OrdersTab } from './OrdersTab';
 import { PlatformTab } from './PlatformTab';
+import { CoinRequestsTab } from './CoinRequestsTab';
 
 const TABS: TabType[] = [
   { key: 'shops', label: 'Shops' },
   { key: 'customers', label: 'Users' },
   { key: 'orders', label: 'Orders' },
+  { key: 'coin-requests', label: 'Coin Requests' },
   { key: 'stats', label: 'Platform' },
 ];
 
@@ -21,6 +23,7 @@ export function SuperAdmin() {
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [orders, setOrders] = useState<PlatformOrderRow[]>([]);
+  const [coinRequests, setCoinRequests] = useState<CoinPurchaseRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [loadErr, setLoadErr] = useState('');
@@ -50,14 +53,16 @@ export function SuperAdmin() {
     setLoading(true);
     setLoadErr('');
     try {
-      const [shopsSnap, usersSnap, ordersSnap] = await Promise.all([
+      const [shopsSnap, usersSnap, ordersSnap, coinRequestsSnap] = await Promise.all([
         getDocs(query(collection(db, 'shops'), orderBy('name'))),
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'goldOnlineOrders'), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'coinPurchaseRequests'), orderBy('createdAt', 'desc'))),
       ]);
       setShops(shopsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as ShopRow)));
       setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as UserRow)));
       setOrders(ordersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as PlatformOrderRow)));
+      setCoinRequests(coinRequestsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as CoinPurchaseRequestRow)));
     } catch (err: any) {
       // console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
       setLoadErr(err?.message ?? 'Failed to load data.');
@@ -119,6 +124,7 @@ export function SuperAdmin() {
               {t.key === 'shops' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{shops.length}</span>}
               {t.key === 'customers' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{users.length}</span>}
               {t.key === 'orders' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{orders.length}</span>}
+              {t.key === 'coin-requests' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{coinRequests.length}</span>}
             </button>
           ))}
         </div>
@@ -186,6 +192,17 @@ export function SuperAdmin() {
             {tab === 'orders' && (
               <OrdersTab 
                 orders={orders} search={search} shops={shops} 
+              />
+            )}
+
+            {tab === 'coin-requests' && (
+              <CoinRequestsTab
+                requests={coinRequests}
+                setRequests={setCoinRequests}
+                search={search}
+                currentUser={currentUser}
+                userProfile={userProfile}
+                handleActionMsg={handleActionMsg}
               />
             )}
             
