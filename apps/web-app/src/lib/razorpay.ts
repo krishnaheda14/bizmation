@@ -75,8 +75,6 @@ function getApiBaseUrl(): string {
   const fallback = String(import.meta.env.VITE_API_URL || '').trim();
   const raw = explicit || fallback;
   if (!raw) return '';
-  // Guardrail: Twilio worker handles OTP and should never be used for payment endpoints.
-  if (/twilio-otp-worker/i.test(raw)) return '';
   return raw.replace(/\/$/, '');
 }
 
@@ -88,9 +86,11 @@ function toApiUrl(path: string): string {
 
 function getApiCandidates(path: string): string[] {
   const base = getApiBaseUrl();
+  const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
   if (!base) return [path];
   const primary = `${base}${path}`;
-  return [primary, path];
+  // In local dev, allow /api fallback via Vite proxy. In production, never silently fallback.
+  return isLocal ? [primary, path] : [primary];
 }
 
 async function fetchWithFallback(

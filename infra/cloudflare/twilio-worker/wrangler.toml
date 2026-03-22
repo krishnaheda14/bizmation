@@ -14,3 +14,7 @@ compatibility_date = "2024-01-01"
 #   wrangler secret put FIREBASE_PRIVATE_KEY
 #     → paste the full private_key value from your service account JSON
 #       (including -----BEGIN PRIVATE KEY----- lines)
+#
+# Optional payment proxy target for /api/payments/* forwarding:
+#   wrangler secret put BACKEND_API_URL
+#   Example: https://your-backend.railway.app
