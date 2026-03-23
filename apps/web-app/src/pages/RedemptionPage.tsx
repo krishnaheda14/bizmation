@@ -101,6 +101,7 @@ export const RedemptionPage: React.FC = () => {
   const [purity, setPurity] = useState<number>(995);
   const [gramsStr, setGramsStr] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [upiId, setUpiId] = useState('');
   const [inputMode, setInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -240,8 +241,13 @@ export const RedemptionPage: React.FC = () => {
 
   const handleGramsChange = (value: string) => {
     setInputMode('GRAMS');
-    setGramsStr(value);
-    const g = parseFloat(value);
+    let v = value;
+    let g = parseFloat(v);
+    if (Number.isFinite(g) && g > heldGrams) {
+      g = heldGrams;
+      v = g.toFixed(4);
+    }
+    setGramsStr(v);
     if (Number.isFinite(g) && g > 0 && redeemRatePerGram > 0) {
       setAmountStr((g * redeemRatePerGram).toFixed(4));
     } else if (!value) {
@@ -251,8 +257,13 @@ export const RedemptionPage: React.FC = () => {
 
   const handleAmountChange = (value: string) => {
     setInputMode('AMOUNT');
-    setAmountStr(value);
-    const amt = parseFloat(value);
+    let v = value;
+    let amt = parseFloat(v);
+    if (Number.isFinite(amt) && maxRedeemableInr > 0 && amt > maxRedeemableInr) {
+      amt = maxRedeemableInr;
+      v = amt.toFixed(4);
+    }
+    setAmountStr(v);
     if (Number.isFinite(amt) && amt > 0 && redeemRatePerGram > 0) {
       setGramsStr((amt / redeemRatePerGram).toFixed(4));
     } else if (!value) {
@@ -296,6 +307,7 @@ export const RedemptionPage: React.FC = () => {
         redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
         estimatedInr,
         customerRequestedInr: enteredAmount > 0 ? enteredAmount : estimatedInr,
+        upiId: upiId.trim() || null,
         availableBalanceAtRequestGrams: heldGrams,
         status: 'PENDING',
         createdAt: serverTimestamp(),
@@ -477,6 +489,18 @@ export const RedemptionPage: React.FC = () => {
                 )}
               </>
             )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-stone-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">UPI ID for Credit (optional for now)</label>
+            <input
+              type="text"
+              value={upiId}
+              onChange={(e) => setUpiId(e.target.value)}
+              placeholder="e.g. 9876543210@upi or name@bank"
+              className="w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/40 bg-stone-50 dark:bg-gray-800 text-stone-800 dark:text-white transition-colors border-stone-200 dark:border-gray-700"
+            />
+            <p className="text-[11px] text-stone-500 mt-1">Your jeweller can use this UPI ID to send redeemed amount directly.</p>
           </div>
 
           {submitMsg && (

@@ -1,0 +1,8 @@
+name = "payments-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+# Create this with: wrangler kv namespace create PAYMENTS_KV
+binding = "PAYMENTS_KV"
+id = "cf6ff74c30e742299852123d0a484840"

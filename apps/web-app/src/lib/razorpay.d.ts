@@ -46,12 +46,16 @@ export interface BuyGoldOptions {
 export declare function buyGold(options: BuyGoldOptions): Promise<void>;
 export interface AutoPayOptions {
     planAmount: number;
+    /** GOLD SIP can be configured for both gold and silver */
+    metal: 'GOLD' | 'SILVER';
+    /** SIP frequency */
+    frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
     customerName: string;
     customerEmail: string;
     customerPhone: string;
     onSuccess: (subscriptionId: string) => void;
     onFailure: (error: any) => void;
 }
-/** Open Razorpay for setting up AutoPay (Gold SIP) */
+/** Open Razorpay for setting up GOLD SIP (recurring investment) */
 export declare function setupGoldAutoPay(options: AutoPayOptions): Promise<void>;
 //# sourceMappingURL=razorpay.d.ts.map

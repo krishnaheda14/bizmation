@@ -2,7 +2,7 @@
  * Home Landing Page
  *
  * Golden/cream theme in light mode | Golden/black theme in dark mode
- * Features: Live gold & silver rates, Buy, Sell, AutoPay, daily tracking
+ * Features: Live gold & silver rates, Buy, Sell, GOLD SIP, daily tracking
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -32,6 +32,8 @@ interface BuyFormData {
 
 interface AutoPayFormData {
   amount: string;
+  metal: 'GOLD' | 'SILVER';
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
 }
 
 interface SellFormData {
@@ -115,7 +117,7 @@ export const HomeLanding: React.FC = () => {
   const [modal, setModal] = useState<ModalState>({ type: null });
   const [lockedRate, setLockedRate] = useState<number | null>(null);
   const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
-  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500' });
+  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', amountInr: '', bank: '', account: '', ifsc: '',
   });
@@ -259,37 +261,46 @@ export const HomeLanding: React.FC = () => {
         totalSilverGrams,
       });
 
-      const holdings: Record<string, { grams: number; invested: number }> = {};
+      const holdings: Record<string, { buyGrams: number; sellGrams: number; totalInvested: number }> = {};
       for (const o of all as any[]) {
         const metal = String(o.metal ?? '').toUpperCase();
         if (!['GOLD', 'SILVER'].includes(metal)) continue;
         const purityRaw = Number(o.purity) || 0;
         const purity = metal === 'GOLD' ? normalizeGoldPurity(purityRaw) : purityRaw;
         const key = `${metal}_${purity}`;
-        if (!holdings[key]) holdings[key] = { grams: 0, invested: 0 };
+        if (!holdings[key]) holdings[key] = { buyGrams: 0, sellGrams: 0, totalInvested: 0 };
         const grams = Number(o.grams) || 0;
         const amount = Number(o.totalAmountInr) || 0;
-        if ((o.type ?? '').toUpperCase() === 'BUY' && (o.status ?? '').toUpperCase() === 'SUCCESS') {
-          holdings[key].grams += grams;
-          holdings[key].invested += amount;
+        const type = (o.type ?? '').toUpperCase();
+        const status = (o.status ?? '').toUpperCase();
+        if (type === 'BUY' && status === 'SUCCESS') {
+          holdings[key].buyGrams += grams;
+          holdings[key].totalInvested += amount;
         }
-        if ((o.type ?? '').toUpperCase() === 'SELL' && (o.status ?? '').toUpperCase() !== 'REJECTED') {
-          holdings[key].grams -= grams;
-          holdings[key].invested -= amount;
+        if (type === 'SELL' && status !== 'REJECTED') {
+          holdings[key].sellGrams += grams;
         }
       }
 
-      const totalInvested = Object.values(holdings).reduce((s, h) => s + Math.max(0, h.invested), 0);
-      const totalValue = Object.entries(holdings).reduce((sum, [key, h]) => {
+      let totalCurrentValue = 0;
+      let costBasisTotal = 0;
+      for (const [key, h] of Object.entries(holdings)) {
+        const netGrams = h.buyGrams - h.sellGrams;
+        if (netGrams <= 0.0001) continue;
+        const avgBuyPrice = h.buyGrams > 0 ? h.totalInvested / h.buyGrams : 0;
         const [metal, purityStr] = key.split('_');
         const purity = Number(purityStr);
         const liveRate = rates.find((r) => r.metalType === metal && r.purity === purity)?.ratePerGram ?? 0;
-        return sum + Math.max(0, h.grams) * liveRate;
-      }, 0);
-      const gain = totalValue - totalInvested;
-      const gainPct = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+        const currentValue = netGrams * liveRate;
+        const costBasis = netGrams * avgBuyPrice;
+        totalCurrentValue += currentValue;
+        costBasisTotal += costBasis;
+      }
+
+      const gain = totalCurrentValue - costBasisTotal;
+      const gainPct = costBasisTotal > 0 ? (gain / costBasisTotal) * 100 : 0;
       setCustomerPortfolioStats({
-        totalValueInr: totalValue,
+        totalValueInr: totalCurrentValue,
         totalGainInr: gain,
         totalGainPct: gainPct,
       });
@@ -487,23 +498,28 @@ export const HomeLanding: React.FC = () => {
     setPaying(true);
     setupGoldAutoPay({
       planAmount,
+      metal:        autoPayForm.metal,
+      frequency:    autoPayForm.frequency,
       customerName:  custName,
       customerEmail: custEmail,
       customerPhone: custPhone,
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
-        setSuccessMsg(`AutoPay activated! ID: ${id}. Gold SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/month is set up.`);
-        setAutoPayForm({ amount: '500' });
+        const freqLabel = autoPayForm.frequency === 'DAILY' ? 'day' : autoPayForm.frequency === 'WEEKLY' ? 'week' : 'month';
+        setSuccessMsg(`GOLD SIP activated! ID: ${id}. ${autoPayForm.metal === 'GOLD' ? 'Gold' : 'Silver'} SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/${freqLabel} is set up.`);
+        setAutoPayForm({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
         setTimeout(() => setSuccessMsg(''), 10000);
 
         // ── Write subscription to Firestore ───────────────────────────────
         try {
+          const frequencyDays = autoPayForm.frequency === 'DAILY' ? 1 : autoPayForm.frequency === 'WEEKLY' ? 7 : 30;
           await addDoc(collection(db, 'autoPaySubscriptions'), {
             userId:                 currentUser?.uid ?? 'anonymous',
-            metal:                  'GOLD',
+            metal:                  autoPayForm.metal,
             amountInr:              planAmount,
-            frequencyDays:          30,
+            frequency:              autoPayForm.frequency,
+            frequencyDays,
             razorpaySubscriptionId: id,
             status:                 'ACTIVE',
             customerName:           custName,
@@ -910,7 +926,7 @@ export const HomeLanding: React.FC = () => {
                 </span>
               </h1>
               <p className="text-base text-amber-800/80 dark:text-gray-300 mb-6 leading-relaxed max-w-lg">
-                Buy & sell pure gold and silver online at real-time international market prices. Set up AutoPay to invest in gold every month automatically.
+                Buy & sell pure gold and silver online at real-time international market prices. Set up GOLD SIP to invest in gold or silver automatically on your schedule.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -958,7 +974,7 @@ export const HomeLanding: React.FC = () => {
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
                   >
                     <Repeat size={18} />
-                    Setup AutoPay
+                    Setup GOLD SIP
                   </button>
                   <button
                     onClick={() => {
@@ -1025,7 +1041,7 @@ export const HomeLanding: React.FC = () => {
               '100% Pure Gold',
               'Live Market Prices',
               'Secure Payments via Razorpay',
-              'AutoPay / Monthly SIP',
+              'GOLD SIP / Recurring',
               'Sell Anytime',
             ].map((f) => (
               <span key={f} className="flex items-center gap-1.5">
@@ -1662,9 +1678,9 @@ export const HomeLanding: React.FC = () => {
         </BottomSheet>
       )}
 
-      {/* AutoPay Modal */}
+      {/* GOLD SIP (AutoPay) Modal */}
       {modal.type === 'autopay' && (
-        <BottomSheet title="Setup Gold AutoPay (SIP)" onClose={() => setModal({ type: null })}>
+        <BottomSheet title="Setup GOLD SIP" onClose={() => setModal({ type: null })}>
           <div className="space-y-4">
             {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-lg border border-amber-200 dark:border-amber-700 flex items-center gap-2">
               <AlertCircle size={13} className="flex-shrink-0" />
@@ -1672,7 +1688,7 @@ export const HomeLanding: React.FC = () => {
             </div>}
 
             <div>
-              <label className="fieldLabel">Monthly Amount (₹)</label>
+              <label className="fieldLabel">SIP Amount (₹)</label>
               <div className="flex gap-2 mb-2">
                 {['500', '1000', '2000', '5000'].map((a) => (
                   <button key={a} onClick={() => setAutoPayForm((f) => ({ ...f, amount: a }))}
@@ -1688,11 +1704,61 @@ export const HomeLanding: React.FC = () => {
                 onChange={(e) => setAutoPayForm((f) => ({ ...f, amount: e.target.value }))}
                 className="fieldInput"
               />
-              {autoPayForm.amount && goldOperationalRatePerGram > 0 && (
+              {autoPayForm.amount && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-                  ≈ {(parseFloat(autoPayForm.amount) / goldOperationalRatePerGram).toFixed(4)}g of 24K (995) gold per month at today's rate
+                  {autoPayForm.metal === 'GOLD' && goldOperationalRatePerGram > 0 && (
+                    <>
+                      ≈ {(parseFloat(autoPayForm.amount) / goldOperationalRatePerGram).toFixed(4)}g of 24K (995) gold per {autoPayForm.frequency === 'DAILY' ? 'day' : autoPayForm.frequency === 'WEEKLY' ? 'week' : 'month'} at today's rate
+                    </>
+                  )}
+                  {autoPayForm.metal === 'SILVER' && silver24?.ratePerGram && silver24.ratePerGram > 0 && (
+                    <>
+                      ≈ {(parseFloat(autoPayForm.amount) / silver24.ratePerGram).toFixed(4)}g of 999 silver per {autoPayForm.frequency === 'DAILY' ? 'day' : autoPayForm.frequency === 'WEEKLY' ? 'week' : 'month'} at today's rate
+                    </>
+                  )}
                 </p>
               )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="fieldLabel">Metal</label>
+                <div className="flex gap-2">
+                  {(['GOLD', 'SILVER'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setAutoPayForm((f) => ({ ...f, metal: m }))}
+                      className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-colors ${autoPayForm.metal === m
+                        ? 'bg-amber-500 border-amber-500 text-black'
+                        : 'bg-white dark:bg-gray-800 border-amber-200 dark:border-gray-600 text-amber-800 dark:text-amber-300 hover:border-amber-400'}`}
+                    >
+                      {m === 'GOLD' ? 'Gold' : 'Silver'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="fieldLabel">Frequency</label>
+                <div className="flex gap-2">
+                  {([
+                    { key: 'DAILY', label: 'Daily' },
+                    { key: 'WEEKLY', label: 'Weekly' },
+                    { key: 'MONTHLY', label: 'Monthly' },
+                  ] as const).map((fOpt) => (
+                    <button
+                      key={fOpt.key}
+                      type="button"
+                      onClick={() => setAutoPayForm((f) => ({ ...f, frequency: fOpt.key }))}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${autoPayForm.frequency === fOpt.key
+                        ? 'bg-amber-500 border-amber-500 text-black'
+                        : 'bg-white dark:bg-gray-800 border-amber-200 dark:border-gray-600 text-amber-800 dark:text-amber-300 hover:border-amber-400'}`}
+                    >
+                      {fOpt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {userProfile && (
@@ -1712,7 +1778,9 @@ export const HomeLanding: React.FC = () => {
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}
-              {paying ? 'Setting up...' : `Activate ₹${Number(autoPayForm.amount || 0).toLocaleString('en-IN')}/month AutoPay`}
+              {paying
+                ? 'Setting up...'
+                : `Activate ₹${Number(autoPayForm.amount || 0).toLocaleString('en-IN')}/${autoPayForm.frequency === 'DAILY' ? 'day' : autoPayForm.frequency === 'WEEKLY' ? 'week' : 'month'} GOLD SIP`}
             </button>
           </div>
         </BottomSheet>

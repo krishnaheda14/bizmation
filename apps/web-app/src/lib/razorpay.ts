@@ -460,6 +460,10 @@ export async function buyCoins(options: BuyCoinsOptions) {
 
 export interface AutoPayOptions {
   planAmount: number;
+  /** GOLD SIP can be configured for both gold and silver */
+  metal: 'GOLD' | 'SILVER';
+  /** SIP frequency */
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -481,12 +485,21 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
 
   const amountInPaise = Math.round(options.planAmount * 100);
 
+  const freqLabelMap: Record<AutoPayOptions['frequency'], string> = {
+    DAILY: 'day',
+    WEEKLY: 'week',
+    MONTHLY: 'month',
+  };
+
+  const metalLabel = options.metal === 'GOLD' ? 'Gold' : 'Silver';
+  const freqLabel = freqLabelMap[options.frequency] ?? 'month';
+
   const razorpayOptions = {
     key: RAZORPAY_KEY_ID,
     amount: amountInPaise,
     currency: 'INR',
-    name: 'Gold AutoPay (SIP)',
-    description: `Monthly Gold SIP � ?${options.planAmount.toLocaleString('en-IN')} / month`,
+    name: 'GOLD SIP',
+    description: `${metalLabel} SIP – ₹${options.planAmount.toLocaleString('en-IN')} / ${freqLabel}`,
     recurring: 1,
     prefill: {
       name: options.customerName,
