@@ -69,6 +69,18 @@ function getApiBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+function isTwilioConfiguredAsApiBase(): boolean {
+  const base = getApiBaseUrl();
+  return !!base && isTwilioOtpWorkerUrl(base);
+}
+
+function paymentConfigHint(): string {
+  if (isTwilioConfiguredAsApiBase()) {
+    return 'VITE_API_URL currently points to Twilio OTP worker. Set VITE_API_URL to your backend API base URL (example: https://your-backend-domain.com).';
+  }
+  return 'Ensure /api/payments routes are reverse-proxied to backend or set VITE_API_URL to your backend API base URL.';
+}
+
 function isTwilioOtpWorkerUrl(url: string): boolean {
   return /twilio-otp-worker/i.test(url);
 }
@@ -110,10 +122,11 @@ async function fetchWithFallback(
   for (const url of candidates) {
     try {
       const res = await fetch(url, init);
-      if (res.status !== 404 || url === candidates[candidates.length - 1]) {
+      const retriableRoutingStatus = res.status === 404 || res.status === 405;
+      if (!retriableRoutingStatus || url === candidates[candidates.length - 1]) {
         return { res, url };
       }
-      onDebug?.(`Endpoint returned 404 on ${url}; trying fallback endpoint.`);
+      onDebug?.(`Endpoint returned HTTP ${res.status} on ${url}; trying fallback endpoint.`);
     } catch (err: any) {
       lastErr = err;
       onDebug?.(`Network error on ${url}: ${err?.message || 'unknown error'}`);
@@ -194,7 +207,7 @@ export async function buyGold(options: BuyGoldOptions) {
 
     if (!createRes.ok || !createJson?.success) {
       const fallback = !createJson
-        ? `Payment service returned non-JSON response (${createRes.status} ${createRes.statusText}). Check VITE_API_URL/backend routing.`
+        ? `Payment service returned non-JSON response (${createRes.status} ${createRes.statusText}). ${paymentConfigHint()}`
         : `Could not create locked payment order (${createRes.status} ${createRes.statusText})`;
       throw new Error(createJson?.error || createJson?.message || fallback);
     }
