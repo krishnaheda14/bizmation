@@ -500,7 +500,7 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
     currency: 'INR',
     name: 'GOLD SIP',
     description: `${metalLabel} SIP – ₹${options.planAmount.toLocaleString('en-IN')} / ${freqLabel}`,
-    recurring: 1,
+    recurring: "1",
     prefill: {
       name: options.customerName,
       email: options.customerEmail,

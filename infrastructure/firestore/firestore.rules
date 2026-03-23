@@ -198,6 +198,38 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── /coinPurchaseOrders/{id} ───────────────────────────────────────────
+    match /coinPurchaseOrders/{id} {
+      allow create: if isAuth()
+        && request.resource.data.customerUid == request.auth.uid;
+
+      allow read: if isAuth() && (
+        resource.data.customerUid == request.auth.uid
+        || isSuperAdmin()
+        || (
+          isOwnerOrStaff()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+          )
+        )
+      );
+
+      allow update: if isAuth() && (
+        resource.data.customerUid == request.auth.uid
+        || isSuperAdmin()
+        || (
+          isOwnerOrStaff()
+          && (
+            (resource.data.shopId != null && resource.data.shopId == callerShopId())
+            || (resource.data.shopName != null && resource.data.shopName == callerShopName())
+          )
+        )
+      );
+
+      allow delete: if false;
+    }
+
     // ── /razorpayOrders/{id} ─────────────────────────────────────────────────
     match /razorpayOrders/{id} {
       allow create: if isAuth();

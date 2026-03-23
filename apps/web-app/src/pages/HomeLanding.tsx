@@ -140,6 +140,7 @@ export const HomeLanding: React.FC = () => {
     totalValueInr: 0,
     totalGainInr: 0,
     totalGainPct: 0,
+    maxRedeemableGoldGrams: 0,
   });
   const [ownerSummary, setOwnerSummary] = useState({
     totalOrders: 0,
@@ -297,12 +298,20 @@ export const HomeLanding: React.FC = () => {
         costBasisTotal += costBasis;
       }
 
+      let maxRedeemableGoldGrams = 0;
+      for (const [key, h] of Object.entries(holdings)) {
+        if (key.startsWith('GOLD_')) {
+          maxRedeemableGoldGrams += (h.buyGrams - h.sellGrams);
+        }
+      }
+
       const gain = totalCurrentValue - costBasisTotal;
       const gainPct = costBasisTotal > 0 ? (gain / costBasisTotal) * 100 : 0;
       setCustomerPortfolioStats({
         totalValueInr: totalCurrentValue,
         totalGainInr: gain,
         totalGainPct: gainPct,
+        maxRedeemableGoldGrams: Math.max(0, maxRedeemableGoldGrams),
       });
     };
 
@@ -1290,16 +1299,16 @@ export const HomeLanding: React.FC = () => {
             Starting from just ₹500/month. Build your gold portfolio systematically with AutoPay — your digital gold SIP.
           </p>
           <div className="flex flex-wrap justify-center gap-3 mb-8">
-            {['₹500', '₹1,000', '₹2,000', '₹5,000'].map((amt) => (
+            {['500', '1000', '2000', '5000', 'Manual'].map((amt) => (
               <button
                 key={amt}
                 onClick={() => {
-                  setAutoPayForm((f) => ({ ...f, amount: amt.replace(/[₹,]/g, '') }));
+                  setAutoPayForm((f) => ({ ...f, amount: amt === 'Manual' ? '' : amt }));
                   setModal({ type: 'autopay' });
                 }}
-                className="px-6 py-2.5 bg-white/30 dark:bg-black/20 hover:bg-white/50 dark:hover:bg-black/30 text-amber-950 dark:text-black font-bold rounded-xl border border-white/50 dark:border-black/30 transition-colors"
+                className="px-6 py-2.5 bg-white/30 dark:bg-black/20 hover:bg-white/50 dark:hover:bg-black/30 text-amber-950 dark:text-black font-bold rounded-xl border border-white/50 dark:border-black/30 transition-colors shadow-sm"
               >
-                {amt}/mo
+                {amt === 'Manual' ? 'Manual' : `₹${Number(amt).toLocaleString('en-IN')}/mo`}
               </button>
             ))}
           </div>
@@ -1414,7 +1423,17 @@ export const HomeLanding: React.FC = () => {
                     onChange={setSlideValue}
                     onConfirm={handleBuy}
                   />
-                  <p className="text-[11px] text-amber-700 dark:text-amber-500 text-center">White-gold secure checkout: once locked, pay within 2:00.</p>
+                  {lockedRate && lockSecondsLeft > 0 ? (
+                    <div className="mt-4 p-3 rounded-xl border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-300 text-sm shadow-sm animate-pulse flex items-start gap-3">
+                      <Timer size={20} className="flex-shrink-0 mt-0.5 text-red-600" />
+                      <div>
+                        <p className="font-bold">⚠️ Please complete the payment in 2 mins or it will get cancelled</p>
+                        <p className="tabular-nums font-black text-red-700 dark:text-red-400 mt-0.5 text-base">Time remaining: {Math.floor(lockSecondsLeft / 60)}:{String(lockSecondsLeft % 60).padStart(2, '0')}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-500 text-center mt-1">White-gold secure checkout: once locked, pay within 2:00.</p>
+                  )}
                 </div>
               ) : (
                 <button
@@ -1428,16 +1447,6 @@ export const HomeLanding: React.FC = () => {
               )
             )}
 
-            {paymentDebugLines.length > 0 && (
-              <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3">
-                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-1.5">Payment Debug (Safe to Share)</p>
-                <div className="space-y-1">
-                  {paymentDebugLines.map((line, idx) => (
-                    <p key={`${idx}-${line.slice(0, 16)}`} className="text-[11px] text-amber-900/90 break-words">• {line}</p>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </BottomSheet>
       )}
@@ -1570,19 +1579,27 @@ export const HomeLanding: React.FC = () => {
               <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">All gold redeem/sell requests are processed as 24K (995).</p>
             </div>
             <div>
-              <label className="fieldLabel">Redeem Input Type</label>
-              <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 mb-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className="fieldLabel mb-0">Redeem Input Type</label>
+                <div className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-md font-bold text-right pt-2 pb-2 mt-4 inline-flex items-center">
+                  <span className="font-semibold mr-1">Max Available:</span>
+                  {customerPortfolioStats.maxRedeemableGoldGrams.toFixed(4)}g 
+                  <span className="opacity-70 mx-1">/</span> 
+                  ₹{(customerPortfolioStats.maxRedeemableGoldGrams * sellRedeemRate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </div>
+              </div>
+              <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 mb-2 mt-2">
                 <button
                   type="button"
                   onClick={() => setSellInputMode('GRAMS')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'GRAMS' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'GRAMS' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
                 >
                   Enter Grams
                 </button>
                 <button
                   type="button"
                   onClick={() => setSellInputMode('AMOUNT')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'AMOUNT' ? 'bg-amber-500 text-black' : 'text-amber-700 dark:text-gray-300'}`}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${sellInputMode === 'AMOUNT' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
                 >
                   Enter Amount
                 </button>
@@ -1689,20 +1706,20 @@ export const HomeLanding: React.FC = () => {
 
             <div>
               <label className="fieldLabel">SIP Amount (₹)</label>
-              <div className="flex gap-2 mb-2">
+              <div className="grid grid-cols-4 gap-2 mb-2">
                 {['500', '1000', '2000', '5000'].map((a) => (
                   <button key={a} onClick={() => setAutoPayForm((f) => ({ ...f, amount: a }))}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-colors ${autoPayForm.amount === a
-                      ? 'bg-amber-500 border-amber-500 text-black'
+                    className={`py-2 text-sm font-bold rounded-lg border transition-all ${autoPayForm.amount === a
+                      ? 'bg-amber-500 border-amber-500 text-black shadow-sm'
                       : 'bg-white dark:bg-gray-800 border-amber-200 dark:border-gray-600 text-amber-800 dark:text-amber-300 hover:border-amber-400'}`}>
                     ₹{Number(a).toLocaleString('en-IN')}
                   </button>
                 ))}
               </div>
-              <input type="number" min="100" step="100" placeholder="Custom amount"
+              <input type="number" min="1" step="1" placeholder="Manual (Enter any custom amount)"
                 value={autoPayForm.amount}
                 onChange={(e) => setAutoPayForm((f) => ({ ...f, amount: e.target.value }))}
-                className="fieldInput"
+                className="w-full rounded-xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-400 dark:placeholder-gray-500"
               />
               {autoPayForm.amount && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
