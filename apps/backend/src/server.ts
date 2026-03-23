@@ -66,6 +66,7 @@ app.use('/api/gold-rates', goldRateRouter(goldRateService));
 app.use('/api/catalog', catalogRouter(db));
 app.use('/api/parties', partiesRouter(db));
 app.use('/api/payments', paymentsRouter());
+app.use('/payments', paymentsRouter());
 
 // 404
 app.use((req, res) => res.status(404).json({ success: false, error: 'Route not found', path: req.path }));

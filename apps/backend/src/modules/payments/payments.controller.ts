@@ -24,7 +24,15 @@ function validatePositiveNumber(value: any, field: string): number {
 export function paymentsRouter(): Router {
   const router = Router();
 
-  router.post('/create-buy-order', async (req: Request, res: Response) => {
+  router.get('/health', async (_req: Request, res: Response) => {
+    return res.json({
+      success: true,
+      service: 'payments',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  const handleCreateBuyOrder = async (req: Request, res: Response) => {
     try {
       console.log('[payments] create-buy-order called', {
         grams: req.body?.grams,
@@ -118,9 +126,9 @@ export function paymentsRouter(): Router {
       console.error('[payments] create-buy-order failed:', err?.message || err, err?.stack || '');
       return res.status(500).json({ success: false, error: err?.message || 'Failed to create payment order' });
     }
-  });
+  };
 
-  router.post('/verify-buy-payment', async (req: Request, res: Response) => {
+  const handleVerifyBuyPayment = async (req: Request, res: Response) => {
     try {
       const lockId = String(req.body?.lockId || '').trim();
       const razorpayOrderId = String(req.body?.razorpay_order_id || '').trim();
@@ -167,7 +175,15 @@ export function paymentsRouter(): Router {
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to verify payment' });
     }
-  });
+  };
+
+  // Canonical endpoints
+  router.post('/create-buy-order', handleCreateBuyOrder);
+  router.post('/verify-buy-payment', handleVerifyBuyPayment);
+
+  // Backward compatible aliases for older frontend/deployment paths
+  router.post('/create-order', handleCreateBuyOrder);
+  router.post('/verify-payment', handleVerifyBuyPayment);
 
   return router;
 }

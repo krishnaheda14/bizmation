@@ -69,6 +69,30 @@ function getApiBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+function normalizePath(path: string): string {
+  if (!path) return '/';
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
+function getPathVariants(path: string): string[] {
+  const normalized = normalizePath(path);
+  const variants = [normalized];
+  if (normalized.startsWith('/api/')) {
+    variants.push(normalized.replace(/^\/api/, ''));
+  } else {
+    variants.push(`/api${normalized}`);
+  }
+  return Array.from(new Set(variants));
+}
+
+function withBase(base: string, path: string): string {
+  const normalizedPath = normalizePath(path);
+  if (base.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${base}${normalizedPath.replace(/^\/api/, '')}`;
+  }
+  return `${base}${normalizedPath}`;
+}
+
 function isTwilioConfiguredAsApiBase(): boolean {
   const base = getApiBaseUrl();
   return !!base && isTwilioOtpWorkerUrl(base);
@@ -89,21 +113,27 @@ function isLocalhostRuntime(): boolean {
   return typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 }
 
-function getApiCandidates(path: string): string[] {
+function getApiCandidates(paths: string[]): string[] {
   const candidates: string[] = [];
 
-  // Always try same-origin first so frontend reverse-proxy rules can route /api/payments.
+  // Always try same-origin first so frontend reverse-proxy rules can route payments.
   if (typeof window !== 'undefined') {
-    candidates.push(path);
+    for (const path of paths) {
+      candidates.push(path);
+    }
   }
 
   const base = getApiBaseUrl();
   if (base && !isTwilioOtpWorkerUrl(base)) {
-    candidates.push(`${base}${path}`);
+    for (const path of paths) {
+      candidates.push(withBase(base, path));
+    }
   }
 
   if (candidates.length === 0 && isLocalhostRuntime()) {
-    candidates.push(path);
+    for (const path of paths) {
+      candidates.push(path);
+    }
   }
 
   return Array.from(new Set(candidates));
@@ -114,7 +144,8 @@ async function fetchWithFallback(
   init: RequestInit,
   onDebug?: (details: string) => void,
 ): Promise<{ res: Response; url: string }> {
-  const candidates = getApiCandidates(path);
+  const pathVariants = getPathVariants(path);
+  const candidates = getApiCandidates(pathVariants);
   if (candidates.length === 0) {
     throw new Error('No valid payment API route found. Configure same-origin /api proxy or set VITE_API_URL to backend (not Twilio OTP worker).');
   }
