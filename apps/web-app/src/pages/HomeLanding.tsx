@@ -116,6 +116,7 @@ export const HomeLanding: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [slideValue, setSlideValue] = useState(0);
+  const [paymentDebugLogs, setPaymentDebugLogs] = useState<string[]>([]);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -134,15 +135,14 @@ export const HomeLanding: React.FC = () => {
   const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
   const lockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startLockTimer = () => {
+  const startLockTimer = (initialSeconds: number = LOCK_DURATION) => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    setLockSecondsLeft(LOCK_DURATION);
+    setLockSecondsLeft(Math.max(0, Math.floor(initialSeconds)));
     lockIntervalRef.current = setInterval(() => {
       setLockSecondsLeft(prev => {
         if (prev <= 1) {
           clearInterval(lockIntervalRef.current!);
           lockIntervalRef.current = null;
-          setLockedRate(null); // price expired
           return 0;
         }
         return prev - 1;
@@ -159,15 +159,6 @@ export const HomeLanding: React.FC = () => {
   // Cleanup on unmount
   useEffect(() => () => clearLockTimer(), []);
 
-  // Auto-start timer whenever a rate is locked
-  useEffect(() => {
-    if (lockedRate) {
-      startLockTimer();
-    } else {
-      clearLockTimer();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lockedRate]);
   // Show 999 rates to users, but execute gold buy/sell on 995 operational rate.
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
   const gold995 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995);
@@ -318,9 +309,22 @@ export const HomeLanding: React.FC = () => {
     });
   }, [currentUser, userProfile]);
 
+  const addPaymentDebug = useCallback((message: string) => {
+    const stamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
+    setPaymentDebugLogs((prev) => {
+      const next = [`${stamp} ${message}`, ...prev];
+      return next.slice(0, 18);
+    });
+  }, []);
+
+  const resetPaymentDebug = useCallback(() => {
+    setPaymentDebugLogs([]);
+  }, []);
+
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
+    resetPaymentDebug();
     const liveMarketRate = buyMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
     const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
     const customerRate = buyMetal === 'GOLD'
@@ -338,11 +342,6 @@ export const HomeLanding: React.FC = () => {
     const customerShopName = (userProfile as any)?.shopName ?? '';
     const customerShopId = (userProfile as any)?.shopId ?? '';
 
-    if (buyMetal === 'GOLD') {
-      // Lock the quote right before opening checkout.
-      setLockedRate(ratePerGram);
-    }
-
     setPaying(true);
     buyGold({
       grams, ratePerGram,
@@ -351,10 +350,21 @@ export const HomeLanding: React.FC = () => {
       customerPhone: custPhone,
       customerUid: currentUser?.uid ?? '',
       metal: buyMetal,
+      onOrderCreated: ({ expiresAt, lockWindowSeconds }) => {
+        if (buyMetal !== 'GOLD') return;
+        setLockedRate(ratePerGram);
+        const expiresAtMs = Date.parse(expiresAt);
+        const secondsFromServer = Number.isFinite(expiresAtMs)
+          ? Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000))
+          : lockWindowSeconds;
+        startLockTimer(secondsFromServer || lockWindowSeconds || LOCK_DURATION);
+      },
+      onDebug: (message) => addPaymentDebug(message),
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
+        clearLockTimer();
         setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
@@ -427,6 +437,8 @@ export const HomeLanding: React.FC = () => {
         setPaying(false);
         setSlideValue(0);
         setLockedRate(null);
+        clearLockTimer();
+        addPaymentDebug(`Failure: ${err?.message || 'Payment failed.'}`);
         if (err.message !== 'Payment cancelled') {
           alert(err.message);
         }
@@ -1153,7 +1165,7 @@ export const HomeLanding: React.FC = () => {
 
       {/* Buy Metal Bottom Sheet */}
       {modal.type === 'buy' && (
-        <BottomSheet title={`Buy ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'}`} onClose={() => { setModal({ type: null }); setSlideValue(0); clearLockTimer(); }}>
+        <BottomSheet title={`Buy ${buyMetal === 'GOLD' ? 'Gold' : 'Silver'}`} onClose={() => { setModal({ type: null }); setSlideValue(0); setLockedRate(null); clearLockTimer(); }}>
           <div className="space-y-5">
             {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-xl border border-amber-200 dark:border-amber-700 flex items-center gap-2">
               <AlertCircle size={13} className="flex-shrink-0" />
@@ -1164,7 +1176,7 @@ export const HomeLanding: React.FC = () => {
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); }}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); clearLockTimer(); resetPaymentDebug(); }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     buyMetal === m
                       ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
@@ -1183,7 +1195,7 @@ export const HomeLanding: React.FC = () => {
               <p className="text-xs text-amber-600 font-semibold uppercase tracking-widest mb-0.5">Live {buyMetal === 'GOLD' ? 'Gold' : 'Silver'} Price</p>
               <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(4)}<span className="text-sm font-medium text-amber-600">/g</span></p>
               {buyMetal === 'GOLD' && (
-                <p className="text-xs text-amber-700 mt-1.5">Price lock starts when you slide to pay. Complete payment within 2:00 or it will fail and refund if captured late.</p>
+                <p className="text-xs text-amber-700 mt-1.5">Price lock starts when you slide to pay. Timer is shown for guidance while checkout is open.</p>
               )}
               {lockedRate && buyMetal === 'GOLD' && lockSecondsLeft > 0 && (
                 <div className="flex items-center justify-center gap-1.5 mt-1">
@@ -1195,7 +1207,7 @@ export const HomeLanding: React.FC = () => {
               )}
               {lockedRate && lockSecondsLeft === 0 && (
                 <div className="mt-1 flex flex-col items-center gap-1">
-                  <span className="text-xs text-red-600 font-bold">Price expired — refresh to lock again</span>
+                  <span className="text-xs text-red-600 font-bold">UI timer finished. Price remains locked for this checkout.</span>
                   <button onClick={() => { if (goldBuyPrice) setLockedRate(goldBuyPrice); }} className="text-[10px] font-semibold text-amber-700 underline">
                     Refresh price
                   </button>
@@ -1251,9 +1263,9 @@ export const HomeLanding: React.FC = () => {
               buyMetal === 'GOLD' ? (
                 <div className="space-y-2">
                   <SlideToConfirm
-                    label={paying ? 'Creating 2-minute price lock...' : lockSecondsLeft === 0 && lockedRate ? 'Price expired — refresh to continue' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
+                    label={paying ? 'Creating price lock...' : `Slide to Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
                     value={slideValue}
-                    disabled={paying || (lockedRate !== null && lockSecondsLeft === 0)}
+                    disabled={paying}
                     onChange={setSlideValue}
                     onConfirm={handleBuy}
                   />
@@ -1269,6 +1281,26 @@ export const HomeLanding: React.FC = () => {
                   {paying ? 'Opening payment…' : `Pay ₹${Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`}
                 </button>
               )
+            )}
+
+            {paymentDebugLogs.length > 0 && (
+              <div className="rounded-xl border border-stone-200 dark:border-gray-700 bg-stone-50 dark:bg-gray-900/60 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-stone-700 dark:text-gray-200 uppercase tracking-wide">Payment Debug (Safe to Share)</p>
+                  <button
+                    type="button"
+                    onClick={resetPaymentDebug}
+                    className="text-[11px] font-semibold text-stone-500 hover:text-stone-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {paymentDebugLogs.map((log, idx) => (
+                    <p key={`${log}-${idx}`} className="text-[11px] text-stone-700 dark:text-gray-300 leading-relaxed">• {log}</p>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </BottomSheet>

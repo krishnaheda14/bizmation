@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
+  readonly VITE_TWILIO_WORKER_URL?: string;
   readonly VITE_AI_SERVICE_URL?: string;
   readonly VITE_APP_ENV?: string;
   // Supabase

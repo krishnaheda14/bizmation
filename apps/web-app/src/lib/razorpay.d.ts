@@ -31,6 +31,14 @@ export interface BuyGoldOptions {
     customerPhone: string;
     customerUid?: string;
     metal?: 'GOLD' | 'SILVER';
+    onOrderCreated?: (payload: {
+        lockId: string;
+        expiresAt: string;
+        lockWindowSeconds: number;
+        razorpayOrderId: string;
+        amountPaise: number;
+    }) => void;
+    onDebug?: (message: string) => void;
     onSuccess: (paymentId: string) => void;
     onFailure: (error: any) => void;
 }

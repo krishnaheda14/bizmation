@@ -121,7 +121,7 @@ export function paymentsRouter(): Router {
         return res.status(400).json({ success: false, error: 'Missing payment verification payload' });
       }
 
-      const { keySecret, keyId } = getRazorpayConfig();
+      const { keySecret } = getRazorpayConfig();
       const expected = crypto
         .createHmac('sha256', keySecret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -138,60 +138,8 @@ export function paymentsRouter(): Router {
         return res.status(404).json({ success: false, error: 'Price lock record not found' });
       }
 
-      const lock = lockSnap.data() as any;
-      const nowMs = Date.now();
-      const expiresAtMs = lock?.expiresAt?.toDate ? lock.expiresAt.toDate().getTime() : Number(lock?.expiresAtMs || 0);
-      const isExpired = !expiresAtMs || nowMs > expiresAtMs;
-
-      if (isExpired) {
-        let refundId = '';
-        let refundError = '';
-        try {
-          const refundResp = await axios.post(
-            `https://api.razorpay.com/v1/payments/${razorpayPaymentId}/refund`,
-            {
-              amount: Number(lock?.amountPaise || 0),
-              notes: {
-                reason: 'price_lock_expired',
-                lockId,
-              },
-            },
-            {
-              auth: {
-                username: keyId,
-                password: keySecret,
-              },
-              timeout: 10000,
-            },
-          );
-          refundId = String(refundResp.data?.id || '');
-        } catch (e: any) {
-          refundError = e?.response?.data?.error?.description || e?.message || 'Refund failed';
-        }
-
-        await lockRef.update({
-          status: refundId ? 'REFUNDED_AFTER_EXPIRY' : 'EXPIRED_PAYMENT_NO_REFUND',
-          verifiedAt: new Date(),
-          razorpayOrderId,
-          razorpayPaymentId,
-          refundId,
-          refundError,
-          updatedAt: new Date(),
-        });
-
-        return res.status(409).json({
-          success: true,
-          data: {
-            expired: true,
-            refunded: !!refundId,
-            refundId: refundId || null,
-            refundError: refundError || null,
-          },
-        });
-      }
-
       await lockRef.update({
-        status: 'PAID_IN_TIME',
+        status: 'PAID',
         verifiedAt: new Date(),
         razorpayOrderId,
         razorpayPaymentId,
