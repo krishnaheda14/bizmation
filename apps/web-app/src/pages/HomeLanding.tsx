@@ -376,7 +376,6 @@ export const HomeLanding: React.FC = () => {
 
     setPaying(true);
     setPaymentDebugLines([]);
-    pushPaymentDebug(`Buy request started for ${buyMetal} (${buyForm.grams}g)`);
     buyGold({
       grams, ratePerGram,
       customerName:  custName,
@@ -397,7 +396,6 @@ export const HomeLanding: React.FC = () => {
         setLockedRate(null);
         setLockExpiresAtMs(null);
         setSlideValue(0);
-        pushPaymentDebug(`Failure: ${err?.message || 'Unknown payment error'}`);
         setError(`Payment failed: ${err.message}. Please try again. If issue continues, share payment debug details from this screen.`);
         setTimeout(() => setError(''), 8000);
       },

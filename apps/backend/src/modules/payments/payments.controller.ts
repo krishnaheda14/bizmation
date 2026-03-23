@@ -75,6 +75,7 @@ export function paymentsRouter(): Router {
           amount: amountPaise,
           currency: 'INR',
           receipt,
+          payment_capture: 1,
           notes: {
             lockId: lockRef.id,
             customerUid,

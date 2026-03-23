@@ -69,14 +69,32 @@ function getApiBaseUrl(): string {
   return raw.replace(/\/$/, '');
 }
 
+function isTwilioOtpWorkerUrl(url: string): boolean {
+  return /twilio-otp-worker/i.test(url);
+}
+
 function isLocalhostRuntime(): boolean {
   return typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 }
 
 function getApiCandidates(path: string): string[] {
+  const candidates: string[] = [];
+
+  // Always try same-origin first so frontend reverse-proxy rules can route /api/payments.
+  if (typeof window !== 'undefined') {
+    candidates.push(path);
+  }
+
   const base = getApiBaseUrl();
-  if (base) return [`${base}${path}`];
-  return isLocalhostRuntime() ? [path] : [];
+  if (base && !isTwilioOtpWorkerUrl(base)) {
+    candidates.push(`${base}${path}`);
+  }
+
+  if (candidates.length === 0 && isLocalhostRuntime()) {
+    candidates.push(path);
+  }
+
+  return Array.from(new Set(candidates));
 }
 
 async function fetchWithFallback(
@@ -86,7 +104,7 @@ async function fetchWithFallback(
 ): Promise<{ res: Response; url: string }> {
   const candidates = getApiCandidates(path);
   if (candidates.length === 0) {
-    throw new Error('VITE_API_URL is missing in production. Configure Cloudflare Pages env and redeploy.');
+    throw new Error('No valid payment API route found. Configure same-origin /api proxy or set VITE_API_URL to backend (not Twilio OTP worker).');
   }
   let lastErr: any = null;
   for (const url of candidates) {
@@ -218,7 +236,7 @@ export async function buyGold(options: BuyGoldOptions) {
     currency: 'INR',
     order_id: razorpayOrderId,
     name: `${options.metal === 'SILVER' ? 'Silver' : 'Gold'} Purchase`,
-    description: `${options.grams}g of ${options.metal === 'SILVER' ? 'Silver' : '24K Gold'} @ ?${options.ratePerGram.toFixed(2)}/g`,
+    description: `${options.grams}g of ${options.metal === 'SILVER' ? 'Silver' : '24K Gold'} @ INR ${options.ratePerGram.toFixed(2)}/g`,
     image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/gem.svg',
     prefill: {
       name: options.customerName,
@@ -424,7 +442,7 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
     amount: amountInPaise,
     currency: 'INR',
     name: 'Gold AutoPay (SIP)',
-    description: `Monthly Gold SIP – ?${options.planAmount.toLocaleString('en-IN')} / month`,
+    description: `Monthly Gold SIP ï¿½ ?${options.planAmount.toLocaleString('en-IN')} / month`,
     recurring: 1,
     prefill: {
       name: options.customerName,
