@@ -13,7 +13,7 @@ import {
   X, Loader2, Phone, Mail, User, Timer,
 } from 'lucide-react';
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
-import { buyGold, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
+import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -23,7 +23,7 @@ import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders'
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 interface ModalState {
-  type: 'buy' | 'sell' | 'autopay' | null;
+  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | null;
 }
 
 interface BuyFormData {
@@ -43,6 +43,15 @@ interface SellFormData {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+
+type CoinMetal = 'GOLD' | 'SILVER';
+
+const COIN_OPTIONS: Record<CoinMetal, number[]> = {
+  GOLD: [0.5, 1, 2, 10, 20, 50],
+  SILVER: [10, 20, 50, 100, 250, 500, 1000],
+};
+const COIN_MAKING_CHARGE_PER_UNIT = 300;
+
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 export const HomeLanding: React.FC = () => {
@@ -50,34 +59,34 @@ export const HomeLanding: React.FC = () => {
   const REDEEM_DEDUCTION_PER_GRAM = 50;
   const GOLD_COMMISSION_PER_GRAM = 20;   // Rs 200 per 10g
   const SILVER_COMMISSION_PER_GRAM = 2;  // Rs 2000 per 1kg
-    // Detailed live price breakdown state
-    const [priceFeed, setPriceFeed] = useState<any>(null);
-    const fetchDetailedFeed = useCallback(async () => {
-      try {
-        const d = await fetchWorkerData();
-        if (d?.xauUsd) {
-          setPriceFeed({
-            xauInr:    d.xauInr,
-            xagInr:    d.xagInr,
-            xauUsd:    d.xauUsd,
-            xagUsd:    d.xagUsd,
-            usdInr:    d.usdToInr,
-            source:    d.source,
-            fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
-          });
-          return;
-        }
-        setPriceFeed(null);
-      } catch {
-        setPriceFeed(null);
+  // Detailed live price breakdown state
+  const [priceFeed, setPriceFeed] = useState<any>(null);
+  const fetchDetailedFeed = useCallback(async () => {
+    try {
+      const d = await fetchWorkerData();
+      if (d?.xauUsd) {
+        setPriceFeed({
+          xauInr:    d.xauInr,
+          xagInr:    d.xagInr,
+          xauUsd:    d.xauUsd,
+          xagUsd:    d.xagUsd,
+          usdInr:    d.usdToInr,
+          source:    d.source,
+          fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
+        });
+        return;
       }
-    }, []);
+      setPriceFeed(null);
+    } catch {
+      setPriceFeed(null);
+    }
+  }, []);
 
-    useEffect(() => {
-      fetchDetailedFeed();
-      const interval = setInterval(fetchDetailedFeed, 5 * 60 * 1000); // refresh every 5 min (match worker cron)
-      return () => clearInterval(interval);
-    }, [fetchDetailedFeed]);
+  useEffect(() => {
+    fetchDetailedFeed();
+    const interval = setInterval(fetchDetailedFeed, 5 * 60 * 1000); // refresh every 5 min (match worker cron)
+    return () => clearInterval(interval);
+  }, [fetchDetailedFeed]);
   const { currentUser, userProfile } = useAuth();
   const ownerVerificationStatus = ((userProfile as any)?.shopVerificationStatus ?? '').toUpperCase();
   const ownerIsUnverified = (userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF')
@@ -116,7 +125,14 @@ export const HomeLanding: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [buyMetal, setBuyMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [slideValue, setSlideValue] = useState(0);
-  const [paymentDebugLogs, setPaymentDebugLogs] = useState<string[]>([]);
+  const [paymentDebugLines, setPaymentDebugLines] = useState<string[]>([]);
+  const [coinMetal, setCoinMetal] = useState<CoinMetal>('GOLD');
+  const [coinWeightGrams, setCoinWeightGrams] = useState<number>(0.5);
+  const [coinQuantity, setCoinQuantity] = useState<number>(1);
+  const [coinDeliveryCity, setCoinDeliveryCity] = useState('');
+  const [coinNote, setCoinNote] = useState('');
+  const [coinSubmitting, setCoinSubmitting] = useState(false);
+  const [coinSuccessOverlay, setCoinSuccessOverlay] = useState(false);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -133,20 +149,31 @@ export const HomeLanding: React.FC = () => {
   // ── Price-lock countdown ──────────────────────────────────────────
   const LOCK_DURATION = 120; // seconds
   const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
+  const [lockExpiresAtMs, setLockExpiresAtMs] = useState<number | null>(null);
   const lockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startLockTimer = (initialSeconds: number = LOCK_DURATION) => {
+  const startLockTimer = (expiresAtMs: number) => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    setLockSecondsLeft(Math.max(0, Math.floor(initialSeconds)));
+    setLockExpiresAtMs(expiresAtMs);
+    
+    // Calculate initial remaining time based on server timestamp
+    const nowMs = Date.now();
+    const secondsLeft = Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
+    setLockSecondsLeft(secondsLeft);
+    
     lockIntervalRef.current = setInterval(() => {
-      setLockSecondsLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(lockIntervalRef.current!);
-          lockIntervalRef.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
+      const currentMs = Date.now();
+      const remainingMs = expiresAtMs - currentMs;
+      const secondsRemaining = Math.max(0, Math.ceil(remainingMs / 1000));
+      
+      if (remainingMs <= 0) {
+        clearInterval(lockIntervalRef.current!);
+        lockIntervalRef.current = null;
+        setLockSecondsLeft(0);
+        return;
+      }
+      
+      setLockSecondsLeft(secondsRemaining);
     }, 1000);
   };
 
@@ -154,11 +181,29 @@ export const HomeLanding: React.FC = () => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
     lockIntervalRef.current = null;
     setLockSecondsLeft(0);
+    setLockExpiresAtMs(null);
+  };
+
+  const pushPaymentDebug = (line: string) => {
+    const stamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
+    setPaymentDebugLines((prev) => {
+      const next = [...prev, `${stamp}  ${line}`];
+      return next.slice(-8);
+    });
   };
 
   // Cleanup on unmount
   useEffect(() => () => clearLockTimer(), []);
 
+  // Auto-start timer whenever a rate is locked and we have expiry time
+  useEffect(() => {
+    if (lockedRate && lockExpiresAtMs) {
+      startLockTimer(lockExpiresAtMs);
+    } else {
+      clearLockTimer();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedRate, lockExpiresAtMs]);
   // Show 999 rates to users, but execute gold buy/sell on 995 operational rate.
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
   const gold995 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995);
@@ -309,22 +354,9 @@ export const HomeLanding: React.FC = () => {
     });
   }, [currentUser, userProfile]);
 
-  const addPaymentDebug = useCallback((message: string) => {
-    const stamp = new Date().toLocaleTimeString('en-IN', { hour12: false });
-    setPaymentDebugLogs((prev) => {
-      const next = [`${stamp} ${message}`, ...prev];
-      return next.slice(0, 18);
-    });
-  }, []);
-
-  const resetPaymentDebug = useCallback(() => {
-    setPaymentDebugLogs([]);
-  }, []);
-
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
     if (!buyForm.grams) return;
-    resetPaymentDebug();
     const liveMarketRate = buyMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
     const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
     const customerRate = buyMetal === 'GOLD'
@@ -343,6 +375,8 @@ export const HomeLanding: React.FC = () => {
     const customerShopId = (userProfile as any)?.shopId ?? '';
 
     setPaying(true);
+    setPaymentDebugLines([]);
+    pushPaymentDebug(`Buy request started for ${buyMetal} (${buyForm.grams}g)`);
     buyGold({
       grams, ratePerGram,
       customerName:  custName,
@@ -350,21 +384,30 @@ export const HomeLanding: React.FC = () => {
       customerPhone: custPhone,
       customerUid: currentUser?.uid ?? '',
       metal: buyMetal,
-      onOrderCreated: ({ expiresAt, lockWindowSeconds }) => {
-        if (buyMetal !== 'GOLD') return;
-        setLockedRate(ratePerGram);
-        const expiresAtMs = Date.parse(expiresAt);
-        const secondsFromServer = Number.isFinite(expiresAtMs)
-          ? Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 1000))
-          : lockWindowSeconds;
-        startLockTimer(secondsFromServer || lockWindowSeconds || LOCK_DURATION);
+      onLockCreated: (lockData) => {
+        pushPaymentDebug(`Price lock created. Lock ID: ${lockData.lockId.slice(0, 10)}... Expires in ~2 min.`);
+        // Only NOW (after backend confirms) do we set the locked rate and start timer
+        if (buyMetal === 'GOLD') {
+          setLockedRate(ratePerGram);
+          setLockExpiresAtMs(lockData.expiresAtMs);
+        }
       },
-      onDebug: (message) => addPaymentDebug(message),
+      onFailure: (err) => {
+        setPaying(false);
+        setLockedRate(null);
+        setLockExpiresAtMs(null);
+        setSlideValue(0);
+        pushPaymentDebug(`Failure: ${err?.message || 'Unknown payment error'}`);
+        setError(`Payment failed: ${err.message}. Please try again. If issue continues, share payment debug details from this screen.`);
+        setTimeout(() => setError(''), 8000);
+      },
+      onDebug: (details) => pushPaymentDebug(details),
       onSuccess: async (id) => {
+        pushPaymentDebug(`Payment captured successfully. Payment ID: ${id}`);
         setPaying(false);
         setModal({ type: null });
         setLockedRate(null);
-        clearLockTimer();
+        setLockExpiresAtMs(null);
         setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
@@ -433,16 +476,6 @@ export const HomeLanding: React.FC = () => {
           }
         } catch { /* non-blocking */ }
       },
-      onFailure: (err) => {
-        setPaying(false);
-        setSlideValue(0);
-        setLockedRate(null);
-        clearLockTimer();
-        addPaymentDebug(`Failure: ${err?.message || 'Payment failed.'}`);
-        if (err.message !== 'Payment cancelled') {
-          alert(err.message);
-        }
-      },
     });
   };
 
@@ -494,11 +527,6 @@ export const HomeLanding: React.FC = () => {
 
   // ── Redeem / Sell-to-jeweller request ────────────────────────────────────
   const handleSell = async () => {
-    if (!currentUser?.emailVerified && !userProfile?.manualEmailVerified) {
-      setSuccessMsg('Please verify your email before you can submit this request.');
-      setTimeout(() => setSuccessMsg(''), 8000);
-      return;
-    }
 
     const purityNum = 995;
     const sellRate = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995)
@@ -621,6 +649,92 @@ export const HomeLanding: React.FC = () => {
     ? (sellDerivedGrams * sellRedeemRate).toFixed(4)
     : null;
 
+  const activeCoinRate = coinMetal === 'GOLD' ? goldBuyPrice : silverBuyPrice;
+  const estimatedCoinAmount = Math.max(0, (activeCoinRate * coinWeightGrams * coinQuantity) + (COIN_MAKING_CHARGE_PER_UNIT * coinQuantity));
+
+  const submitCoinRequest = async () => {
+    if (!currentUser || !userProfile) {
+      setError('Please sign in again and retry coin request.');
+      return;
+    }
+    if (!coinDeliveryCity.trim()) {
+      setError('Please enter delivery city for coin request.');
+      return;
+    }
+    if (!coinWeightGrams || coinQuantity <= 0 || !activeCoinRate) {
+      setError('Please select a valid coin size and quantity.');
+      return;
+    }
+
+    setCoinSubmitting(true);
+    const customerShopName = (userProfile as any)?.shopName ?? '';
+    const customerShopId = (userProfile as any)?.shopId ?? '';
+    const customerName = userProfile.name ?? currentUser.displayName ?? '';
+    const customerEmail = userProfile.email ?? currentUser.email ?? '';
+    const customerPhone = userProfile.phone ?? '';
+
+    buyCoins({
+      metal: coinMetal,
+      gramsPerCoin: coinWeightGrams,
+      quantity: coinQuantity,
+      ratePerGram: activeCoinRate,
+      makingChargesPerCoinInr: COIN_MAKING_CHARGE_PER_UNIT,
+      customerName,
+      customerEmail,
+      customerPhone,
+      customerUid: currentUser.uid,
+      onSuccess: async (paymentId, paymentDetails) => {
+        try {
+          await addDoc(collection(db, 'coinPurchaseOrders'), {
+            source: 'HOME_SCREEN',
+            status: 'ACCEPTED',
+            orderStatusTimeline: [{ status: 'ACCEPTED', at: new Date().toISOString(), by: 'SYSTEM_PAYMENT_SUCCESS' }],
+            paymentStatus: 'PAID',
+            paymentLockId: paymentDetails.lockId,
+            razorpayPaymentId: paymentId,
+            metal: coinMetal,
+            weightGrams: coinWeightGrams,
+            quantity: coinQuantity,
+            estimatedRatePerGram: activeCoinRate,
+            makingChargesPerUnitInr: COIN_MAKING_CHARGE_PER_UNIT,
+            makingChargesTotalInr: COIN_MAKING_CHARGE_PER_UNIT * coinQuantity,
+            totalAmountInr: Math.round(paymentDetails.totalAmountInr * 100) / 100,
+            customerUid: currentUser.uid,
+            customerName,
+            customerEmail,
+            customerPhone,
+            deliveryCity: coinDeliveryCity.trim(),
+            customerNote: coinNote.trim(),
+            shopName: customerShopName,
+            shopId: customerShopId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          setCoinSuccessOverlay(true);
+          setTimeout(() => setCoinSuccessOverlay(false), 1800);
+          setSuccessMsg(`Coin order placed and paid successfully. Track it in Orders under Coin Purchase Orders.`);
+          setTimeout(() => setSuccessMsg(''), 8000);
+          setModal({ type: null });
+          setCoinNote('');
+          setCoinDeliveryCity('');
+          setCoinQuantity(1);
+          setCoinWeightGrams(coinMetal === 'GOLD' ? 0.5 : 10);
+        } catch (err: any) {
+          setError(`Payment succeeded but order save failed: ${err?.message || 'Unknown error'}`);
+          setTimeout(() => setError(''), 9000);
+        } finally {
+          setCoinSubmitting(false);
+        }
+      },
+      onFailure: (err: any) => {
+        setCoinSubmitting(false);
+        setError(`Coin payment failed: ${err?.message || 'Unknown error'}`);
+        setTimeout(() => setError(''), 8000);
+      },
+    });
+  };
+
   const noKey = !RAZORPAY_KEY_ID;
 
   // ────────────────────────────────────────────────────────────────────────
@@ -728,6 +842,18 @@ export const HomeLanding: React.FC = () => {
         </div>
       )}
 
+      {coinSuccessOverlay && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-3 animate-fade-up-soft">
+            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle size={34} className="text-green-600" />
+            </div>
+            <p className="text-sm font-bold text-stone-800">Request Submitted Successfully</p>
+            <p className="text-xs text-stone-500">Payment received. Order is now in Accepted stage.</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Razorpay Key Warning ─────────────────────────────────────────── */}
             {/* ── Detailed Price Calculation ───────────────────────────────────── */}
       {noKey && (
@@ -807,16 +933,16 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
-                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
                   >
                     <ShoppingCart size={18} />
                     Buy Gold Now
                   </button>
                   <button
-                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setModal({ type: 'buy' }); }}
+                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
                   >
                     <ShoppingCart size={18} />
@@ -835,6 +961,20 @@ export const HomeLanding: React.FC = () => {
                   >
                     <Repeat size={18} />
                     Setup AutoPay
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCoinMetal('GOLD');
+                      setCoinWeightGrams(0.5);
+                      setCoinQuantity(1);
+                      setCoinDeliveryCity((userProfile?.city ?? '').trim());
+                      setCoinNote('');
+                      setModal({ type: 'coin-request' });
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-stone-900 to-stone-700 hover:from-black hover:to-stone-900 text-amber-200 font-bold rounded-xl shadow-lg hover:shadow-stone-500/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Coins size={18} />
+                    Buy Coins
                   </button>
               </div>
 
@@ -1076,6 +1216,7 @@ export const HomeLanding: React.FC = () => {
                           onClick={() => {
                             setBuyMetal(r.metalType);
                             setLockedRate(null);
+                            setLockExpiresAtMs(null);
                             setModal({ type: 'buy' });
                           }}
                           className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-black rounded-full text-sm font-semibold">
@@ -1176,7 +1317,7 @@ export const HomeLanding: React.FC = () => {
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); clearLockTimer(); resetPaymentDebug(); }}
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); setLockExpiresAtMs(null); }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     buyMetal === m
                       ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
@@ -1247,19 +1388,9 @@ export const HomeLanding: React.FC = () => {
               )}
             </div>
 
-            {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex flex-col gap-2">
-                <span>Verify your email to buy. Check your inbox.</span>
-                <button onClick={handleResendVerification} disabled={resending}
-                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs">
-                  {resending ? 'Sending...' : 'Resend verification email'}
-                </button>
-                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
-              </div>
-            )}
+            {/* Email verification disabled - customers can buy without verification */}
 
-            {buyForm.grams && buyTotal && !(currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified) && (
+            {buyForm.grams && buyTotal && (
               buyMetal === 'GOLD' ? (
                 <div className="space-y-2">
                   <SlideToConfirm
@@ -1283,25 +1414,119 @@ export const HomeLanding: React.FC = () => {
               )
             )}
 
-            {paymentDebugLogs.length > 0 && (
-              <div className="rounded-xl border border-stone-200 dark:border-gray-700 bg-stone-50 dark:bg-gray-900/60 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-stone-700 dark:text-gray-200 uppercase tracking-wide">Payment Debug (Safe to Share)</p>
-                  <button
-                    type="button"
-                    onClick={resetPaymentDebug}
-                    className="text-[11px] font-semibold text-stone-500 hover:text-stone-700 dark:text-gray-400 dark:hover:text-gray-200"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {paymentDebugLogs.map((log, idx) => (
-                    <p key={`${log}-${idx}`} className="text-[11px] text-stone-700 dark:text-gray-300 leading-relaxed">• {log}</p>
+            {paymentDebugLines.length > 0 && (
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3">
+                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-1.5">Payment Debug (Safe to Share)</p>
+                <div className="space-y-1">
+                  {paymentDebugLines.map((line, idx) => (
+                    <p key={`${idx}-${line.slice(0, 16)}`} className="text-[11px] text-amber-900/90 break-words">• {line}</p>
                   ))}
                 </div>
               </div>
             )}
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* Coin Purchase Request Modal */}
+      {modal.type === 'coin-request' && (
+        <BottomSheet title="Buy Gold / Silver Coins" onClose={() => setModal({ type: null })}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800">
+              After payment, order starts as ACCEPTED. Super Admin may move it through APPROVED, PREPARING, READY_TO_DISPATCH and DEPARTED stages.
+            </div>
+
+            <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 border border-amber-200">
+              {(['GOLD', 'SILVER'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    setCoinMetal(m);
+                    setCoinWeightGrams(COIN_OPTIONS[m][0]);
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${coinMetal === m ? 'bg-amber-500 text-black' : 'text-amber-700 hover:bg-amber-100'}`}
+                >
+                  {m === 'GOLD' ? 'Gold Coins' : 'Silver Coins'}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <p className="text-xs text-amber-700 font-semibold mb-2">Select Coin Weight</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {COIN_OPTIONS[coinMetal].map((weight) => {
+                  const selected = coinWeightGrams === weight;
+                  return (
+                    <button
+                      type="button"
+                      key={`${coinMetal}-${weight}`}
+                      onClick={() => setCoinWeightGrams(weight)}
+                      className={`rounded-xl border p-2 text-left transition-all ${selected ? 'border-amber-500 bg-amber-50 shadow' : 'border-amber-200 bg-white hover:border-amber-400'}`}
+                    >
+                      <img
+                        src={coinMetal === 'GOLD' ? '/coins/gold-coin.svg' : '/coins/silver-coin.svg'}
+                        alt={`${coinMetal} coin`}
+                        className="w-full h-16 object-contain"
+                      />
+                      <p className="mt-1 text-sm font-black text-amber-900">{weight}g</p>
+                      <p className="text-[11px] text-amber-700">{coinMetal}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="fieldLabel">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={coinQuantity}
+                onChange={(e) => setCoinQuantity(Math.max(1, Number(e.target.value || 1)))}
+                className="fieldInput"
+              />
+            </div>
+
+            <div>
+              <label className="fieldLabel">Delivery City</label>
+              <input
+                type="text"
+                value={coinDeliveryCity}
+                onChange={(e) => setCoinDeliveryCity(e.target.value)}
+                placeholder="e.g. Mumbai"
+                className="fieldInput"
+              />
+            </div>
+
+            <div>
+              <label className="fieldLabel">Additional Note (optional)</label>
+              <textarea
+                value={coinNote}
+                onChange={(e) => setCoinNote(e.target.value)}
+                rows={3}
+                placeholder="Any preferred delivery timing or branch pickup note"
+                className="w-full rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+
+            <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm flex items-center justify-between">
+              <div>
+                <p className="text-green-800 font-semibold">Estimated Request Value</p>
+                <p className="text-[11px] text-green-700">{coinQuantity} × {coinWeightGrams}g @ ₹{activeCoinRate.toFixed(4)}/g + ₹{COIN_MAKING_CHARGE_PER_UNIT} making/coin</p>
+              </div>
+              <p className="text-lg font-black text-green-900">₹{estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+
+            <button
+              onClick={submitCoinRequest}
+              disabled={coinSubmitting || !coinDeliveryCity.trim()}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 disabled:from-gray-300 disabled:to-gray-400 text-black font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+            >
+              {coinSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Coins size={18} />}
+              {coinSubmitting ? 'Opening Payment...' : `Pay ₹${estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} & Submit Order`}
+            </button>
           </div>
         </BottomSheet>
       )}
@@ -1410,22 +1635,7 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
-            {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
-                <span>
-                  Please verify your email before submitting this request. Check your inbox for a verification link.
-                </span>
-                <button
-                  onClick={handleResendVerification}
-                  disabled={resending}
-                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
-                >
-                  {resending ? 'Sending...' : 'Resend verification email'}
-                </button>
-                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
-              </div>
-            )}
+            {/* Email verification disabled - shop owners can sell without verification */}
             <div>
               <label className="fieldLabel">Bank Name</label>
               <input type="text" placeholder="e.g. State Bank of India" value={sellForm.bank}
@@ -1443,7 +1653,7 @@ export const HomeLanding: React.FC = () => {
             </div>
             <button
               onClick={handleSell}
-              disabled={Boolean((!sellForm.grams && !sellForm.amountInr) || (currentUser && currentUser.emailVerified === false && !userProfile?.manualEmailVerified))}
+              disabled={Boolean(!sellForm.grams && !sellForm.amountInr)}
               className="w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               <ArrowUpRight size={18} />
@@ -1496,26 +1706,11 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
             )}
-            {/* Email verification gating */}
-            {currentUser && !currentUser.emailVerified && !userProfile?.manualEmailVerified && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 mb-2 flex flex-col gap-2">
-                <span>
-                  Please verify your email to setup AutoPay. Check your inbox for a verification link.
-                </span>
-                <button
-                  onClick={handleResendVerification}
-                  disabled={resending}
-                  className="w-fit px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs"
-                >
-                  {resending ? 'Sending...' : 'Resend verification email'}
-                </button>
-                {resentMsg && <span className="text-green-600 text-xs">{resentMsg}</span>}
-              </div>
-            )}
+            {/* Email verification disabled - users can setup AutoPay without verification */}
 
             <button
               onClick={handleAutoPay}
-              disabled={Boolean(paying || !autoPayForm.amount || (currentUser && currentUser.emailVerified === false && !userProfile?.manualEmailVerified))}
+              disabled={Boolean(paying || !autoPayForm.amount)}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}

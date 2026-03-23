@@ -91,7 +91,39 @@ export interface PlatformOrderRow {
   [k: string]: any;
 }
 
+export interface CoinPurchaseRequestRow {
+  id: string;
+  status?: 'ACCEPTED' | 'APPROVED' | 'PREPARING' | 'READY_TO_DISPATCH' | 'DEPARTED' | 'REJECTED';
+  source?: string;
+  metal?: 'GOLD' | 'SILVER';
+  weightGrams?: number;
+  quantity?: number;
+  estimatedRatePerGram?: number;
+  makingChargesPerUnitInr?: number;
+  makingChargesTotalInr?: number;
+  totalAmountInr?: number;
+  paymentStatus?: 'PAID' | 'FAILED' | 'PENDING';
+  razorpayPaymentId?: string;
+  paymentLockId?: string;
+  orderStatusTimeline?: Array<{ status: string; at: string; by: string }>;
+  customerUid?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  deliveryCity?: string;
+  customerNote?: string;
+  adminNote?: string;
+  reviewedByUid?: string;
+  reviewedByName?: string;
+  reviewedAt?: any;
+  shopId?: string;
+  shopName?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  [k: string]: any;
+}
+
 export interface TabType {
-  key: 'shops' | 'customers' | 'orders' | 'stats';
+  key: 'shops' | 'customers' | 'orders' | 'coin-requests' | 'stats';
   label: string;
 }

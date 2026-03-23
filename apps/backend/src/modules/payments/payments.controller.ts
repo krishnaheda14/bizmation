@@ -26,6 +26,12 @@ export function paymentsRouter(): Router {
 
   router.post('/create-buy-order', async (req: Request, res: Response) => {
     try {
+      console.log('[payments] create-buy-order called', {
+        grams: req.body?.grams,
+        ratePerGram: req.body?.ratePerGram,
+        customerUid: req.body?.customerUid,
+        metal: req.body?.metal,
+      });
       const grams = validatePositiveNumber(req.body?.grams, 'grams');
       const ratePerGram = validatePositiveNumber(req.body?.ratePerGram, 'ratePerGram');
       const customerName = String(req.body?.customerName || '').trim();
@@ -102,10 +108,13 @@ export function paymentsRouter(): Router {
           amountPaise,
           currency: 'INR',
           lockWindowSeconds: LOCK_WINDOW_SECONDS,
+          expiresAtMs,
           expiresAt: new Date(expiresAtMs).toISOString(),
+          createdAtMs: nowMs,
         },
       });
     } catch (err: any) {
+      console.error('[payments] create-buy-order failed:', err?.message || err, err?.stack || '');
       return res.status(500).json({ success: false, error: err?.message || 'Failed to create payment order' });
     }
   });

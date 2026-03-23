@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchCustomerOrders } from '../lib/customerOrders';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface GoldOrder {
   id: string;
@@ -29,6 +31,21 @@ interface GoldOrder {
   shopName?: string;
   shopId?: string;
   createdAt: any;
+}
+
+interface CoinRequest {
+  id: string;
+  metal?: 'GOLD' | 'SILVER';
+  weightGrams?: number;
+  quantity?: number;
+  status?: 'ACCEPTED' | 'APPROVED' | 'PREPARING' | 'READY_TO_DISPATCH' | 'DEPARTED' | 'REJECTED';
+  totalAmountInr?: number;
+  paymentStatus?: 'PAID' | 'FAILED' | 'PENDING';
+  razorpayPaymentId?: string;
+  makingChargesTotalInr?: number;
+  deliveryCity?: string;
+  orderStatusTimeline?: Array<{ status: string; at: string; by: string }>;
+  createdAt?: any;
 }
 
 // ── Invoice Generator ────────────────────────────────────────────────────────
@@ -158,18 +175,29 @@ export const Orders: React.FC = () => {
   const [error, setError]       = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
   const [search, setSearch]     = useState('');
+  const [coinRequests, setCoinRequests] = useState<CoinRequest[]>([]);
 
   const fetchOrders = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
     setError('');
     try {
-      const result = await fetchCustomerOrders({
-        uid: currentUser.uid,
-        email: currentUser.email ?? userProfile?.email ?? '',
-        phone: userProfile?.phone ?? '',
-      });
+      const [result, coinSnap] = await Promise.all([
+        fetchCustomerOrders({
+          uid: currentUser.uid,
+          email: currentUser.email ?? userProfile?.email ?? '',
+          phone: userProfile?.phone ?? '',
+        }),
+        getDocs(query(collection(db, 'coinPurchaseOrders'), where('customerUid', '==', currentUser.uid))),
+      ]);
       setOrders(result as GoldOrder[]);
+      const coinRows = coinSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as CoinRequest));
+      coinRows.sort((a, b) => {
+        const at = a.createdAt?.seconds ? a.createdAt.seconds : 0;
+        const bt = b.createdAt?.seconds ? b.createdAt.seconds : 0;
+        return bt - at;
+      });
+      setCoinRequests(coinRows);
     } catch (err: any) {
       // console.error('[Orders] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
@@ -348,6 +376,39 @@ export const Orders: React.FC = () => {
         <p className="text-xs text-center text-stone-400 dark:text-gray-600">
           Click <strong>PDF</strong> on any order to print or save as PDF invoice.
         </p>
+
+        <div className="bg-white dark:bg-gray-950 border border-stone-100 dark:border-gray-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-black text-stone-800 dark:text-white flex items-center gap-2">
+              <Coins size={16} className="text-amber-500" /> Coin Purchase Orders
+            </h2>
+            <span className="text-xs text-stone-500">{coinRequests.length} order(s)</span>
+          </div>
+          {coinRequests.length === 0 ? (
+            <p className="text-sm text-stone-500">No coin orders yet. Place one from Home → Buy Coins.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {coinRequests.map((r) => {
+                const dt = r.createdAt?.toDate
+                  ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : '—';
+                return (
+                  <div key={r.id} className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-bold text-amber-900">{r.quantity || 0} × {r.weightGrams || 0}g {r.metal || '-'} coin</p>
+                      <p className="text-xs text-amber-700">{dt} · Delivery: {r.deliveryCity || '-'}</p>
+                      <p className="text-[11px] text-stone-600 mt-1">Payment: {r.paymentStatus || 'PAID'}{r.razorpayPaymentId ? ` · ${r.razorpayPaymentId}` : ''}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-stone-900">₹{Number(r.totalAmountInr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      <p className="text-xs font-semibold text-stone-600">Status: {r.status || 'ACCEPTED'}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
