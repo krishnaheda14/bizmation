@@ -43,6 +43,38 @@ Open http://localhost:5173 in your browser.
 
 ## Production Deployment Options
 
+### Same Domain API Routing (Cloudflare Pages)
+
+If your frontend is deployed at `https://ddminfotechnology.com` on Cloudflare Pages, and you want payment calls to work on the same domain (`/api/*`), you must proxy `/api/*` to your backend.
+
+This repository now includes a Pages Function proxy at:
+
+- `apps/web-app/functions/api/[[path]].ts`
+
+It forwards all requests from:
+
+- `https://<your-domain>/api/*`
+
+To:
+
+- `BACKEND_API_BASE_URL + /api/*`
+
+#### Required Cloudflare Pages configuration
+
+1. In Cloudflare Pages project settings, set **Build output directory** to `dist`.
+2. Set **Root directory** to `apps/web-app`.
+3. Add environment variable (Production + Preview):
+  - `BACKEND_API_BASE_URL=https://<your-backend-domain>`
+4. Redeploy Pages.
+
+#### Verify after deploy
+
+- `GET https://<your-domain>/api/payments/health` should return JSON.
+- It must **not** return `index.html`.
+- `POST https://<your-domain>/api/payments/create-buy-order` should reach backend and return JSON errors/success from backend (not `405` HTML fallback).
+
+> Important: If `BACKEND_API_BASE_URL` already ends with `/api`, proxy logic avoids `/api/api/*` duplication automatically.
+
 ### Option 1: AWS ECS (Recommended)
 
 #### Prerequisites
