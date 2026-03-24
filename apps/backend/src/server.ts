@@ -88,7 +88,7 @@ const goldRateUpdateJob = new CronJob('*/5 * * * *', async () => {
 const server = app.listen(PORT, () => {
   console.log(`[startup] ✅ Server listening on port ${PORT}`);
   console.log(`[startup] 🌐 Health check: http://localhost:${PORT}/health`);
-  db.healthCheck().then(ok => ok ? console.log('[startup] ✅ Database connection verified') : console.warn('[startup] ⚠ Database health check failed - check DATABASE_URL and SSL settings'));
+  db.healthCheck().then(ok => ok ? console.log('[startup] ✅ Database connection verified') : console.warn('[startup] ⚠ Database health check failed — check DATABASE_URL and SSL settings'));
   goldRateUpdateJob.start();
   console.log('[startup] ⏰ Gold rate update cron started (every 5 min)');
 });

@@ -354,5 +354,88 @@ export function paymentsRouter(): Router {
   router.post('/create-order', handleCreateBuyOrder);
   router.post('/verify-payment', handleVerifyBuyPayment);
 
+  // AutoPay / Subscriptions
+  router.post('/create-subscription', async (req: Request, res: Response) => {
+    try {
+      const { freq = 'monthly', amountPaise, name = 'Gold SIP', customerNotify = 1, totalCount = 60 } = req.body;
+      const { keyId, keySecret } = getRazorpayConfig();
+
+      if (!amountPaise || amountPaise < 100) {
+        return res.status(400).json({ success: false, error: 'Invalid amount' });
+      }
+
+      // 1. Create Plan
+      const planResp = await axios.post(
+        'https://api.razorpay.com/v1/plans',
+        {
+          period: freq,
+          interval: 1,
+          item: {
+            name,
+            amount: amountPaise,
+            currency: 'INR'
+          }
+        },
+        { auth: { username: keyId, password: keySecret } }
+      );
+
+      const planId = planResp.data.id;
+
+      // 2. Create Subscription
+      const subResp = await axios.post(
+        'https://api.razorpay.com/v1/subscriptions',
+        {
+          plan_id: planId,
+          total_count: totalCount,
+          customer_notify: customerNotify
+        },
+        { auth: { username: keyId, password: keySecret } }
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          subscriptionId: subResp.data.id,
+          planId
+        }
+      });
+    } catch (err: any) {
+      console.error('[payments] create-subscription failed:', err?.response?.data || err?.message);
+      return res.status(500).json({ success: false, error: 'Failed to create subscription' });
+    }
+  });
+
+  router.post('/verify-subscription', async (req: Request, res: Response) => {
+    try {
+      const razorpaySubscriptionId = String(req.body?.razorpay_subscription_id || '').trim();
+      const razorpayPaymentId = String(req.body?.razorpay_payment_id || '').trim();
+      const razorpaySignature = String(req.body?.razorpay_signature || '').trim();
+
+      if (!razorpaySubscriptionId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ success: false, error: 'Missing subscription verification payload' });
+      }
+
+      const { keySecret } = getRazorpayConfig();
+      const expected = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpayPaymentId}|${razorpaySubscriptionId}`)
+        .digest('hex');
+
+      if (expected !== razorpaySignature) {
+        return res.status(400).json({ success: false, error: 'Invalid subscription signature' });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          paymentId: razorpayPaymentId,
+          subscriptionId: razorpaySubscriptionId
+        }
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: 'Failed to verify subscription' });
+    }
+  });
+
   return router;
 }

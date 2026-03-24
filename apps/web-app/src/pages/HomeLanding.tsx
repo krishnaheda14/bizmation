@@ -10,7 +10,7 @@ import {
   TrendingUp, TrendingDown, ShoppingCart, ArrowUpRight,
   RefreshCw, Shield, Bell, Zap, Star, ChevronRight,
   Coins, CreditCard, Repeat, CheckCircle, AlertCircle,
-  X, Loader2, Phone, Mail, User, Timer, Gift
+  X, Loader2, Sparkles, Phone, Mail, User, Timer,
 } from 'lucide-react';
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
 import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
@@ -23,12 +23,11 @@ import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders'
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 interface ModalState {
-  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | 'gift' | null;
+  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | null;
 }
 
 interface BuyFormData {
   grams: string;
-  amountInr: string;
 }
 
 interface AutoPayFormData {
@@ -69,12 +68,12 @@ export const HomeLanding: React.FC = () => {
       const d = await fetchWorkerData();
       if (d?.xauUsd) {
         setPriceFeed({
-          xauInr: d.xauInr,
-          xagInr: d.xagInr,
-          xauUsd: d.xauUsd,
-          xagUsd: d.xagUsd,
-          usdInr: d.usdToInr,
-          source: d.source,
+          xauInr:    d.xauInr,
+          xagInr:    d.xagInr,
+          xauUsd:    d.xauUsd,
+          xagUsd:    d.xagUsd,
+          usdInr:    d.usdToInr,
+          source:    d.source,
           fetchedAt: new Date(d.fetchedAt).toLocaleTimeString('en-IN'),
         });
         return;
@@ -117,8 +116,7 @@ export const HomeLanding: React.FC = () => {
   const [error, setError] = useState('');
   const [modal, setModal] = useState<ModalState>({ type: null });
   const [lockedRate, setLockedRate] = useState<number | null>(null);
-  const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '', amountInr: '' });
-  const [buyInputMode, setBuyInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
+  const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
   const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', amountInr: '', bank: '', account: '', ifsc: '',
@@ -137,13 +135,6 @@ export const HomeLanding: React.FC = () => {
   const [coinNote, setCoinNote] = useState('');
   const [coinSubmitting, setCoinSubmitting] = useState(false);
   const [coinSuccessOverlay, setCoinSuccessOverlay] = useState(false);
-
-  // Gift Form State
-  const [giftForm, setGiftForm] = useState({ phone: '', confirm: '', metal: 'GOLD' as 'GOLD' | 'SILVER', mode: 'GRAMS' as 'GRAMS' | 'AMOUNT', value: '' });
-  const [giftReceiver, setGiftReceiver] = useState<{ found: boolean, name?: string, uid?: string, phone?: string } | null>(null);
-  const [checkingGift, setCheckingGift] = useState(false);
-  const [sendingGift, setSendingGift] = useState(false);
-
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -167,24 +158,24 @@ export const HomeLanding: React.FC = () => {
   const startLockTimer = (expiresAtMs: number) => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
     setLockExpiresAtMs(expiresAtMs);
-
+    
     // Calculate initial remaining time based on server timestamp
     const nowMs = Date.now();
     const secondsLeft = Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
     setLockSecondsLeft(secondsLeft);
-
+    
     lockIntervalRef.current = setInterval(() => {
       const currentMs = Date.now();
       const remainingMs = expiresAtMs - currentMs;
       const secondsRemaining = Math.max(0, Math.ceil(remainingMs / 1000));
-
+      
       if (remainingMs <= 0) {
         clearInterval(lockIntervalRef.current!);
         lockIntervalRef.current = null;
         setLockSecondsLeft(0);
         return;
       }
-
+      
       setLockSecondsLeft(secondsRemaining);
     }, 1000);
   };
@@ -214,7 +205,7 @@ export const HomeLanding: React.FC = () => {
     } else {
       clearLockTimer();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lockedRate, lockExpiresAtMs]);
   // Show 999 rates to users, but execute gold buy/sell on 995 operational rate.
   const gold24 = rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
@@ -385,21 +376,21 @@ export const HomeLanding: React.FC = () => {
 
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
-    if (buyDerivedGrams <= 0) return;
+    if (!buyForm.grams) return;
     const liveMarketRate = buyMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
     const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
     const customerRate = buyMetal === 'GOLD'
       ? (lockedRate ?? (liveMarketRate + commissionPerGram))
       : (liveMarketRate + commissionPerGram);
     if (!customerRate || !liveMarketRate) return;
-    const grams = buyDerivedGrams;
+    const grams       = parseFloat(buyForm.grams);
     const ratePerGram = customerRate;
     const baseAmountInr = grams * liveMarketRate;
     const shopCommissionInr = grams * commissionPerGram;
     const totalAmount = grams * customerRate;
-    const custName = userProfile?.name ?? currentUser?.displayName ?? '';
-    const custEmail = userProfile?.email ?? currentUser?.email ?? '';
-    const custPhone = userProfile?.phone ?? '';
+    const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custEmail   = userProfile?.email ?? currentUser?.email ?? '';
+    const custPhone   = userProfile?.phone ?? '';
     const customerShopName = (userProfile as any)?.shopName ?? '';
     const customerShopId = (userProfile as any)?.shopId ?? '';
 
@@ -407,7 +398,7 @@ export const HomeLanding: React.FC = () => {
     setPaymentDebugLines([]);
     buyGold({
       grams, ratePerGram,
-      customerName: custName,
+      customerName:  custName,
       customerEmail: custEmail,
       customerPhone: custPhone,
       customerUid: currentUser?.uid ?? '',
@@ -437,17 +428,17 @@ export const HomeLanding: React.FC = () => {
         setLockExpiresAtMs(null);
         setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
-        setBuyForm({ grams: '', amountInr: '' });
+        setBuyForm({ grams: '' });
         setTimeout(() => setSuccessMsg(''), 8000);
 
         // ── Write order to Firestore ────────────────────────────────────
         try {
           await addDoc(collection(db, 'goldOnlineOrders'), {
-            userId: currentUser?.uid ?? 'anonymous',
-            customerUid: currentUser?.uid ?? 'anonymous',
-            type: 'BUY',
-            metal: buyMetal,
-            purity: buyMetal === 'GOLD' ? 995 : 999,
+            userId:            currentUser?.uid ?? 'anonymous',
+            customerUid:       currentUser?.uid ?? 'anonymous',
+            type:              'BUY',
+            metal:             buyMetal,
+            purity:            buyMetal === 'GOLD' ? 995 : 999,
             grams,
             ratePerGram,
             marketRatePerGram: liveMarketRate,
@@ -456,28 +447,28 @@ export const HomeLanding: React.FC = () => {
             bullionBaseAmountInr: baseAmountInr,
             bullionSettlementAmountInr: totalAmount,
             bullionPayoutStatus: 'UNSETTLED',
-            totalAmountInr: totalAmount,
+            totalAmountInr:    totalAmount,
             razorpayPaymentId: id,
-            status: 'SUCCESS',
-            customerName: custName,
-            customerPhone: custPhone,
-            customerEmail: custEmail,
-            shopName: customerShopName,
-            shopId: customerShopId,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            status:            'SUCCESS',
+            customerName:      custName,
+            customerPhone:     custPhone,
+            customerEmail:     custEmail,
+            shopName:          customerShopName,
+            shopId:            customerShopId,
+            createdAt:         serverTimestamp(),
+            updatedAt:         serverTimestamp(),
           });
           // Update aggregate counters on the user document (customer)
           if (currentUser) {
             const updateData: any = {
               totalInvestedInr: increment(totalAmount),
-              updatedAt: serverTimestamp(),
+              updatedAt:        serverTimestamp(),
             };
-            if (buyMetal === 'GOLD') updateData.totalGoldPurchasedGrams = increment(grams);
-            else updateData.totalSilverPurchasedGrams = increment(grams);
+            if (buyMetal === 'GOLD') updateData.totalGoldPurchasedGrams   = increment(grams);
+            else                     updateData.totalSilverPurchasedGrams = increment(grams);
             await updateDoc(doc(db, 'users', currentUser.uid), updateData);
           }
-
+          
           // Credit commission explicitly to the Shop Owner's account
           if (customerShopId) {
             try {
@@ -486,7 +477,7 @@ export const HomeLanding: React.FC = () => {
                 totalCommissionEarned: increment(shopCommissionInr),
                 updatedAt: serverTimestamp()
               });
-
+              
               // 2. Fetch the owner's UID from the shop document and update their user account
               const { getDoc } = await import('firebase/firestore');
               const shopSnap = await getDoc(doc(db, 'shops', customerShopId));
@@ -509,18 +500,19 @@ export const HomeLanding: React.FC = () => {
   // ── AutoPay ───────────────────────────────────────────────────────────────
   const handleAutoPay = () => {
     if (!autoPayForm.amount) return;
-    const planAmount = parseFloat(autoPayForm.amount);
-    const custName = userProfile?.name ?? currentUser?.displayName ?? '';
-    const custEmail = userProfile?.email ?? currentUser?.email ?? '';
-    const custPhone = userProfile?.phone ?? '';
+    const planAmount   = parseFloat(autoPayForm.amount);
+    const custName     = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custEmail    = userProfile?.email ?? currentUser?.email ?? '';
+    const custPhone    = userProfile?.phone ?? '';
     setPaying(true);
     setupGoldAutoPay({
       planAmount,
-      metal: autoPayForm.metal,
-      frequency: autoPayForm.frequency,
-      customerName: custName,
+      metal:        autoPayForm.metal,
+      frequency:    autoPayForm.frequency,
+      customerName:  custName,
       customerEmail: custEmail,
       customerPhone: custPhone,
+      onDebug: (msg) => console.log('[AutoPay Debug]:', msg),
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
@@ -533,18 +525,18 @@ export const HomeLanding: React.FC = () => {
         try {
           const frequencyDays = autoPayForm.frequency === 'DAILY' ? 1 : autoPayForm.frequency === 'WEEKLY' ? 7 : 30;
           await addDoc(collection(db, 'autoPaySubscriptions'), {
-            userId: currentUser?.uid ?? 'anonymous',
-            metal: autoPayForm.metal,
-            amountInr: planAmount,
-            frequency: autoPayForm.frequency,
+            userId:                 currentUser?.uid ?? 'anonymous',
+            metal:                  autoPayForm.metal,
+            amountInr:              planAmount,
+            frequency:              autoPayForm.frequency,
             frequencyDays,
             razorpaySubscriptionId: id,
-            status: 'ACTIVE',
-            customerName: custName,
-            customerPhone: custPhone,
-            customerEmail: custEmail,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            status:                 'ACTIVE',
+            customerName:           custName,
+            customerPhone:          custPhone,
+            customerEmail:          custEmail,
+            createdAt:              serverTimestamp(),
+            updatedAt:              serverTimestamp(),
           });
         } catch { /* non-blocking */ }
       },
@@ -595,8 +587,8 @@ export const HomeLanding: React.FC = () => {
       return;
     }
     const totalAmount = amountInput > 0 ? amountInput : (grams * effectiveSellRatePerGram);
-    const custName = userProfile?.name ?? currentUser?.displayName ?? '';
-    const custPhone = userProfile?.phone ?? '';
+    const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
+    const custPhone   = userProfile?.phone ?? '';
 
     setModal({ type: null });
     setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${grams.toFixed(4)}g of 24K (995) gold.`);
@@ -606,39 +598,39 @@ export const HomeLanding: React.FC = () => {
     // ── Write jeweller-visible request to Firestore ───────────────────────
     try {
       await addDoc(collection(db, 'redemptionRequests'), {
-        customerUid: currentUser?.uid ?? 'anonymous',
-        customerName: custName,
-        customerEmail: userProfile?.email ?? currentUser?.email ?? '',
-        customerPhone: custPhone,
-        shopName: (userProfile as any)?.shopName ?? '',
-        shopId: (userProfile as any)?.shopId ?? '',
-        requestType: redeemMode,
+        customerUid:    currentUser?.uid ?? 'anonymous',
+        customerName:   custName,
+        customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
+        customerPhone:  custPhone,
+        shopName:       (userProfile as any)?.shopName ?? '',
+        shopId:         (userProfile as any)?.shopId ?? '',
+        requestType:    redeemMode,
         requestChannel: 'HOME',
-        metal: 'GOLD',
-        purity: purityNum,
+        metal:          'GOLD',
+        purity:         purityNum,
         grams,
         marketRatePerGram,
         redeemRatePerGram: effectiveSellRatePerGram,
-        estimatedInr: totalAmount,
+        estimatedInr:   totalAmount,
         customerRequestedInr: amountInput > 0 ? amountInput : totalAmount,
         availableBalanceAtRequestGrams: heldGrams,
-        bankName: sellForm.bank,
-        accountNumber: sellForm.account,
-        ifscCode: sellForm.ifsc,
-        status: 'PENDING',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        bankName:       sellForm.bank,
+        accountNumber:  sellForm.account,
+        ifscCode:       sellForm.ifsc,
+        status:         'PENDING',
+        createdAt:      serverTimestamp(),
+        updatedAt:      serverTimestamp(),
       });
 
       if (redeemMode === 'REDEEM') {
         await addDoc(collection(db, 'goldOnlineOrders'), {
-          userId: currentUser?.uid ?? 'anonymous',
-          customerUid: currentUser?.uid ?? 'anonymous',
-          type: 'SELL',
-          metal: 'GOLD',
-          purity: purityNum,
+          userId:         currentUser?.uid ?? 'anonymous',
+          customerUid:    currentUser?.uid ?? 'anonymous',
+          type:           'SELL',
+          metal:          'GOLD',
+          purity:         purityNum,
           grams,
-          ratePerGram: effectiveSellRatePerGram,
+          ratePerGram:    effectiveSellRatePerGram,
           marketRatePerGram,
           postGstRatePerGram,
           redeemGstReductionPercent: 3,
@@ -646,17 +638,17 @@ export const HomeLanding: React.FC = () => {
           availableBalanceAtRequestGrams: heldGrams,
           totalAmountInr: totalAmount,
           customerRequestedInr: amountInput > 0 ? amountInput : totalAmount,
-          status: 'PENDING',
-          customerName: custName,
-          customerPhone: custPhone,
-          customerEmail: userProfile?.email ?? currentUser?.email ?? '',
-          shopName: (userProfile as any)?.shopName ?? '',
-          shopId: (userProfile as any)?.shopId ?? '',
-          bankName: sellForm.bank,
-          accountNumber: sellForm.account,
-          ifscCode: sellForm.ifsc,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          status:         'PENDING',
+          customerName:   custName,
+          customerPhone:  custPhone,
+          customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
+          shopName:       (userProfile as any)?.shopName ?? '',
+          shopId:         (userProfile as any)?.shopId ?? '',
+          bankName:       sellForm.bank,
+          accountNumber:  sellForm.account,
+          ifscCode:       sellForm.ifsc,
+          createdAt:      serverTimestamp(),
+          updatedAt:      serverTimestamp(),
         });
       }
     } catch { /* non-blocking */ }
@@ -665,21 +657,8 @@ export const HomeLanding: React.FC = () => {
   const activeRate = buyMetal === 'GOLD'
     ? (lockedRate ?? goldBuyPrice)
     : silverBuyPrice;
-
-  // Gift Rates
-  const activeGiftRate = giftForm.metal === 'GOLD' ? goldBuyPrice : silverBuyPrice;
-  const giftDerivedGrams = giftForm.mode === 'GRAMS' ? parseFloat(giftForm.value || '0') : (parseFloat(giftForm.value || '0') / (activeGiftRate || 1));
-  const giftDerivedTotal = giftForm.mode === 'AMOUNT' ? parseFloat(giftForm.value || '0') : (parseFloat(giftForm.value || '0') * (activeGiftRate || 0));
-
-  // Derive grams and total from the active buy form inputs
-  const buyGramsInput = parseFloat(buyForm.grams) || 0;
-  const buyAmountInput = parseFloat(buyForm.amountInr) || 0;
-  const buyDerivedGrams = buyInputMode === 'GRAMS' && buyGramsInput > 0
-    ? buyGramsInput
-    : (buyInputMode === 'AMOUNT' && buyAmountInput > 0 && activeRate > 0 ? buyAmountInput / activeRate : 0);
-
-  const buyTotal = buyDerivedGrams > 0 && activeRate > 0
-    ? (buyDerivedGrams * activeRate).toFixed(4)
+  const buyTotal = buyForm.grams && activeRate
+    ? (parseFloat(buyForm.grams) * activeRate).toFixed(4)
     : null;
 
   const sellLiveRate = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995)
@@ -780,85 +759,6 @@ export const HomeLanding: React.FC = () => {
     });
   };
 
-  const checkGiftUser = async () => {
-    if (!giftForm.phone) return;
-    let phoneNum = giftForm.phone.trim();
-    if (!phoneNum.startsWith('+')) {
-      if (phoneNum.length === 10) phoneNum = '+91' + phoneNum;
-    }
-    setCheckingGift(true);
-    setGiftReceiver(null);
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
-      const res = await fetch(`${apiUrl}/api/payments/gift/lookup-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneNum })
-      });
-      const data = await res.json();
-      if (data.success && data.data?.found) {
-        setGiftReceiver(data.data);
-      } else {
-        setError('User not found with this mobile number.');
-        setTimeout(() => setError(''), 5000);
-      }
-    } catch (err) {
-      setError('Error checking user.');
-    } finally {
-      setCheckingGift(false);
-    }
-  };
-
-  const submitGift = async () => {
-    if (!giftReceiver?.uid || giftForm.confirm.toLowerCase() !== 'confirm') return;
-    if (giftDerivedGrams <= 0) {
-      setError('Invalid amount/quantity.');
-      setTimeout(() => setError(''), 3000);
-      return;
-    }
-    if (giftDerivedGrams > customerPortfolioStats.maxRedeemableGoldGrams && giftForm.metal === 'GOLD') {
-      setError(`Insufficient gold to gift. You have ${customerPortfolioStats.maxRedeemableGoldGrams.toFixed(4)}g`);
-      setTimeout(() => setError(''), 4000);
-      return;
-    }
-    setSendingGift(true);
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || '';
-      const res = await fetch(`${apiUrl}/api/payments/gift/transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderUid: currentUser?.uid,
-          receiverUid: giftReceiver.uid,
-          metal: giftForm.metal,
-          mode: giftForm.mode,
-          value: giftForm.value,
-          currentRate: activeGiftRate
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMsg(`Successfully gifted ${data.data.grams.toFixed(4)}g to ${giftReceiver.name}!`);
-        setModal({ type: null });
-        setGiftForm({ phone: '', confirm: '', metal: 'GOLD', mode: 'GRAMS', value: '' });
-        setGiftReceiver(null);
-        setTimeout(() => setSuccessMsg(''), 6000);
-
-        // Refresh local orders state if needed
-        setTimeout(() => {
-          fetchCustomerLedgerOrders().catch(() => { });
-        }, 1000);
-      } else {
-        setError(data.error || 'Failed to send gift.');
-        setTimeout(() => setError(''), 5000);
-      }
-    } catch (err) {
-      setError('Network error sending gift.');
-    } finally {
-      setSendingGift(false);
-    }
-  };
-
   const noKey = !RAZORPAY_KEY_ID;
 
   // ────────────────────────────────────────────────────────────────────────
@@ -884,7 +784,7 @@ export const HomeLanding: React.FC = () => {
           <div className="max-w-[1400px] mx-auto flex justify-end">
             <div className="inline-flex items-center gap-2 rounded-xl border border-amber-200 dark:border-yellow-800 bg-white/85 dark:bg-gray-900 px-3.5 py-2 shadow-sm">
               <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Owner Code:</span>
-              <span className="text-xs font-black text-amber-900 dark:text-yellow-300">{(userProfile as any)?.ownerCode || '-'}</span>
+              <span className="text-xs font-black text-amber-900 dark:text-yellow-300">{(userProfile as any)?.ownerCode || '—'}</span>
               {!!(userProfile as any)?.ownerCode && (
                 <button
                   type="button"
@@ -899,131 +799,6 @@ export const HomeLanding: React.FC = () => {
         </div>
       )}
 
-      {/* Gift Gold / Silver Modal */}
-      {modal.type === 'gift' && currentUser && (
-        <BottomSheet title="Gift Gold or Silver" onClose={() => setModal({ type: null })}>
-          <div className="space-y-4">
-            {!giftReceiver ? (
-              <div className="space-y-4">
-                <p className="text-sm text-stone-600 dark:text-gray-400">
-                  Enter the registered mobile number of the person you want to gift to.
-                </p>
-                <div>
-                  <label className="fieldLabel">Mobile Number</label>
-                  <input
-                    type="tel"
-                    placeholder="e.g. 9876543210"
-                    value={giftForm.phone}
-                    onChange={(e) => setGiftForm(f => ({ ...f, phone: e.target.value }))}
-                    className="fieldInput"
-                  />
-                </div>
-                <button
-                  onClick={checkGiftUser}
-                  disabled={checkingGift || giftForm.phone.length < 10}
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
-                >
-                  {checkingGift ? <Loader2 size={16} className="animate-spin" /> : <User size={16} />}
-                  Check User
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4 animate-fade-up-fast">
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-green-700 dark:text-green-300">
-                    <User size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-green-900 dark:text-green-100">{giftReceiver.name}</p>
-                    <p className="text-xs text-green-700 dark:text-green-400">{giftReceiver.phone}</p>
-                  </div>
-                  <button
-                    onClick={() => { setGiftReceiver(null); setGiftForm(f => ({ ...f, confirm: '' })); }}
-                    className="ml-auto text-xs text-stone-500 hover:underline"
-                  >
-                    Change
-                  </button>
-                </div>
-
-                <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
-                  <button
-                    type="button"
-                    onClick={() => setGiftForm(f => ({ ...f, metal: 'GOLD' }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${giftForm.metal === 'GOLD' ? 'bg-amber-500 text-black' : 'text-amber-700 hover:bg-amber-100/50'}`}
-                  >Gold</button>
-                  <button
-                    type="button"
-                    onClick={() => setGiftForm(f => ({ ...f, metal: 'SILVER' }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${giftForm.metal === 'SILVER' ? 'bg-gray-400 text-black' : 'text-gray-500 hover:bg-gray-200/50'}`}
-                  >Silver</button>
-                </div>
-
-                <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
-                  <button
-                    type="button"
-                    onClick={() => setGiftForm(f => ({ ...f, mode: 'GRAMS', value: '' }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${giftForm.mode === 'GRAMS' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 hover:bg-amber-100/50'}`}
-                  >Enter Grams</button>
-                  <button
-                    type="button"
-                    onClick={() => setGiftForm(f => ({ ...f, mode: 'AMOUNT', value: '' }))}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${giftForm.mode === 'AMOUNT' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 hover:bg-amber-100/50'}`}
-                  >Enter Amount</button>
-                </div>
-
-                <div className="relative">
-                  {giftForm.mode === 'GRAMS' ? (
-                    <input type="number" step="0.1" placeholder={`Grams to gift (Max: ${customerPortfolioStats.maxRedeemableGoldGrams.toFixed(4)})`}
-                      value={giftForm.value}
-                      onChange={e => setGiftForm(f => ({ ...f, value: e.target.value }))}
-                      className="fieldInput"
-                    />
-                  ) : (
-                    <input type="number" step="10" placeholder="Amount (₹)"
-                      value={giftForm.value}
-                      onChange={e => setGiftForm(f => ({ ...f, value: e.target.value }))}
-                      className="fieldInput"
-                    />
-                  )}
-                </div>
-
-                {parseFloat(giftForm.value) > 0 && (
-                  <div className="text-center bg-stone-100 dark:bg-gray-800 py-2 rounded-xl border border-stone-200 dark:border-gray-700">
-                    <p className="text-xs text-stone-500 uppercase font-bold tracking-wider">Equivalent Transfer</p>
-                    <p className="text-lg font-black text-amber-900 dark:text-yellow-400">
-                      {giftForm.mode === 'GRAMS'
-                        ? `₹${giftDerivedTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-                        : `${giftDerivedGrams.toFixed(4)} g`}
-                    </p>
-                  </div>
-                )}
-
-                <div>
-                  <label className="fieldLabel">Type 'confirm' to securely gift and deduct from your wallet</label>
-                  <input
-                    type="text"
-                    placeholder="confirm"
-                    value={giftForm.confirm}
-                    onChange={(e) => setGiftForm(f => ({ ...f, confirm: e.target.value }))}
-                    className="fieldInput"
-                  />
-                </div>
-
-                <button
-                  onClick={submitGift}
-                  disabled={sendingGift || giftForm.confirm.toLowerCase() !== 'confirm' || !giftForm.value}
-                  className="w-full py-3 bg-pink-500 hover:bg-pink-600 disabled:opacity-50 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
-                >
-                  {sendingGift ? <Loader2 size={16} className="animate-spin" /> : <Star size={16} />}
-                  Send Gift Securely
-                </button>
-              </div>
-            )}
-          </div>
-        </BottomSheet>
-      )}
-
-      {/* AutoPay Bottom Sheet */}
       {userProfile?.role === 'CUSTOMER' && (
         <div className="px-4 sm:px-6 lg:px-8 pt-4">
           <div className="max-w-[1400px] mx-auto grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -1104,7 +879,7 @@ export const HomeLanding: React.FC = () => {
       )}
 
       {/* ── Razorpay Key Warning ─────────────────────────────────────────── */}
-      {/* ── Detailed Price Calculation ───────────────────────────────────── */}
+            {/* ── Detailed Price Calculation ───────────────────────────────────── */}
       {noKey && (
         <div className="bg-amber-400 dark:bg-amber-600 text-black dark:text-black px-4 py-2 text-center text-sm font-medium">
           <AlertCircle className="inline mr-1" size={16} />
@@ -1116,21 +891,21 @@ export const HomeLanding: React.FC = () => {
       {/* ════════════════════════════════════════════════════════════════════
           HERO
       ════════════════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30 animate-hero-pan">
-        <div className="absolute inset-0 pointer-events-none opacity-60" style={{ backgroundImage: 'radial-gradient(circle at 20% 15%, rgba(251,191,36,0.14) 0%, transparent 35%), radial-gradient(circle at 78% 25%, rgba(245,158,11,0.12) 0%, transparent 30%), radial-gradient(circle at 50% 80%, rgba(234,179,8,0.1) 0%, transparent 40%)' }} />
+          <section className="relative overflow-hidden bg-gradient-to-br from-stone-50 via-amber-50 to-yellow-50 dark:from-black dark:via-gray-950 dark:to-black border-b border-amber-100 dark:border-yellow-900/30 animate-hero-pan">
+            <div className="absolute inset-0 pointer-events-none opacity-60" style={{ backgroundImage: 'radial-gradient(circle at 20% 15%, rgba(251,191,36,0.14) 0%, transparent 35%), radial-gradient(circle at 78% 25%, rgba(245,158,11,0.12) 0%, transparent 30%), radial-gradient(circle at 50% 80%, rgba(234,179,8,0.1) 0%, transparent 40%)' }} />
         {/* Decorative blur circles */}
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-yellow-300/30 dark:bg-yellow-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-amber-300/30 dark:bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
         {/* Floating sparkle particles */}
         {[
-          { top: '8%', left: '6%', size: 14, delay: '0s' },
-          { top: '15%', left: '88%', size: 10, delay: '0.7s' },
-          { top: '42%', left: '92%', size: 18, delay: '1.3s' },
-          { top: '70%', left: '4%', size: 12, delay: '0.4s' },
-          { top: '85%', left: '80%', size: 16, delay: '1.9s' },
-          { top: '30%', left: '2%', size: 9, delay: '2.2s' },
-          { top: '55%', left: '95%', size: 20, delay: '0.9s' },
-          { top: '20%', left: '50%', size: 8, delay: '1.6s' },
+          { top:'8%',  left:'6%',  size:14, delay:'0s'   },
+          { top:'15%', left:'88%', size:10, delay:'0.7s'  },
+          { top:'42%', left:'92%', size:18, delay:'1.3s'  },
+          { top:'70%', left:'4%',  size:12, delay:'0.4s'  },
+          { top:'85%', left:'80%', size:16, delay:'1.9s'  },
+          { top:'30%', left:'2%',  size:9,  delay:'2.2s'  },
+          { top:'55%', left:'95%', size:20, delay:'0.9s'  },
+          { top:'20%', left:'50%', size:8,  delay:'1.6s'  },
         ].map(({ top, left, size, delay }, i) => (
           <svg key={i} width={size} height={size} viewBox="0 0 24 24" fill="none"
             className="absolute pointer-events-none animate-sparkle"
@@ -1139,8 +914,8 @@ export const HomeLanding: React.FC = () => {
               fill="url(#hsg)" />
             <defs>
               <linearGradient id="hsg" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#fcd34d" />
-                <stop offset="100%" stopColor="#f59e0b" />
+                <stop offset="0%" stopColor="#fcd34d"/>
+                <stop offset="100%" stopColor="#f59e0b"/>
               </linearGradient>
             </defs>
           </svg>
@@ -1167,71 +942,64 @@ export const HomeLanding: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 animate-fade-up-soft" style={{ animationDelay: '0.05s' }}>
                   <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (999) / 10g</p>
-                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '-'}</p>
-                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold24 ? gold24.ratePerGram.toFixed(4) : '-'} / gram</p>
+                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold24 ? gold24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold24 ? gold24.ratePerGram.toFixed(4) : '—'} / gram</p>
                 </div>
                 <div className="bg-white/90 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl p-4 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 animate-fade-up-soft" style={{ animationDelay: '0.13s' }}>
                   <p className="text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wide mb-1">Gold 24K (995) / 10g</p>
-                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '-'}</p>
-                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold995 ? gold995.ratePerGram.toFixed(4) : '-'} / gram</p>
+                  <p className="text-2xl font-black text-amber-900 dark:text-amber-300">₹{gold995 ? gold995.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-amber-700/70 dark:text-amber-400">₹{gold995 ? gold995.ratePerGram.toFixed(4) : '—'} / gram</p>
                 </div>
                 <div className="bg-white/90 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 animate-fade-up-soft" style={{ animationDelay: '0.2s' }}>
                   <p className="text-gray-600 dark:text-gray-400 text-xs font-bold uppercase tracking-wide mb-1">Silver 999 / 1kg</p>
-                  <p className="text-2xl font-black text-gray-800 dark:text-gray-200">₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '-'}</p>
-                  <p className="text-xs text-gray-600/70 dark:text-gray-400">₹{silver24 ? silver24.ratePerGram.toFixed(4) : '-'} / gram</p>
+                  <p className="text-2xl font-black text-gray-800 dark:text-gray-200">₹{silver24 ? silver24.displayRate.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—'}</p>
+                  <p className="text-xs text-gray-600/70 dark:text-gray-400">₹{silver24 ? silver24.ratePerGram.toFixed(4) : '—'} / gram</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
-                <button
-                  onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
-                >
-                  <ShoppingCart size={18} />
-                  Buy Gold Now
-                </button>
-                <button
-                  onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <ShoppingCart size={18} />
-                  Buy Silver Now
-                </button>
-                <button
-                  onClick={() => setModal({ type: 'sell' })}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <ArrowUpRight size={18} />
-                  Redeem
-                </button>
-                <button
-                  onClick={() => setModal({ type: 'autopay' })}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <Repeat size={18} />
-                  Setup GOLD SIP
-                </button>
-                <button
-                  onClick={() => {
-                    setCoinMetal('GOLD');
-                    setCoinWeightGrams(0.5);
-                    setCoinQuantity(1);
-                    setCoinDeliveryCity((userProfile?.city ?? '').trim());
-                    setCoinNote('');
-                    setModal({ type: 'coin-request' });
-                  }}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-stone-900 to-stone-700 hover:from-black hover:to-stone-900 text-amber-200 font-bold rounded-xl shadow-lg hover:shadow-stone-500/40 transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <Coins size={18} />
-                  Buy Coins
-                </button>
-                <button
-                  onClick={() => { setModal({ type: 'gift' }); setGiftForm({ phone: '', confirm: '', metal: 'GOLD', mode: 'GRAMS', value: '' }); setGiftReceiver(null); }}
-                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold rounded-xl shadow-lg hover:shadow-pink-500/40 transition-all hover:-translate-y-0.5 text-base"
-                >
-                  <Gift size={18} />
-                  Gift Metal
-                </button>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+                  <button
+                    onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
+                  >
+                    <ShoppingCart size={18} />
+                    Buy Gold Now
+                  </button>
+                  <button
+                    onClick={() => { setBuyMetal('SILVER'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-gray-400 to-slate-500 hover:from-gray-500 hover:to-slate-600 text-white font-bold rounded-xl shadow-lg hover:shadow-slate-400/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <ShoppingCart size={18} />
+                    Buy Silver Now
+                  </button>
+                  <button
+                    onClick={() => setModal({ type: 'sell' })}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <ArrowUpRight size={18} />
+                    Redeem
+                  </button>
+                  <button
+                    onClick={() => setModal({ type: 'autopay' })}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Repeat size={18} />
+                    Setup GOLD SIP
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCoinMetal('GOLD');
+                      setCoinWeightGrams(0.5);
+                      setCoinQuantity(1);
+                      setCoinDeliveryCity((userProfile?.city ?? '').trim());
+                      setCoinNote('');
+                      setModal({ type: 'coin-request' });
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-stone-900 to-stone-700 hover:from-black hover:to-stone-900 text-amber-200 font-bold rounded-xl shadow-lg hover:shadow-stone-500/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Coins size={18} />
+                    Buy Coins
+                  </button>
               </div>
 
               <div className="flex items-center justify-between text-sm pt-1">
@@ -1249,26 +1017,26 @@ export const HomeLanding: React.FC = () => {
               </div>
             </div>
 
-            {/* Price debug mini-panel - shows raw market data from worker */}
-            {priceFeed && (
-              <div className="bg-black/5 dark:bg-white/5 border border-amber-200/50 dark:border-yellow-900/30 rounded-xl px-4 py-3 text-xs font-mono space-y-1 animate-fade-up-soft" style={{ animationDelay: '0.32s' }}>
-                <div className="flex justify-between text-amber-800/70 dark:text-gray-400">
-                  <span>XAU/USD</span>
-                  <span className="font-bold text-amber-900 dark:text-yellow-300">${priceFeed.xauUsd ? priceFeed.xauUsd.toFixed(2) : '-'}</span>
+              {/* Price debug mini-panel — shows raw market data from worker */}
+              {priceFeed && (
+                <div className="bg-black/5 dark:bg-white/5 border border-amber-200/50 dark:border-yellow-900/30 rounded-xl px-4 py-3 text-xs font-mono space-y-1 animate-fade-up-soft" style={{ animationDelay: '0.32s' }}>
+                  <div className="flex justify-between text-amber-800/70 dark:text-gray-400">
+                    <span>XAU/USD</span>
+                    <span className="font-bold text-amber-900 dark:text-yellow-300">${priceFeed.xauUsd ? priceFeed.xauUsd.toFixed(2) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600/70 dark:text-gray-500">
+                    <span>XAG/USD</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300">${priceFeed.xagUsd ? priceFeed.xagUsd.toFixed(4) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700/70 dark:text-emerald-400/70">
+                    <span>USD/INR</span>
+                    <span className="font-bold text-emerald-800 dark:text-emerald-300">₹{priceFeed.usdInr ? Number(priceFeed.usdInr).toFixed(2) : '—'}</span>
+                  </div>
+                  <div className="border-t border-amber-200/40 dark:border-gray-700 pt-1 text-amber-700/50 dark:text-gray-600 text-[10px]">
+                    Source: {priceFeed.source} · {priceFeed.fetchedAt}
+                  </div>
                 </div>
-                <div className="flex justify-between text-gray-600/70 dark:text-gray-500">
-                  <span>XAG/USD</span>
-                  <span className="font-bold text-gray-700 dark:text-gray-300">${priceFeed.xagUsd ? priceFeed.xagUsd.toFixed(4) : '-'}</span>
-                </div>
-                <div className="flex justify-between text-emerald-700/70 dark:text-emerald-400/70">
-                  <span>USD/INR</span>
-                  <span className="font-bold text-emerald-800 dark:text-emerald-300">₹{priceFeed.usdInr ? Number(priceFeed.usdInr).toFixed(2) : '-'}</span>
-                </div>
-                <div className="border-t border-amber-200/40 dark:border-gray-700 pt-1 text-amber-700/50 dark:text-gray-600 text-[10px]">
-                  Source: {priceFeed.source} · {priceFeed.fetchedAt}
-                </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
       </section>
@@ -1288,7 +1056,7 @@ export const HomeLanding: React.FC = () => {
             ].map((f) => (
               <span key={f} className="flex items-center gap-1.5">
                 <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4 flex-shrink-0" stroke="currentColor" strokeWidth={2.5}>
-                  <path d="M3 8l3.5 3.5L13 4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M3 8l3.5 3.5L13 4" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 {f}
               </span>
@@ -1383,22 +1151,14 @@ export const HomeLanding: React.FC = () => {
               icon: <Repeat size={32} className="text-amber-500 dark:text-yellow-400" />,
               step: '03',
               title: 'Setup AutoPay (SIP)',
-              desc: 'Set up a monthly recurring payment to automatically buy gold every month - your digital gold SIP.',
+              desc: 'Set up a monthly recurring payment to automatically buy gold every month — your digital gold SIP.',
               cta: (
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => setModal({ type: 'autopay' })}
-                    className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-lg transition-colors"
-                  >
-                    Setup AutoPay
-                  </button>
-                  <button
-                    onClick={() => { setModal({ type: 'gift' }); setGiftForm({ phone: '', confirm: '', metal: 'GOLD', mode: 'GRAMS', value: '' }); setGiftReceiver(null); }}
-                    className="flex-1 py-2 bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1"
-                  >
-                    Gift Gold
-                  </button>
-                </div>
+                <button
+                  onClick={() => setModal({ type: 'autopay' })}
+                  className="mt-4 w-full py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-lg transition-colors"
+                >
+                  Setup AutoPay
+                </button>
               ),
             },
           ].map(({ icon, step, title, desc, cta }) => (
@@ -1505,7 +1265,7 @@ export const HomeLanding: React.FC = () => {
         </h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
-            { icon: <Shield size={28} className="text-amber-500 dark:text-yellow-400" />, title: 'Secure Payments', desc: 'All payments powered by Razorpay - India\'s most trusted payment gateway.' },
+            { icon: <Shield size={28} className="text-amber-500 dark:text-yellow-400" />, title: 'Secure Payments', desc: 'All payments powered by Razorpay — India\'s most trusted payment gateway.' },
             { icon: <Bell size={28} className="text-amber-500 dark:text-yellow-400" />, title: 'Daily Price Alerts', desc: 'Get notified when gold prices hit your target. Never miss the right moment.' },
             { icon: <Star size={28} className="text-amber-500 dark:text-yellow-400" />, title: '100% Purity', desc: 'Certified 24K, 22K, and 18K gold with hallmark guarantee.' },
             { icon: <TrendingDown size={28} className="text-amber-500 dark:text-yellow-400" />, title: 'Best Market Rates', desc: 'Live international XAU/USD prices converted at real exchange rates.' },
@@ -1537,7 +1297,7 @@ export const HomeLanding: React.FC = () => {
             Invest in Gold Every Month, Automatically
           </h2>
           <p className="text-amber-900 dark:text-black/80 text-lg mb-8 max-w-xl mx-auto">
-            Starting from just ₹500/month. Build your gold portfolio systematically with AutoPay - your digital gold SIP.
+            Starting from just ₹500/month. Build your gold portfolio systematically with AutoPay — your digital gold SIP.
           </p>
           <div className="flex flex-wrap justify-center gap-3 mb-8">
             {['500', '1000', '2000', '5000', 'Manual'].map((amt) => (
@@ -1574,20 +1334,21 @@ export const HomeLanding: React.FC = () => {
           <div className="space-y-5">
             {noKey && <div className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-3 rounded-xl border border-amber-200 dark:border-amber-700 flex items-center gap-2">
               <AlertCircle size={13} className="flex-shrink-0" />
-              Razorpay key not set - payments disabled.
+              Razorpay key not set — payments disabled.
             </div>}
 
             {/* Metal toggle ─ SVG icons, no emojis */}
             <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700">
               {(['GOLD', 'SILVER'] as const).map(m => (
                 <button key={m} type="button"
-                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '', amountInr: '' }); setSlideValue(0); setLockedRate(null); setLockExpiresAtMs(null); }}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${buyMetal === m
+                  onClick={() => { setBuyMetal(m); setBuyForm({ grams: '' }); setSlideValue(0); setLockedRate(null); setLockExpiresAtMs(null); }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    buyMetal === m
                       ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-black shadow-md scale-[1.01]'
                       : 'text-amber-700 dark:text-gray-400 hover:bg-amber-100 dark:hover:bg-gray-700'}`}>
                   {m === 'GOLD'
-                    ? <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><circle cx="12" cy="12" r="10" opacity="0.3" /><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z" /></svg>
-                    : <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" opacity="0.7"><circle cx="12" cy="12" r="10" opacity="0.3" /><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z" /></svg>
+                    ? <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z"/></svg>
+                    : <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" opacity="0.7"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 3a7 7 0 1 0 0 14A7 7 0 0 0 12 5zm0 2a5 5 0 1 1 0 10A5 5 0 0 1 12 7z"/></svg>
                   }
                   {m === 'GOLD' ? 'Gold' : 'Silver'}
                 </button>
@@ -1595,7 +1356,7 @@ export const HomeLanding: React.FC = () => {
             </div>
 
             {/* Live price display + lock timer */}
-            <div className="rounded-2xl px-5 py-4 text-center" style={{ background: 'linear-gradient(135deg,rgba(253,243,212,0.9),rgba(254,243,199,0.5))', border: '1px solid rgba(251,191,36,0.3)' }}>
+            <div className="rounded-2xl px-5 py-4 text-center" style={{ background:'linear-gradient(135deg,rgba(253,243,212,0.9),rgba(254,243,199,0.5))', border:'1px solid rgba(251,191,36,0.3)' }}>
               <p className="text-xs text-amber-600 font-semibold uppercase tracking-widest mb-0.5">Live {buyMetal === 'GOLD' ? 'Gold' : 'Silver'} Price</p>
               <p className="text-3xl font-black text-amber-900 dark:text-amber-800">₹{activeRate.toFixed(4)}<span className="text-sm font-medium text-amber-600">/g</span></p>
               {buyMetal === 'GOLD' && (
@@ -1626,8 +1387,9 @@ export const HomeLanding: React.FC = () => {
               <div className="grid grid-cols-4 gap-2">
                 {['0.5', '1', '2', '5'].map(g => (
                   <button key={g} type="button"
-                    onClick={() => { setBuyForm({ grams: g, amountInr: '' }); setBuyInputMode('GRAMS'); setSlideValue(0); }}
-                    className={`py-2.5 rounded-xl text-sm font-bold transition-all border ${buyForm.grams === g
+                    onClick={() => { setBuyForm({ grams: g }); setSlideValue(0); }}
+                    className={`py-2.5 rounded-xl text-sm font-bold transition-all border ${
+                      buyForm.grams === g
                         ? 'bg-amber-500 border-amber-500 text-black shadow'
                         : 'bg-white/80 dark:bg-gray-800 border-amber-200 dark:border-gray-700 text-amber-800 dark:text-amber-300 hover:border-amber-400'}`}>
                     {g}g
@@ -1636,53 +1398,23 @@ export const HomeLanding: React.FC = () => {
               </div>
             </div>
 
-            {/* Buy Input Type Toggle */}
-            <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 mt-2">
-              <button
-                type="button"
-                onClick={() => setBuyInputMode('GRAMS')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${buyInputMode === 'GRAMS' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
-              >
-                Enter Grams
-              </button>
-              <button
-                type="button"
-                onClick={() => setBuyInputMode('AMOUNT')}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${buyInputMode === 'AMOUNT' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
-              >
-                Enter Amount (₹)
-              </button>
-            </div>
-
-            {/* Manual input */}
+            {/* Manual gram input */}
             <div className="relative">
-              {buyInputMode === 'GRAMS' ? (
-                <input type="number" min="0.1" step="0.1" placeholder="Custom grams (e.g. 3.5)"
-                  value={buyForm.grams}
-                  onChange={e => { setBuyForm(f => ({ ...f, grams: e.target.value })); setSlideValue(0); }}
-                  className="w-full rounded-2xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-300 dark:placeholder-gray-600"
-                />
-              ) : (
-                <input type="number" min="100" step="1" placeholder="Amount in ₹ (e.g. 5000)"
-                  value={buyForm.amountInr}
-                  onChange={e => { setBuyForm(f => ({ ...f, amountInr: e.target.value })); setSlideValue(0); }}
-                  className="w-full rounded-2xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-300 dark:placeholder-gray-600"
-                />
-              )}
+              <input type="number" min="0.1" step="0.1" placeholder="Custom grams (e.g. 3.5)"
+                value={buyForm.grams}
+                onChange={e => { setBuyForm(f => ({ ...f, grams: e.target.value })); setSlideValue(0); }}
+                className="w-full rounded-2xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-300 dark:placeholder-gray-600"
+              />
               {buyTotal && (
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right pointer-events-none">
-                  {buyInputMode === 'GRAMS' ? (
-                    <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
-                  ) : (
-                    <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">{buyDerivedGrams.toFixed(4)} g</p>
-                  )}
+                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
                 </div>
               )}
             </div>
 
             {/* Email verification disabled - customers can buy without verification */}
 
-            {buyDerivedGrams > 0 && buyTotal && (
+            {buyForm.grams && buyTotal && (
               buyMetal === 'GOLD' ? (
                 <div className="space-y-2">
                   <SlideToConfirm
@@ -1852,8 +1584,8 @@ export const HomeLanding: React.FC = () => {
                 <label className="fieldLabel mb-0">Redeem Input Type</label>
                 <div className="text-[11px] bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-md font-bold text-right pt-2 pb-2 mt-4 inline-flex items-center">
                   <span className="font-semibold mr-1">Max Available:</span>
-                  {customerPortfolioStats.maxRedeemableGoldGrams.toFixed(4)}g
-                  <span className="opacity-70 mx-1">/</span>
+                  {customerPortfolioStats.maxRedeemableGoldGrams.toFixed(4)}g 
+                  <span className="opacity-70 mx-1">/</span> 
                   ₹{(customerPortfolioStats.maxRedeemableGoldGrams * sellRedeemRate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                 </div>
               </div>
@@ -2154,7 +1886,7 @@ const BottomSheet: React.FC<{ title: string; onClose: () => void; children: Reac
 };
 
 // ────────────────────────────────────────────────────────────────────────────
-// Slide to Confirm - cinematic gold slider with SVG arrow
+// Slide to Confirm — cinematic gold slider with SVG arrow
 // ────────────────────────────────────────────────────────────────────────────
 const SlideToConfirm: React.FC<{
   label: string; value: number; disabled: boolean;
@@ -2201,18 +1933,18 @@ const SlideToConfirm: React.FC<{
           background: disabled
             ? 'linear-gradient(135deg,#9ca3af 0%,#a1a5aa 100%)'
             : confirmed
-              ? 'linear-gradient(90deg,#16a34a,#22c55e)'
-              : 'linear-gradient(135deg,#1c1c1c 0%,#2a2a2a 100%)',
+            ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+            : 'linear-gradient(135deg,#1c1c1c 0%,#2a2a2a 100%)',
           border: disabled
             ? '1.5px solid rgba(156,163,175,0.5)'
             : confirmed
-              ? '1.5px solid #22c55e'
-              : '1.5px solid rgba(251,191,36,0.5)',
+            ? '1.5px solid #22c55e'
+            : '1.5px solid rgba(251,191,36,0.5)',
           boxShadow: disabled
             ? '0 0 10px rgba(156,163,175,0.1), inset 0 1px 0 rgba(255,255,255,0.05)'
             : confirmed
-              ? '0 0 20px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.1)'
-              : '0 0 20px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.05)',
+            ? '0 0 20px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.1)'
+            : '0 0 20px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.05)',
           transition: 'background 0.4s ease, box-shadow 0.4s ease',
         }}
       >
@@ -2224,8 +1956,8 @@ const SlideToConfirm: React.FC<{
             background: disabled
               ? 'rgba(156,163,175,0.2)'
               : confirmed
-                ? 'rgba(34,197,94,0.3)'
-                : 'linear-gradient(90deg,rgba(251,191,36,0.25),rgba(245,158,11,0.12))',
+              ? 'rgba(34,197,94,0.3)'
+              : 'linear-gradient(90deg,rgba(251,191,36,0.25),rgba(245,158,11,0.12))',
             transition: 'width 0.05s linear',
           }}
         />
@@ -2241,13 +1973,14 @@ const SlideToConfirm: React.FC<{
 
         {/* Centre label */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none pl-14">
-          <span className={`text-sm font-bold tracking-wide transition-colors ${disabled ? 'text-gray-600' : confirmed ? 'text-white' : 'text-amber-300 dark:text-yellow-400'
-            }`}>
-            {disabled ? 'Slide unavailable' : confirmed ? 'Confirmed - opening payment...' : label}
+          <span className={`text-sm font-bold tracking-wide transition-colors ${
+            disabled ? 'text-gray-600' : confirmed ? 'text-white' : 'text-amber-300 dark:text-yellow-400'
+          }`}>
+            {disabled ? 'Slide unavailable' : confirmed ? 'Confirmed — opening payment...' : label}
           </span>
         </div>
 
-        {/* Thumb - gold pill with arrow icon */}
+        {/* Thumb — gold pill with arrow icon */}
         <div
           className="absolute inset-y-0 flex items-center pointer-events-none"
           style={{
@@ -2261,19 +1994,19 @@ const SlideToConfirm: React.FC<{
               background: disabled
                 ? 'linear-gradient(135deg,#d1d5db,#bfdbfe)'
                 : confirmed
-                  ? 'linear-gradient(135deg,#22c55e,#16a34a)'
-                  : 'linear-gradient(135deg,#fde68a 0%,#f59e0b 60%,#d97706 100%)',
+                ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+                : 'linear-gradient(135deg,#fde68a 0%,#f59e0b 60%,#d97706 100%)',
               border: '2px solid rgba(255,255,255,0.25)',
               boxShadow: disabled
                 ? '0 4px 12px rgba(156,163,175,0.3)'
                 : confirmed
-                  ? '0 4px 16px rgba(34,197,94,0.5)'
-                  : '0 4px 16px rgba(245,158,11,0.6), 0 0 0 3px rgba(251,191,36,0.2)',
+                ? '0 4px 16px rgba(34,197,94,0.5)'
+                : '0 4px 16px rgba(245,158,11,0.6), 0 0 0 3px rgba(251,191,36,0.2)',
               color: disabled ? '#6b7280' : confirmed ? '#fff' : '#451a03',
               transform: disabled ? 'scale(1)' : 'scale(1.05)',
             }}
           >
-            {disabled ? <svg viewBox="0 0 24 24" fill="currentColor" strokeWidth={2} className="w-5 h-5"><rect x="6" y="4" width="12" height="14" rx="2" /><path d="M9 14h6" stroke="currentColor" fill="none" strokeLinecap="round" /></svg> : confirmed ? <CheckSVG /> : <ChevronSVG />}
+            {disabled ? <svg viewBox="0 0 24 24" fill="currentColor" strokeWidth={2} className="w-5 h-5"><rect x="6" y="4" width="12" height="14" rx="2"/><path d="M9 14h6" stroke="currentColor" fill="none" strokeLinecap="round"/></svg> : confirmed ? <CheckSVG /> : <ChevronSVG />}
           </div>
         </div>
 
@@ -2286,9 +2019,10 @@ const SlideToConfirm: React.FC<{
           style={{ WebkitAppearance: 'none' }}
         />
       </div>
-      <p className={`text-center text-xs mt-1.5 flex items-center justify-center gap-1 transition-colors ${disabled ? 'text-gray-400 dark:text-gray-600' : 'text-amber-500/70 dark:text-amber-400/70'
-        }`}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <p className={`text-center text-xs mt-1.5 flex items-center justify-center gap-1 transition-colors ${
+        disabled ? 'text-gray-400 dark:text-gray-600' : 'text-amber-500/70 dark:text-amber-400/70'
+      }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60"><path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round"/></svg>
         {disabled ? 'Price lock expired' : 'Slide right to confirm purchase'}
       </p>
     </div>

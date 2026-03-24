@@ -1,2 +1,0 @@
-src/pages/SuperAdmin/OrdersTab.tsx(79,71): error TS2304: Cannot find name 'normalize'.
-src/pages/SuperAdmin/OrdersTab.tsx(79,93): error TS2304: Cannot find name 'normalize'.
