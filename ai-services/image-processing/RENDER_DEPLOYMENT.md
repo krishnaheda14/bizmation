@@ -5,7 +5,7 @@ Render deployment steps for the Jewelry AI service
 - Uses heavy ML libs (torch, ultralytics, rembg). First boot may download models.
 
 2) Files added
-- `Dockerfile` — containerized runtime for Render.
+- `Dockerfile` - containerized runtime for Render.
 
 3) Quick Deploy (Render web service)
 - In Render dashboard create a new **Web Service** and connect your Git repo.
@@ -13,8 +13,8 @@ Render deployment steps for the Jewelry AI service
 - Build & start: Render will build the image and run the container. The service listens on the provided `$PORT`.
 
 4) Recommended environment variables (set in Render service settings)
-- `TEMP_DIR` (optional) — path for temporary files, e.g. `/tmp/jewelry-ai`
-- `MODEL_PRELOAD` (optional) — set to `1` if you add a preloading step during build/run to cache models
+- `TEMP_DIR` (optional) - path for temporary files, e.g. `/tmp/jewelry-ai`
+- `MODEL_PRELOAD` (optional) - set to `1` if you add a preloading step during build/run to cache models
 
 5) Health check
 - Use the root `GET /` endpoint. Render health check: `https://<your-service>.onrender.com/`

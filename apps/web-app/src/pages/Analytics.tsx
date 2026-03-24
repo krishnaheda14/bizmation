@@ -67,8 +67,8 @@ export const Analytics: React.FC = () => {
     [shopName],
   );
 
-  const [orders,    setOrders]    = useState<Order[]>([]);
-  const [loading,   setLoading]   = useState(true);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState('');
 
   // Real-time listener
@@ -111,7 +111,7 @@ export const Analytics: React.FC = () => {
     }, { totalGrams: 0, totalInr: 0, buyGrams: 0, sellGrams: 0, buyInr: 0, sellInr: 0, commissionInr: 0 });
   };
 
-  const gold   = computeStats('GOLD');
+  const gold = computeStats('GOLD');
   const silver = computeStats('SILVER');
 
   // Top customers
@@ -119,7 +119,7 @@ export const Analytics: React.FC = () => {
   orders.forEach(o => {
     const key = o.customerEmail ?? o.customerName ?? 'Unknown';
     if (!customerMap[key]) customerMap[key] = { name: o.customerName ?? key, email: o.customerEmail ?? '', totalInr: 0, totalGrams: 0 };
-    customerMap[key].totalInr   += Number(o.totalAmountInr) || 0;
+    customerMap[key].totalInr += Number(o.totalAmountInr) || 0;
     customerMap[key].totalGrams += Number(o.grams) || 0;
   });
   const topCustomers = Object.values(customerMap).sort((a, b) => b.totalInr - a.totalInr).slice(0, 5);
@@ -151,18 +151,18 @@ export const Analytics: React.FC = () => {
 
   const StatCard: React.FC<{ label: string; value: string; sub?: string; icon: React.ReactNode; accent: string }> =
     ({ label, value, sub, icon, accent }) => (
-    <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-amber-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group">
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent}`}>
-          {icon}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-amber-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 group">
+        <div className="flex items-start justify-between mb-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accent}`}>
+            {icon}
+          </div>
+          <ArrowUpRight size={16} className="text-amber-400 group-hover:text-amber-600 transition-colors" />
         </div>
-        <ArrowUpRight size={16} className="text-amber-400 group-hover:text-amber-600 transition-colors" />
+        <p className="text-xs text-stone-500 dark:text-gray-400 font-medium">{label}</p>
+        <p className="text-xl font-black text-stone-800 dark:text-white mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{sub}</p>}
       </div>
-      <p className="text-xs text-stone-500 dark:text-gray-400 font-medium">{label}</p>
-      <p className="text-xl font-black text-stone-800 dark:text-white mt-0.5">{value}</p>
-      {sub && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{sub}</p>}
-    </div>
-  );
+    );
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-gray-950 pb-16">
@@ -296,7 +296,7 @@ export const Analytics: React.FC = () => {
                         <p className="text-xs font-semibold text-stone-700 dark:text-stone-300 truncate">
                           {isBuy ? 'Buy' : 'Sell'} · {o.metal} {o.purity}K · {fmtGrams(Number(o.grams) || 0)}
                         </p>
-                        <p className="text-[10px] text-stone-400 truncate">{o.customerName ?? o.customerEmail ?? '—'}</p>
+                        <p className="text-[10px] text-stone-400 truncate">{o.customerName ?? o.customerEmail ?? '-'}</p>
                       </div>
                       <div className="text-right">
                         <p className={`text-sm font-black ${isBuy ? 'text-green-600' : 'text-red-500'}`}>

@@ -4,12 +4,12 @@
  * Seeds every Firestore collection with one starter document so that
  * all collections appear in the Firebase Console immediately.
  *
- * Usage — call once from a browser console or an admin route:
+ * Usage - call once from a browser console or an admin route:
  *
  *   import { initializeCollections } from '../lib/firestoreInit';
  *   await initializeCollections();
  *
- * Safe to run multiple times — uses `setDoc` with `merge: true`
+ * Safe to run multiple times - uses `setDoc` with `merge: true`
  * so existing data is preserved.
  */
 /**

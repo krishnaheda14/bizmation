@@ -58,15 +58,15 @@ interface CustomOrder {
   designDescription: string;
   specialInstructions: string;
   status:
-    | 'Design Submitted'
-    | 'Design Approved'
-    | 'Quotation Sent'
-    | 'Quotation Approved'
-    | 'In Production'
-    | 'Quality Check'
-    | 'Ready for Delivery'
-    | 'Delivered'
-    | 'Cancelled';
+  | 'Design Submitted'
+  | 'Design Approved'
+  | 'Quotation Sent'
+  | 'Quotation Approved'
+  | 'In Production'
+  | 'Quality Check'
+  | 'Ready for Delivery'
+  | 'Delivered'
+  | 'Cancelled';
   estimatedCost: number;
   finalCost?: number;
   advancePayment: number;
@@ -89,7 +89,7 @@ interface TimelineEntry {
 
 export const CustomOrderTracking: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'orders' | 'create' | 'progress'>('orders');
-  // No default orders — must be loaded from database
+  // No default orders - must be loaded from database
   const [orders, setOrders] = useState<CustomOrder[]>([]);
 
   const getStatusStats = () => {
@@ -140,33 +140,30 @@ export const CustomOrderTracking: React.FC = () => {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-1 inline-flex">
         <button
           onClick={() => setActiveTab('orders')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'orders'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'orders'
               ? 'bg-purple-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <FileText size={20} />
           All Orders
         </button>
         <button
           onClick={() => setActiveTab('create')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'create'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'create'
               ? 'bg-purple-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <Plus size={20} />
           New Order
         </button>
         <button
           onClick={() => setActiveTab('progress')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'progress'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'progress'
               ? 'bg-purple-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <Clock size={20} />
           Progress Board

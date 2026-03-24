@@ -10,7 +10,7 @@ import { Coins, Plus, Search, TrendingUp, Calendar, Users } from 'lucide-react';
 import NewSchemeModal from '../components/NewSchemeModal';
 
 export const Schemes: React.FC = () => {
-  // No default schemes — fetch from database instead
+  // No default schemes - fetch from database instead
   const [schemes, setSchemes] = useState<any[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');

@@ -6,8 +6,8 @@
  *   2. Try /gold-rates (cached) then /gold-rates/live (fresh recompute)
  *
  * Purity grades returned:
- *   GOLD  — 999 (24K), 995 (24K), 916 (22K), 750 (18K)   displayRate = per 10g
- *   SILVER — 999 only (no hidden surcharge) displayRate = per 1kg
+ *   GOLD  - 999 (24K), 995 (24K), 916 (22K), 750 (18K)   displayRate = per 10g
+ *   SILVER - 999 only (no hidden surcharge) displayRate = per 1kg
  */
 
 export interface MetalRate {

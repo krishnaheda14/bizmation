@@ -5,7 +5,7 @@
 <h1 align="center">Bizmation Gold</h1>
 
 <p align="center">
-  <strong>Full-stack jewellery platform — live gold/silver rates, buy/sell, AutoPay SIP, KYC, customer portfolios, shop management, AI-powered catalog, and a super-admin console.</strong>
+  <strong>Full-stack jewellery platform - live gold/silver rates, buy/sell, AutoPay SIP, KYC, customer portfolios, shop management, AI-powered catalog, and a super-admin console.</strong>
 </p>
 
 <p align="center">
@@ -23,11 +23,11 @@
 
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
-3. [Folder Structure — What Each Folder Does](#folder-structure--what-each-folder-does)
+3. [Folder Structure - What Each Folder Does](#folder-structure--what-each-folder-does)
 4. [End-to-End Flows](#end-to-end-flows)
 5. [Gold Rate Calculation Engine](#gold-rate-calculation-engine)
 6. [Payment Processing (Price-Lock Mechanism)](#payment-processing-price-lock-mechanism)
-7. [AI Services — Image Processing Pipeline](#ai-services--image-processing-pipeline)
+7. [AI Services - Image Processing Pipeline](#ai-services--image-processing-pipeline)
 8. [Authentication & Authorization](#authentication--authorization)
 9. [Firestore Security Rules](#firestore-security-rules)
 10. [Firebase Collections Schema](#firebase-collections-schema)
@@ -46,10 +46,10 @@
 **Bizmation Gold** is a multi-tenant jewellery business platform built for Indian jewellers. It connects **shop owners** with their **customers** through a shared platform where:
 
 - **Customers** can buy/sell gold & silver at live international market prices, set up monthly AutoPay SIP plans, track their portfolio with P&L, manage KYC, and redeem accumulated gold.
-- **Shop Owners** get a full business suite — dashboard, inventory management, billing, repair tracking, gold savings schemes, customer management, analytics, and AI-powered catalog management.
+- **Shop Owners** get a full business suite - dashboard, inventory management, billing, repair tracking, gold savings schemes, customer management, analytics, and AI-powered catalog management.
 - **Super Admins** have a bird's-eye view of all shops, customers, KYC statuses, and platform-wide statistics.
 
-Every shop is **fully isolated** — customers registered under one shop cannot see or interact with any other shop's data.
+Every shop is **fully isolated** - customers registered under one shop cannot see or interact with any other shop's data.
 
 ---
 
@@ -119,14 +119,14 @@ Every shop is **fully isolated** — customers registered under one shop cannot 
 
 ---
 
-## Folder Structure — What Each Folder Does
+## Folder Structure - What Each Folder Does
 
 ```
 bizmation/
 ├── apps/                          # All runnable applications
 │   ├── backend/                   # 🟢 Express.js API Server
 │   │   └── src/
-│   │       ├── server.ts          # Entry point — registers middleware, routes, cron
+│   │       ├── server.ts          # Entry point - registers middleware, routes, cron
 │   │       ├── modules/           # Feature-based API modules
 │   │       │   ├── auth/          # 🔐 Phone OTP via Twilio Verify (send-otp, verify-otp)
 │   │       │   ├── catalog/       # 📦 Product catalog CRUD
@@ -136,13 +136,13 @@ bizmation/
 │   │       │   └── payments/      # 💳 Razorpay price-lock + payment verification
 │   │       ├── services/
 │   │       │   ├── database/      # 🗄️ PostgreSQL connection pool (pg)
-│   │       │   └── gold-rate/     # 🏆 GoldRateService — rate fetching, calculation, caching
+│   │       │   └── gold-rate/     # 🏆 GoldRateService - rate fetching, calculation, caching
 │   │       └── lib/
 │   │           └── firebaseAdmin.ts  # Firebase Admin SDK for server-side Firestore
 │   │
 │   ├── web-app/                   # 🌐 React Frontend (Cloudflare Pages)
 │   │   └── src/
-│   │       ├── main.tsx           # App entry — hash routing, role-based page rendering
+│   │       ├── main.tsx           # App entry - hash routing, role-based page rendering
 │   │       ├── index.css          # Global styles (Tailwind CSS)
 │   │       ├── context/
 │   │       │   ├── AuthContext.tsx # 🔑 Firebase auth + Twilio OTP + user profile management
@@ -176,7 +176,7 @@ bizmation/
 │
 ├── ai-services/                   # 🤖 Python AI Microservice
 │   └── image-processing/
-│       ├── main.py                # FastAPI app — 6 endpoints for image AI
+│       ├── main.py                # FastAPI app - 6 endpoints for image AI
 │       ├── jewelry_recognition.py # YOLO + OpenCV jewelry type/metal detection
 │       ├── Dockerfile             # Container build for AI service
 │       └── requirements.txt       # Python dependencies (torch, ultralytics, rembg, etc.)
@@ -223,7 +223,7 @@ bizmation/
 | **Nominee** | `Nominee.tsx` | Customer | Nominee management for gold holdings |
 | **Redemption** | `RedemptionPage.tsx` | Customer | Redeem accumulated gold, track request status |
 | **Referral** | `Referral.tsx` | Customer | Referral link, commission tracking |
-| **Dashboard** | `Dashboard.tsx` | Owner/Staff | Overview stats — revenue, orders, customers |
+| **Dashboard** | `Dashboard.tsx` | Owner/Staff | Overview stats - revenue, orders, customers |
 | **Parties** | `Parties.tsx` | Owner/Staff | Customer/supplier contact management |
 | **Billing** | `BillingEnhanced.tsx` | Owner/Staff | Create GST-compliant invoices |
 | **Inventory** | `Inventory.tsx` | Owner/Staff | Stock tracking, metal lots |
@@ -249,7 +249,7 @@ bizmation/
 
 ## End-to-End Flows
 
-### 1. Customer Buys Gold — Complete Flow
+### 1. Customer Buys Gold - Complete Flow
 
 ```
 Customer opens app → HomeLanding.tsx
@@ -484,12 +484,12 @@ Amount in Paise = Math.round(grams × ratePerGram × 100)
 ### Signature Verification
 ```
 HMAC-SHA256(razorpay_key_secret, razorpay_order_id + "|" + razorpay_payment_id)
-Must match razorpay_signature — prevents payment tampering
+Must match razorpay_signature - prevents payment tampering
 ```
 
 ---
 
-## AI Services — Image Processing Pipeline
+## AI Services - Image Processing Pipeline
 
 The Python-based AI microservice (`ai-services/image-processing/`) provides 6 REST endpoints:
 
@@ -526,9 +526,9 @@ quality_score = min(100, (sharpness/100 + brightness/2.55 + contrast/2.55) / 3)
 ## Authentication & Authorization
 
 ### Login Modes
-1. **Password** — email + password via Firebase Auth
-2. **Magic Link** — passwordless email link (`sendSignInLinkToEmail`)
-3. **Phone OTP** — Twilio Verify SMS → 6-digit code → Firebase sign-in
+1. **Password** - email + password via Firebase Auth
+2. **Magic Link** - passwordless email link (`sendSignInLinkToEmail`)
+3. **Phone OTP** - Twilio Verify SMS → 6-digit code → Firebase sign-in
 
 ### OTP Flow
 ```
@@ -565,11 +565,11 @@ The rules file at `infrastructure/firestore/firestore.rules` implements:
 |-----------|------|-------|--------------|
 | `users/{uid}` | Own doc + shop owner + super admin | Self + super admin | No delete allowed |
 | `shops/{shopId}` | **Public** (needed for signup validation) | Owner of shop | No delete |
-| `shops/{shopId}/customers/{id}` | Customer + shop owner + super admin | Self + shop owner + super admin | — |
-| `goldOnlineOrders/{id}` | Own orders + shop owner (if same shop) + super admin | Own orders + super admin | — |
-| `autoPaySubscriptions/{id}` | Same as orders | Self + super admin | — |
-| `redemptionRequests/{id}` | Customer + shop owner + super admin | Same | — |
-| `razorpayOrders/{id}` | Own + super admin | Self | — |
+| `shops/{shopId}/customers/{id}` | Customer + shop owner + super admin | Self + shop owner + super admin | - |
+| `goldOnlineOrders/{id}` | Own orders + shop owner (if same shop) + super admin | Own orders + super admin | - |
+| `autoPaySubscriptions/{id}` | Same as orders | Self + super admin | - |
+| `redemptionRequests/{id}` | Customer + shop owner + super admin | Same | - |
+| `razorpayOrders/{id}` | Own + super admin | Self | - |
 | `phoneIndex/{phone}` | **Public** (phone → email lookup) | Self only | Validated fields |
 | Everything else | ❌ Denied | ❌ Denied | Catch-all deny |
 
@@ -674,8 +674,8 @@ Generated by `apps/web-app/src/utils/bizId.ts` using base-36 encoding with `cryp
 | Shop | `BIZ-SHOP-XXXXXXXX` | `BIZ-SHOP-9D4E2A87` | 8 random base-36 chars |
 | Customer | `BIZ-CUST-XXXXXXXX` | `BIZ-CUST-A3F7B2C1` | 8 random base-36 chars |
 | Order | `BIZ-ORD-XXXXXXXXXXXXXXXXX` | timestamped | 9-char timestamp + 6 random (sortable) |
-| Product | `BIZ-PROD-XXXXXXXX` | — | 8 random base-36 chars |
-| Session | `BIZ-SES-XXXXXXXXXXXXX` | — | 9-char timestamp + 4 random |
+| Product | `BIZ-PROD-XXXXXXXX` | - | 8 random base-36 chars |
+| Session | `BIZ-SES-XXXXXXXXXXXXX` | - | 9-char timestamp + 4 random |
 | Owner Code | `FIRSTXXXXXX` | `RAVI7K2Q` | First 4 letters of name + 4 random |
 
 ---
@@ -809,10 +809,10 @@ wrangler deploy --env production
 ```
 
 The root **Dockerfile** has 4 stages:
-1. `deps` — install all workspace packages
-2. `build-shared` — compile `packages/shared-types`
-3. `builder` — compile `apps/backend` (TypeScript → CommonJS)
-4. `production` — minimal Node image, runs `node dist/server.js`
+1. `deps` - install all workspace packages
+2. `build-shared` - compile `packages/shared-types`
+3. `builder` - compile `apps/backend` (TypeScript → CommonJS)
+4. `production` - minimal Node image, runs `node dist/server.js`
 
 ### Cloudflare Pages (Frontend)
 | Setting | Value |

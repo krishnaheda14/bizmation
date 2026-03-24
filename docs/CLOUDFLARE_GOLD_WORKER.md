@@ -1,4 +1,4 @@
-    # Cloudflare Worker — Continuous Gold & Silver Price Fetcher
+    # Cloudflare Worker - Continuous Gold & Silver Price Fetcher
 
 ## Overview
 
@@ -32,7 +32,7 @@ This replaces the current flow where rates only update when the Express backend 
 
 ---
 
-## Step 1 — Create a Cloudflare KV Namespace
+## Step 1 - Create a Cloudflare KV Namespace
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **KV**
 2. Click **Create namespace**
@@ -41,7 +41,7 @@ This replaces the current flow where rates only update when the Express backend 
 
 ---
 
-## Step 2 — Create the Worker
+## Step 2 - Create the Worker
 
 ### 2a. Install Wrangler CLI
 
@@ -71,7 +71,7 @@ compatibility_date = "2024-01-01"
 [triggers]
 crons = ["*/5 * * * *"]
 
-# KV binding — paste your Namespace ID from Step 1
+# KV binding - paste your Namespace ID from Step 1
 [[kv_namespaces]]
 binding = "GOLD_RATES_KV"
 id      = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
@@ -84,7 +84,7 @@ id      = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
 
 ```typescript
 /**
- * Cloudflare Worker — Gold & Silver Rate Fetcher
+ * Cloudflare Worker - Gold & Silver Rate Fetcher
  *
  * • Cron trigger: every 5 minutes → fetch rates → store in KV
  * • GET /gold-rates → serve cached rates from KV (JSON)
@@ -104,7 +104,7 @@ export interface Env {
   GOLD_RATES_KV: KVNamespace;
 }
 
-// ── Constants — must match goldPrices.ts ──────────────────────────────────────
+// ── Constants - must match goldPrices.ts ──────────────────────────────────────
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY   = 1.09;      // 9% import duty for Indian market
 
@@ -345,7 +345,7 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    // GET /gold-rates — serve from KV cache (fast, ~1ms)
+    // GET /gold-rates - serve from KV cache (fast, ~1ms)
     if (url.pathname === '/gold-rates' && request.method === 'GET') {
       try {
         const cached = await env.GOLD_RATES_KV.get('gold_rates_cache');
@@ -353,7 +353,7 @@ export default {
           const data: CachedRates = JSON.parse(cached);
           return jsonResponse({ success: true, data, cached: true }, 200, origin);
         }
-        // Cache miss — fetch fresh and store
+        // Cache miss - fetch fresh and store
         const fresh = await fetchAndCacheRates(env);
         return jsonResponse({ success: true, data: fresh, cached: false }, 200, origin);
       } catch (err: any) {
@@ -361,7 +361,7 @@ export default {
       }
     }
 
-    // GET /gold-rates/live — bypass KV, always fetch fresh (for manual refresh)
+    // GET /gold-rates/live - bypass KV, always fetch fresh (for manual refresh)
     if (url.pathname === '/gold-rates/live' && request.method === 'GET') {
       try {
         const fresh = await fetchAndCacheRates(env);
@@ -379,7 +379,7 @@ export default {
     return jsonResponse({ error: 'Not found. Use GET /gold-rates' }, 404, origin);
   },
 
-  // ── Cron trigger — runs every 5 minutes ──────────────────────────────────
+  // ── Cron trigger - runs every 5 minutes ──────────────────────────────────
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       fetchAndCacheRates(env).catch(err =>
@@ -392,7 +392,7 @@ export default {
 
 ---
 
-## Step 3 — Deploy the Worker
+## Step 3 - Deploy the Worker
 
 ```bash
 # From the gold-rates-worker folder
@@ -404,11 +404,11 @@ wrangler deploy
 # https://gold-rates-worker.YOUR-SUBDOMAIN.workers.dev
 ```
 
-**Copy your worker URL** — you need it in Step 5.
+**Copy your worker URL** - you need it in Step 5.
 
 ---
 
-## Step 4 — Test the Worker
+## Step 4 - Test the Worker
 
 ```bash
 # Check health
@@ -444,7 +444,7 @@ curl https://gold-rates-worker.YOUR-SUBDOMAIN.workers.dev/gold-rates/live
 
 ---
 
-## Step 5 — Connect Your Cloudflare Pages Frontend
+## Step 5 - Connect Your Cloudflare Pages Frontend
 
 ### 5a. Add environment variable in Cloudflare Pages
 
@@ -459,7 +459,7 @@ curl https://gold-rates-worker.YOUR-SUBDOMAIN.workers.dev/gold-rates/live
 Replace the `fetchLiveMetalRates` function's opening section in `apps/web-app/src/lib/goldPrices.ts`:
 
 The new priority order should be:
-1. **Cloudflare Worker** (fastest — cached KV, 5-min freshness)
+1. **Cloudflare Worker** (fastest - cached KV, 5-min freshness)
 2. **Railway backend** (if worker down)
 3. **fawazahmed0 CDN** (public fallback)
 4. **Swissquote** (last resort)
@@ -498,7 +498,7 @@ export async function fetchLiveMetalRates(): Promise<MetalRate[]> {
 
 ---
 
-## Step 6 — Auto Refresh on the Frontend (Real-time)
+## Step 6 - Auto Refresh on the Frontend (Real-time)
 
 In `GoldRates.tsx`, add polling so the UI refreshes every 5 minutes automatically:
 
@@ -515,7 +515,7 @@ useEffect(() => {
 
 ---
 
-## Step 7 — Enable Cron in Cloudflare Dashboard
+## Step 7 - Enable Cron in Cloudflare Dashboard
 
 1. Go to Cloudflare Dashboard → **Workers & Pages** → `gold-rates-worker` → **Triggers** → **Cron Triggers**
 2. You should see `*/5 * * * *` already listed (from `wrangler.toml`)
@@ -544,7 +544,7 @@ All calculations match `goldPrices.ts` exactly:
 ## Troubleshooting
 
 ### Worker not updating rates
-- Check **Cron Triggers** tab in Cloudflare Dashboard — should show last run time
+- Check **Cron Triggers** tab in Cloudflare Dashboard - should show last run time
 - Run `wrangler tail` to see live logs:
   ```bash
   wrangler tail gold-rates-worker

@@ -2,7 +2,7 @@ export interface Env {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
-  // Firebase service account — used to sign custom tokens (phone-login endpoint)
+  // Firebase service account - used to sign custom tokens (phone-login endpoint)
   // Set these with: wrangler secret put FIREBASE_PROJECT_ID  (etc.)
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
@@ -18,7 +18,7 @@ function b64url(data: ArrayBuffer | string): string {
 
 async function createFirebaseCustomToken(uid: string, env: Env): Promise<string> {
   const iat = Math.floor(Date.now() / 1000);
-  const header  = { alg: 'RS256', typ: 'JWT' };
+  const header = { alg: 'RS256', typ: 'JWT' };
   const payload = {
     iss: env.FIREBASE_CLIENT_EMAIL,
     sub: env.FIREBASE_CLIENT_EMAIL,
@@ -55,7 +55,7 @@ async function createFirebaseCustomToken(uid: string, env: Env): Promise<string>
   return `${signingInput}.${b64url(sig)}`;
 }
 
-// ─── Firestore REST API — read phoneIndex (public reads allowed) ──────────────
+// ─── Firestore REST API - read phoneIndex (public reads allowed) ──────────────
 
 async function lookupPhoneIndex(
   phone: string,
@@ -67,7 +67,7 @@ async function lookupPhoneIndex(
   if (!resp.ok) return {};
   const doc: any = await resp.json();
   return {
-    uid:   doc?.fields?.uid?.stringValue,
+    uid: doc?.fields?.uid?.stringValue,
     email: doc?.fields?.email?.stringValue,
   };
 }
@@ -152,7 +152,7 @@ export default {
      *
      * 1. Verifies Twilio OTP
      * 2. Looks up UID in Firestore phoneIndex (public read)
-     * 3. Returns a Firebase custom token — client calls signInWithCustomToken()
+     * 3. Returns a Firebase custom token - client calls signInWithCustomToken()
      *
      * Required worker secrets (wrangler secret put <NAME>):
      *   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
@@ -160,11 +160,11 @@ export default {
     if (url.pathname === '/api/auth/phone-login' && request.method === 'POST') {
       const body = await request.json().catch(() => ({})) as any;
       const phone = String(body?.phone || '').trim();
-      const code  = String(body?.code  || '').trim();
+      const code = String(body?.code || '').trim();
       if (!phone || !code) return jsonResponse({ success: false, error: 'phone and code required' }, 400, origin);
 
-      const acc     = env.TWILIO_ACCOUNT_SID;
-      const token   = env.TWILIO_AUTH_TOKEN;
+      const acc = env.TWILIO_ACCOUNT_SID;
+      const token = env.TWILIO_AUTH_TOKEN;
       const service = env.TWILIO_VERIFY_SERVICE_SID;
       if (!acc || !token || !service) return jsonResponse({ success: false, error: 'Twilio not configured' }, 500, origin);
       if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
@@ -196,7 +196,7 @@ export default {
       let email: string | undefined;
       try {
         const idx = await lookupPhoneIndex(phone, env.FIREBASE_PROJECT_ID);
-        uid   = idx.uid;
+        uid = idx.uid;
         email = idx.email;
       } catch (err: any) {
         console.error('[TwilioWorker] Firestore lookup error:', err?.message);
@@ -228,8 +228,8 @@ export default {
       const firebaseConfigured = Boolean(env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY);
       return jsonResponse({
         status: 'ok', worker: 'twilio-otp-worker', configured, firebaseConfigured,
-        required_env: ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_VERIFY_SERVICE_SID'],
-        required_firebase_env: ['FIREBASE_PROJECT_ID','FIREBASE_CLIENT_EMAIL','FIREBASE_PRIVATE_KEY'],
+        required_env: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VERIFY_SERVICE_SID'],
+        required_firebase_env: ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'],
       }, 200, origin);
     }
 

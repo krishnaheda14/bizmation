@@ -24,9 +24,9 @@ interface RepairJob {
 }
 
 export const Repairs: React.FC = () => {
-  // No default repair jobs — load from database
+  // No default repair jobs - load from database
   const [jobs, setJobs] = useState<RepairJob[]>([]);
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [showNewJobModal, setShowNewJobModal] = useState(false);
@@ -249,7 +249,7 @@ const NewJobModal: React.FC<NewJobModalProps> = ({ onClose, onSuccess }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const newJob: RepairJob = {
       id: String(Date.now()),
       jobNo: `REP${String(Date.now()).slice(-4)}`,

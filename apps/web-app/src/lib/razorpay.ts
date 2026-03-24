@@ -483,8 +483,6 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
     return;
   }
 
-  const amountInPaise = Math.round(options.planAmount * 100);
-
   const freqLabelMap: Record<AutoPayOptions['frequency'], string> = {
     DAILY: 'day',
     WEEKLY: 'week',
@@ -494,13 +492,32 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
   const metalLabel = options.metal === 'GOLD' ? 'Gold' : 'Silver';
   const freqLabel = freqLabelMap[options.frequency] ?? 'month';
 
+  let subscriptionId = '';
+  try {
+    const createCall = await fetchWithFallback('/api/payments/create-sip-subscription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        planAmount: options.planAmount,
+        frequency: options.frequency,
+      }),
+    });
+    const { res } = createCall;
+    const { json } = await readApiResponse(res);
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.error || 'Failed to setup subscription on server.');
+    }
+    subscriptionId = json.data.subscriptionId;
+  } catch (err: any) {
+    options.onFailure(new Error(err?.message || 'Failed to setup subscription on server.'));
+    return;
+  }
+
   const razorpayOptions = {
     key: RAZORPAY_KEY_ID,
-    amount: amountInPaise,
-    currency: 'INR',
+    subscription_id: subscriptionId, // USE subscription_id from backend
     name: 'GOLD SIP',
     description: `${metalLabel} SIP – ₹${options.planAmount.toLocaleString('en-IN')} / ${freqLabel}`,
-    recurring: "1",
     prefill: {
       name: options.customerName,
       email: options.customerEmail,
@@ -510,7 +527,8 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
       color: '#D97706',
     },
     handler: (response: any) => {
-      options.onSuccess(response.razorpay_payment_id || response.razorpay_subscription_id || '');
+      // Razorpay Checkout handles the subscription auth & first payment natively if configured.
+      options.onSuccess(response.razorpay_payment_id || response.razorpay_subscription_id || subscriptionId);
     },
     modal: {
       ondismiss: () => {

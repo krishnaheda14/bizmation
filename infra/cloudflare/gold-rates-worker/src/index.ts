@@ -136,13 +136,13 @@ async function fetchViaSwissquote(): Promise<{ xauInr: number; xagInr: number; x
  * Build display rates from raw spot prices.
  *
  * Gold purity grades (Indian market):
- *   999 (24K) = spot_base × (999/995)  — highest purity, 0.4% premium over 995
- *   995 (24K) = spot_base              — most liquid physical bar/coin purity (the market reference)
- *   916 (22K) = spot_base × (916/995)  — hallmark jewellery standard
- *   750 (18K) = spot_base × (750/995)  — fashion/designer jewellery
+ *   999 (24K) = spot_base × (999/995)  - highest purity, 0.4% premium over 995
+ *   995 (24K) = spot_base              - most liquid physical bar/coin purity (the market reference)
+ *   916 (22K) = spot_base × (916/995)  - hallmark jewellery standard
+ *   750 (18K) = spot_base × (750/995)  - fashion/designer jewellery
  *
  * Silver:
- *   999 only — no hidden surcharge.
+ *   999 only - no hidden surcharge.
  *
  * displayRate: per 10g for gold, per 1kg for silver.
  */
@@ -156,11 +156,11 @@ function buildRates(xauInr: number, xagInr: number, source: string, now: string)
   const silver999 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
 
   return [
-    { metalType: 'GOLD',   purity: 999, purityLabel: '24K (999)', ratePerGram: gold999,  displayRate: gold999  * 10,    effectiveDate: now, source },
-    { metalType: 'GOLD',   purity: 995, purityLabel: '24K (995)', ratePerGram: base995,  displayRate: base995  * 10,    effectiveDate: now, source },
-    { metalType: 'GOLD',   purity: 916, purityLabel: '22K (916)', ratePerGram: gold916,  displayRate: gold916  * 10,    effectiveDate: now, source },
-    { metalType: 'GOLD',   purity: 750, purityLabel: '18K (750)', ratePerGram: gold750,  displayRate: gold750  * 10,    effectiveDate: now, source },
-    { metalType: 'SILVER', purity: 999, purityLabel: '999',       ratePerGram: silver999, displayRate: silver999 * 1000, effectiveDate: now, source },
+    { metalType: 'GOLD', purity: 999, purityLabel: '24K (999)', ratePerGram: gold999, displayRate: gold999 * 10, effectiveDate: now, source },
+    { metalType: 'GOLD', purity: 995, purityLabel: '24K (995)', ratePerGram: base995, displayRate: base995 * 10, effectiveDate: now, source },
+    { metalType: 'GOLD', purity: 916, purityLabel: '22K (916)', ratePerGram: gold916, displayRate: gold916 * 10, effectiveDate: now, source },
+    { metalType: 'GOLD', purity: 750, purityLabel: '18K (750)', ratePerGram: gold750, displayRate: gold750 * 10, effectiveDate: now, source },
+    { metalType: 'SILVER', purity: 999, purityLabel: '999', ratePerGram: silver999, displayRate: silver999 * 1000, effectiveDate: now, source },
   ];
 }
 

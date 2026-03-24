@@ -1,4 +1,4 @@
-# Bizmation Gold — Future Prospects
+# Bizmation Gold - Future Prospects
 
 > A strategic roadmap covering target audience, the problem we solve, competitive advantages, unique features to add, and how to take Bizmation Gold to the next level.
 
@@ -37,7 +37,7 @@ India's jewellery industry is worth **$80+ billion** but operates with **outdate
 
 ### The Core Insight
 
-> **Indian jewellers need a WhatsApp-simple tool that handles everything from live pricing to customer portfolios — without expensive consultants or complex ERP systems.**
+> **Indian jewellers need a WhatsApp-simple tool that handles everything from live pricing to customer portfolios - without expensive consultants or complex ERP systems.**
 
 ---
 
@@ -139,7 +139,7 @@ With customer module (buy/sell):
 
 ## Unique Features to Add
 
-### Tier 1 — High Impact, Build Now (Next 3 months)
+### Tier 1 - High Impact, Build Now (Next 3 months)
 
 #### 1. 📱 WhatsApp Bot Integration
 **Why**: 80% of Indian jewellers' customer communication happens on WhatsApp.
@@ -218,7 +218,7 @@ Calculations:
 
 ---
 
-### Tier 2 — Differentiator Features (3–6 months)
+### Tier 2 - Differentiator Features (3–6 months)
 
 #### 5. 📊 AI Business Insights Dashboard
 ```
@@ -263,7 +263,7 @@ Growth: 20% increase in repeat purchases (industry benchmark)
 
 ---
 
-### Tier 3 — Scale & Expand (6–12 months)
+### Tier 3 - Scale & Expand (6–12 months)
 
 #### 9. 📱 Progressive Web App (PWA)
 ```
@@ -422,7 +422,7 @@ Add:
 ├── Native mobile app (React Native → production)
 ├── Multi-language support
 ├── B2B marketplace features
-├── International expansion (UAE, Singapore — NRI market)
+├── International expansion (UAE, Singapore - NRI market)
 ├── Strategic partnerships with bullion dealers
 └── Target: 5,000 paying shops, ₹1.5 Cr ARR
 ```

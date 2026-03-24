@@ -3,16 +3,16 @@
  *
  * Uses Twilio Verify API to send and check phone OTPs.
  *
- * OPTION A — API Key auth (recommended for production):
- *   TWILIO_ACCOUNT_SID        — Main account SID (AC...)
- *   TWILIO_API_KEY_SID        — API Key SID (SK...)
- *   TWILIO_API_KEY_SECRET     — API Key Secret
- *   TWILIO_VERIFY_SERVICE_SID — Verify Service SID (VA...)
+ * OPTION A - API Key auth (recommended for production):
+ *   TWILIO_ACCOUNT_SID        - Main account SID (AC...)
+ *   TWILIO_API_KEY_SID        - API Key SID (SK...)
+ *   TWILIO_API_KEY_SECRET     - API Key Secret
+ *   TWILIO_VERIFY_SERVICE_SID - Verify Service SID (VA...)
  *
- * OPTION B — Account SID + Auth Token (simpler, works out of the box):
- *   TWILIO_ACCOUNT_SID        — Main account SID (AC...)
- *   TWILIO_AUTH_TOKEN         — Auth Token from Twilio Console
- *   TWILIO_VERIFY_SERVICE_SID — Verify Service SID (VA...)
+ * OPTION B - Account SID + Auth Token (simpler, works out of the box):
+ *   TWILIO_ACCOUNT_SID        - Main account SID (AC...)
+ *   TWILIO_AUTH_TOKEN         - Auth Token from Twilio Console
+ *   TWILIO_VERIFY_SERVICE_SID - Verify Service SID (VA...)
  */
 import twilio from 'twilio';
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -33,7 +33,7 @@ function getClient() {
     if (_client)
         return _client;
     if (apiKeySid && apiKeySecret && accountSid) {
-        // Option A: API Key auth (more secure — rotate keys without changing password)
+        // Option A: API Key auth (more secure - rotate keys without changing password)
         console.log('[Twilio] Initialising with API Key auth (SK...)');
         _client = twilio(apiKeySid, apiKeySecret, { accountSid });
     }
@@ -53,7 +53,7 @@ function getClient() {
         if (!apiKeySecret)
             missing.push('TWILIO_API_KEY_SECRET (for Option A)');
         throw new Error(`Twilio credentials not configured. Missing: ${missing.join(', ')}.\n` +
-            'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN in Railway Variables (Option B — simplest)\n' +
+            'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN in Railway Variables (Option B - simplest)\n' +
             'OR set TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (Option A).');
     }
     return _client;
@@ -64,7 +64,7 @@ function getClient() {
  */
 export async function sendOtp(phone) {
     if (!verifyServiceSid) {
-        console.error('[Twilio] TWILIO_VERIFY_SERVICE_SID is not set — cannot send OTP');
+        console.error('[Twilio] TWILIO_VERIFY_SERVICE_SID is not set - cannot send OTP');
         throw new Error('TWILIO_VERIFY_SERVICE_SID is not set. ' +
             'Create a Verify Service in Twilio Console → Verify → Services and add the SID to Railway Variables.');
     }

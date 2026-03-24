@@ -1,11 +1,11 @@
 /**
- * Firebase Admin SDK — lazy initialisation
+ * Firebase Admin SDK - lazy initialisation
  *
  * Required Railway environment variables:
- *   FIREBASE_PROJECT_ID        — e.g. "bizmation-gold"
- *   FIREBASE_CLIENT_EMAIL      — service account email
+ *   FIREBASE_PROJECT_ID        - e.g. "bizmation-gold"
+ *   FIREBASE_CLIENT_EMAIL      - service account email
  *                                e.g. "firebase-adminsdk-xxx@bizmation-gold.iam.gserviceaccount.com"
- *   FIREBASE_PRIVATE_KEY       — RSA private key from the service account JSON file
+ *   FIREBASE_PRIVATE_KEY       - RSA private key from the service account JSON file
  *                                (paste the entire "private_key" value, Railway preserves \n)
  *
  * How to get these:
@@ -19,10 +19,10 @@ import admin from 'firebase-admin';
 let _app: admin.app.App | null = null;
 
 function initApp(): admin.app.App {
-  const projectId   = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  // Railway stores multi-line secrets with literal \n — convert to real newlines
-  const privateKey  = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  // Railway stores multi-line secrets with literal \n - convert to real newlines
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
   if (!projectId || !clientEmail || !privateKey) {
     throw new Error(

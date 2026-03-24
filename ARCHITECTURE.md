@@ -1,4 +1,4 @@
-# Bizmation Gold — Architecture Deep-Dive
+# Bizmation Gold - Architecture Deep-Dive
 
 > This document provides a detailed technical breakdown of how every component in Bizmation Gold works, how data flows between services, and the exact calculations powering pricing, payments, and AI features.
 
@@ -13,7 +13,7 @@
 5. [Gold & Silver Rate Pipeline](#gold--silver-rate-pipeline)
 6. [Payment Architecture](#payment-architecture)
 7. [AI Services Architecture](#ai-services-architecture)
-8. [Data Layer — Dual Database Strategy](#data-layer--dual-database-strategy)
+8. [Data Layer - Dual Database Strategy](#data-layer--dual-database-strategy)
 9. [Authentication Architecture](#authentication-architecture)
 10. [Cloudflare Workers](#cloudflare-workers)
 11. [Security Architecture](#security-architecture)
@@ -179,7 +179,7 @@ const hash = window.location.hash.slice(1) || '/';
 // Super Admin: auto-redirect to /super-admin
 ```
 
-**Why hash routing?** Cloudflare Pages serves static files — hash-based routing avoids the need for server-side URL rewrites.
+**Why hash routing?** Cloudflare Pages serves static files - hash-based routing avoids the need for server-side URL rewrites.
 
 ### Context Providers
 
@@ -415,19 +415,19 @@ Input: JPEG/PNG jewelry photo
 
 ---
 
-## Data Layer — Dual Database Strategy
+## Data Layer - Dual Database Strategy
 
 ### Why Two Databases?
 
 | Concern | PostgreSQL (Railway) | Firebase Firestore |
 |---------|---------------------|-------------------|
 | **Use case** | Structured business data | Real-time user-facing data |
-| **Gold rates** | ✅ Time-series with purity/metal indexing | — |
-| **Products/Inventory** | ✅ Complex queries, joins, aggregations | — |
-| **User profiles** | — | ✅ Real-time sync with auth state |
-| **Orders** | — | ✅ Real-time updates, offline support |
-| **Shop isolation** | — | ✅ Security rules enforce per-shop access |
-| **Subscriptions** | — | ✅ Real-time status tracking |
+| **Gold rates** | ✅ Time-series with purity/metal indexing | - |
+| **Products/Inventory** | ✅ Complex queries, joins, aggregations | - |
+| **User profiles** | - | ✅ Real-time sync with auth state |
+| **Orders** | - | ✅ Real-time updates, offline support |
+| **Shop isolation** | - | ✅ Security rules enforce per-shop access |
+| **Subscriptions** | - | ✅ Real-time status tracking |
 
 ### PostgreSQL Tables
 

@@ -18,7 +18,7 @@ async function main() {
   console.log('Running migrate.sql against Supabase...');
   try {
     await pool.query(sql);
-    console.log('✅ Migration complete — all tables, indexes and triggers created.');
+    console.log('✅ Migration complete - all tables, indexes and triggers created.');
   } catch (err) {
     // Print nicely so partial duplicates are obvious
     console.error('Migration error:', err.message);

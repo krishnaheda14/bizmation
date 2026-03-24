@@ -7,7 +7,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Null-safe profile fetch — returns data map or null if doc missing.
+    // Null-safe profile fetch - returns data map or null if doc missing.
     // Using exists() first avoids a failed get() call that would throw and deny.
     function safeProfile() {
       let ref = /databases/$(database)/documents/users/$(request.auth.uid);
@@ -66,7 +66,7 @@ service cloud.firestore {
     }
 
     // ── /shops/{shopId} ──────────────────────────────────────────────────────
-    // Shops are a public directory — anyone (including unauthenticated users)
+    // Shops are a public directory - anyone (including unauthenticated users)
     // needs to read shops to validate shop names during account creation.
     match /shops/{shopId} {
       allow read: if true;

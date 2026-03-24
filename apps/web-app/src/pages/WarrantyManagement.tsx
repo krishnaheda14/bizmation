@@ -57,7 +57,7 @@ interface Warranty {
 
 export const WarrantyManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'list' | 'create' | 'lookup' | 'reminders'>('list');
-  // Start empty — data should be fetched from the database
+  // Start empty - data should be fetched from the database
   const [warranties, setWarranties] = useState<Warranty[]>([]);
 
   const getStatusStats = () => {
@@ -110,44 +110,40 @@ export const WarrantyManagement: React.FC = () => {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-1 inline-flex">
         <button
           onClick={() => setActiveTab('list')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'list'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'list'
               ? 'bg-green-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <FileText size={20} />
           All Warranties
         </button>
         <button
           onClick={() => setActiveTab('create')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'create'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'create'
               ? 'bg-green-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <Plus size={20} />
           Create Warranty
         </button>
         <button
           onClick={() => setActiveTab('lookup')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'lookup'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'lookup'
               ? 'bg-green-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <Search size={20} />
           Customer Lookup
         </button>
         <button
           onClick={() => setActiveTab('reminders')}
-          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'reminders'
+          className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition-colors ${activeTab === 'reminders'
               ? 'bg-green-600 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-          }`}
+            }`}
         >
           <Bell size={20} />
           Reminders
@@ -211,11 +207,11 @@ const WarrantiesList: React.FC<WarrantiesListProps> = ({ warranties }) => {
     // Placeholder for WhatsApp integration
     alert(
       `📱 WhatsApp message would be sent to ${warranty.customerPhone}\n\n` +
-        `Dear ${warranty.customerName},\n` +
-        `Your warranty card for ${warranty.itemName} is ready!\n` +
-        `Warranty No: ${warranty.warrantyNo}\n` +
-        `Valid until: ${warranty.expiryDate.toLocaleDateString()}\n\n` +
-        `View your warranty: https://yourdomain.com/warranty/${warranty.id}`
+      `Dear ${warranty.customerName},\n` +
+      `Your warranty card for ${warranty.itemName} is ready!\n` +
+      `Warranty No: ${warranty.warrantyNo}\n` +
+      `Valid until: ${warranty.expiryDate.toLocaleDateString()}\n\n` +
+      `View your warranty: https://yourdomain.com/warranty/${warranty.id}`
     );
   };
 
@@ -467,7 +463,7 @@ const CreateWarranty: React.FC<CreateWarrantyProps> = ({ onSave }) => {
     };
 
     onSave(warranty);
-    
+
     if (sendWhatsApp || sendEmail) {
       let message = '✅ Warranty created successfully!\n\n';
       if (sendWhatsApp) message += '📱 WhatsApp notification sent\n';
@@ -868,11 +864,10 @@ const CustomerLookup: React.FC<CustomerLookupProps> = ({ warranties }) => {
                       </p>
                     </div>
                     <span
-                      className={`px-3 py-1 text-xs rounded-full ${
-                        warranty.status === 'Active'
+                      className={`px-3 py-1 text-xs rounded-full ${warranty.status === 'Active'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
                           : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-                      }`}
+                        }`}
                     >
                       {warranty.status}
                     </span>

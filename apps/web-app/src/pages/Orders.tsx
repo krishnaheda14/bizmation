@@ -1,5 +1,5 @@
 /**
- * Orders Page — Customer View
+ * Orders Page - Customer View
  *
  * Shows all orders for the logged-in customer.
  * Supports invoice generation & PDF download per order.
@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCart, ArrowUpRight, Loader2, AlertCircle,
-  RefreshCw, Package, FileText, Download, Coins, TrendingUp,
+  RefreshCw, Package, FileText, Download, Coins, TrendingUp, Star, Gift
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchCustomerOrders } from '../lib/customerOrders';
@@ -25,6 +25,9 @@ interface GoldOrder {
   totalAmountInr: number;
   razorpayPaymentId?: string;
   status: string;
+  isGift?: boolean;
+  giftReceiverName?: string;
+  giftSenderName?: string;
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
@@ -45,6 +48,16 @@ interface CoinRequest {
   makingChargesTotalInr?: number;
   deliveryCity?: string;
   orderStatusTimeline?: Array<{ status: string; at: string; by: string }>;
+  createdAt?: any;
+}
+
+interface AutoPaySubscription {
+  id: string;
+  metal: string;
+  amountInr: number;
+  frequency: string;
+  razorpaySubscriptionId: string;
+  status: string;
   createdAt?: any;
 }
 
@@ -108,8 +121,8 @@ function generateInvoiceHTML(order: GoldOrder, customerName: string, customerEma
   <div class="section">
     <div class="section-title">Bill To</div>
     <div class="customer-grid">
-      <div><div class="label">Customer Name</div><div class="value">${customerName || '—'}</div></div>
-      <div><div class="label">Email</div><div class="value">${customerEmail || '—'}</div></div>
+      <div><div class="label">Customer Name</div><div class="value">${customerName || '-'}</div></div>
+      <div><div class="label">Email</div><div class="value">${customerEmail || '-'}</div></div>
       ${order.customerPhone ? `<div><div class="label">Phone</div><div class="value">${order.customerPhone}</div></div>` : ''}
       <div><div class="label">Registered Under Jeweller</div><div class="value">${registeredJeweller || 'Not linked'}</div></div>
     </div>
@@ -170,25 +183,27 @@ function downloadInvoice(order: GoldOrder, customerName: string, customerEmail: 
 // ── Component ────────────────────────────────────────────────────────────────
 export const Orders: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
-  const [orders, setOrders]     = useState<GoldOrder[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
+  const [orders, setOrders] = useState<GoldOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
-  const [search, setSearch]     = useState('');
+  const [search, setSearch] = useState('');
   const [coinRequests, setCoinRequests] = useState<CoinRequest[]>([]);
+  const [sipSubscriptions, setSipSubscriptions] = useState<AutoPaySubscription[]>([]);
 
   const fetchOrders = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
     setError('');
     try {
-      const [result, coinSnap] = await Promise.all([
+      const [result, coinSnap, sipSnap] = await Promise.all([
         fetchCustomerOrders({
           uid: currentUser.uid,
           email: currentUser.email ?? userProfile?.email ?? '',
           phone: userProfile?.phone ?? '',
         }),
         getDocs(query(collection(db, 'coinPurchaseOrders'), where('customerUid', '==', currentUser.uid))),
+        getDocs(query(collection(db, 'autoPaySubscriptions'), where('userId', '==', currentUser.uid))),
       ]);
       setOrders(result as GoldOrder[]);
       const coinRows = coinSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as CoinRequest));
@@ -198,6 +213,14 @@ export const Orders: React.FC = () => {
         return bt - at;
       });
       setCoinRequests(coinRows);
+
+      const sipRows = sipSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as AutoPaySubscription));
+      sipRows.sort((a, b) => {
+        const at = a.createdAt?.seconds ? a.createdAt.seconds : 0;
+        const bt = b.createdAt?.seconds ? b.createdAt.seconds : 0;
+        return bt - at;
+      });
+      setSipSubscriptions(sipRows);
     } catch (err: any) {
       // console.error('[Orders] fetch failed', err);
       const code = err?.code ? ` (${err.code})` : '';
@@ -209,11 +232,11 @@ export const Orders: React.FC = () => {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  const customerName  = userProfile?.name  ?? currentUser?.displayName ?? '';
+  const customerName = userProfile?.name ?? currentUser?.displayName ?? '';
   const customerEmail = userProfile?.email ?? currentUser?.email ?? '';
 
   const displayed = orders.filter(o => {
-    const matchType   = typeFilter === 'ALL' || o.type === typeFilter;
+    const matchType = typeFilter === 'ALL' || o.type === typeFilter;
     const searchLower = search.toLowerCase();
     const matchSearch = !search ||
       o.metal?.toLowerCase().includes(searchLower) ||
@@ -233,7 +256,7 @@ export const Orders: React.FC = () => {
               Transaction Log
             </h1>
             <p className="text-stone-500 dark:text-gray-400 text-sm">
-              Every buy &amp; sell transaction — with invoice download
+              Every buy &amp; sell transaction - with invoice download
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -255,15 +278,14 @@ export const Orders: React.FC = () => {
           <div className="flex gap-1 p-1 rounded-xl bg-stone-100 dark:bg-gray-800 border border-stone-200 dark:border-gray-700">
             {(['ALL', 'BUY', 'SELL'] as const).map(f => (
               <button key={f} onClick={() => setTypeFilter(f)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  typeFilter === f
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${typeFilter === f
                     ? f === 'BUY'
                       ? 'bg-green-500 text-white shadow'
                       : f === 'SELL'
-                      ? 'bg-orange-500 text-white shadow'
-                      : 'bg-stone-700 text-white shadow'
+                        ? 'bg-orange-500 text-white shadow'
+                        : 'bg-stone-700 text-white shadow'
                     : 'text-stone-500 dark:text-gray-400 hover:bg-stone-200 dark:hover:bg-gray-700'
-                }`}>{f}</button>
+                  }`}>{f}</button>
             ))}
           </div>
           <input type="search" placeholder="Search metal, status, payment ID…"
@@ -318,18 +340,19 @@ export const Orders: React.FC = () => {
                   {displayed.map(order => {
                     const date = order.createdAt?.toDate
                       ? order.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                      : '—';
+                      : '-';
                     return (
                       <tr key={order.id} className="border-b border-stone-50 dark:border-gray-800/60 hover:bg-stone-50 dark:hover:bg-gray-900/50 transition-colors">
                         <td className="py-3.5 px-4 text-sm text-stone-600 dark:text-gray-300 whitespace-nowrap">{date}</td>
                         <td className="py-3.5 px-4">
-                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${
-                            order.type === 'BUY'
+                          <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full ${order.isGift
+                            ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400'
+                            : order.type === 'BUY'
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
-                          }`}>
-                            {order.type === 'BUY' ? <ShoppingCart size={10} /> : <ArrowUpRight size={10} />}
-                            {order.type}
+                            }`}>
+                            {order.isGift ? <Star size={10} /> : (order.type === 'BUY' ? <ShoppingCart size={10} /> : <ArrowUpRight size={10} />)}
+                            {order.isGift ? (order.type === 'SELL' ? 'GIFT SENT' : 'GIFT RECVD') : order.type}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-sm font-semibold text-stone-700 dark:text-gray-300">
@@ -339,19 +362,18 @@ export const Orders: React.FC = () => {
                           {order.grams.toFixed(4)}g
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm text-stone-600 dark:text-gray-300">
-                          ₹{order.ratePerGram?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '—'}
+                          ₹{order.ratePerGram?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '-'}
                         </td>
                         <td className="py-3.5 px-4 text-right text-sm font-black text-stone-800 dark:text-white">
-                          ₹{order.totalAmountInr?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '—'}
+                          ₹{order.totalAmountInr?.toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) ?? '-'}
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            order.status === 'SUCCESS'
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${order.status === 'SUCCESS'
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               : order.status === 'PENDING'
-                              ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                          }`}>
+                                ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                            }`}>
                             {order.status}
                           </span>
                         </td>
@@ -391,7 +413,7 @@ export const Orders: React.FC = () => {
               {coinRequests.map((r) => {
                 const dt = r.createdAt?.toDate
                   ? r.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                  : '—';
+                  : '-';
                 return (
                   <div key={r.id} className="rounded-xl border border-amber-100 bg-amber-50/40 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
                     <div>
@@ -402,6 +424,39 @@ export const Orders: React.FC = () => {
                     <div className="text-right">
                       <p className="text-sm font-black text-stone-900">₹{Number(r.totalAmountInr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                       <p className="text-xs font-semibold text-stone-600">Status: {r.status || 'ACCEPTED'}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* SIP Subscriptions Table */}
+        <div className="bg-white dark:bg-gray-950 border border-stone-100 dark:border-gray-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-black text-stone-800 dark:text-white flex items-center gap-2">
+              <TrendingUp size={16} className="text-amber-500" /> SIP (AutoPay) Subscriptions
+            </h2>
+            <span className="text-xs text-stone-500">{sipSubscriptions.length} active(s)</span>
+          </div>
+          {sipSubscriptions.length === 0 ? (
+            <p className="text-sm text-stone-500">No SIP subscriptions yet. Setup from Home → Gold SIP.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {sipSubscriptions.map((s) => {
+                const dt = s.createdAt?.toDate
+                  ? s.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : '-';
+                return (
+                  <div key={s.id} className="rounded-xl border border-blue-100 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-900/10 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-bold text-blue-900 dark:text-blue-100">{s.metal} SIP - {s.frequency}</p>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">Started: {dt} · ID: {s.razorpaySubscriptionId}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-stone-900 dark:text-white">₹{Number(s.amountInr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      <p className="text-xs font-semibold text-stone-600 dark:text-gray-300">Status: {s.status}</p>
                     </div>
                   </div>
                 );

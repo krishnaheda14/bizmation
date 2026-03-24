@@ -1,5 +1,5 @@
 /**
- * Shop Customers Page — Owner / Staff View
+ * Shop Customers Page - Owner / Staff View
  *
  * Shows all customers registered under this shop with
  * full purchase analytics and expandable order history.
@@ -53,12 +53,12 @@ const fmtInr = (n: number, compact = true) => {
 
 export const ShopCustomers: React.FC = () => {
   const { currentUser, userProfile } = useAuth();
-  const [customers, setCustomers]     = useState<CustomerRecord[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState('');
-  const [search, setSearch]           = useState('');
-  const [expandedId, setExpandedId]   = useState<string | null>(null);
-  const [ordersMap, setOrdersMap]     = useState<Record<string, Order[]>>({});
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [ordersMap, setOrdersMap] = useState<Record<string, Order[]>>({});
   const [ordersLoading, setOrdersLoading] = useState<string | null>(null);
   const shopNameVariants = useMemo(
     () => Array.from(new Set([(userProfile?.shopName ?? ''), (userProfile?.shopName ?? '').toLowerCase(), (userProfile?.shopName ?? '').toUpperCase()].filter(Boolean))),
@@ -144,8 +144,8 @@ export const ShopCustomers: React.FC = () => {
   );
 
   const totalCustomers = customers.length;
-  const totalGold      = customers.reduce((s, c) => s + (c.totalGoldPurchasedGrams ?? 0), 0);
-  const totalInvested  = customers.reduce((s, c) => s + (c.totalInvestedInr ?? 0), 0);
+  const totalGold = customers.reduce((s, c) => s + (c.totalGoldPurchasedGrams ?? 0), 0);
+  const totalInvested = customers.reduce((s, c) => s + (c.totalInvestedInr ?? 0), 0);
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-black text-gray-900 dark:text-white">
@@ -226,11 +226,11 @@ export const ShopCustomers: React.FC = () => {
           <div className="space-y-3">
             {filtered.map(c => {
               const isExpanded = expandedId === c.id;
-              const orders      = ordersMap[c.id];
+              const orders = ordersMap[c.id];
               const isLoadingOrders = ordersLoading === c.id;
               const joinDate = c.createdAt?.toDate
                 ? c.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                : '—';
+                : '-';
 
               return (
                 <div key={c.id} className="bg-white dark:bg-gray-950 border border-amber-100 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
@@ -245,11 +245,10 @@ export const ShopCustomers: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-stone-800 dark:text-white">{c.name}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                          c.kycStatus === 'VERIFIED'
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${c.kycStatus === 'VERIFIED'
                             ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                             : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                        }`}>{c.kycStatus}</span>
+                          }`}>{c.kycStatus}</span>
                       </div>
                       <p className="text-xs text-stone-500 dark:text-gray-400 mt-0.5">{c.email} · {c.phone}</p>
                     </div>
@@ -314,32 +313,30 @@ export const ShopCustomers: React.FC = () => {
                               {orders.map(o => {
                                 const d = o.createdAt?.toDate
                                   ? o.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                  : '—';
+                                  : '-';
                                 return (
                                   <tr key={o.id} className="border-t border-amber-50 dark:border-gray-700/60 hover:bg-amber-50/60 dark:hover:bg-gray-800/40 transition-colors">
                                     <td className="py-2 px-3 text-stone-600 dark:text-gray-300 whitespace-nowrap">{d}</td>
                                     <td className="py-2 px-3">
-                                      <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-                                        o.type === 'BUY'
+                                      <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${o.type === 'BUY'
                                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                                           : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
-                                      }`}>
+                                        }`}>
                                         {o.type === 'BUY' ? <ShoppingCart size={9} /> : <ArrowUpRight size={9} />}
                                         {o.type}
                                       </span>
                                     </td>
                                     <td className="py-2 px-3 font-semibold text-amber-700 dark:text-yellow-400">{o.metal} {o.purity}K</td>
                                     <td className="py-2 px-3 text-right font-bold">{o.grams.toFixed(4)}g</td>
-                                    <td className="py-2 px-3 text-right text-stone-500 dark:text-gray-400">{o.ratePerGram != null ? fmtInr(Number(o.ratePerGram), false) : '—'}</td>
-                                    <td className="py-2 px-3 text-right font-black text-stone-800 dark:text-white">{o.totalAmountInr != null ? fmtInr(Number(o.totalAmountInr)) : '—'}</td>
+                                    <td className="py-2 px-3 text-right text-stone-500 dark:text-gray-400">{o.ratePerGram != null ? fmtInr(Number(o.ratePerGram), false) : '-'}</td>
+                                    <td className="py-2 px-3 text-right font-black text-stone-800 dark:text-white">{o.totalAmountInr != null ? fmtInr(Number(o.totalAmountInr)) : '-'}</td>
                                     <td className="py-2 px-3">
-                                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                        o.status === 'SUCCESS'
+                                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${o.status === 'SUCCESS'
                                           ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                                           : o.status === 'PENDING'
-                                          ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-                                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                                      }`}>{o.status}</span>
+                                            ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                        }`}>{o.status}</span>
                                     </td>
                                   </tr>
                                 );

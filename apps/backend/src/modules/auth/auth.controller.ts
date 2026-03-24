@@ -1,5 +1,5 @@
 /**
- * Auth Controller — Phone OTP endpoints
+ * Auth Controller - Phone OTP endpoints
  *
  * POST /api/auth/send-otp    { phone: "+919876543210" }
  * POST /api/auth/verify-otp  { phone: "+919876543210", code: "123456" }

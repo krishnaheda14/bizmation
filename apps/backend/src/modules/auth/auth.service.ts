@@ -3,34 +3,34 @@
  *
  * Uses Twilio Verify API to send and check phone OTPs.
  *
- * OPTION A — API Key auth (recommended for production):
- *   TWILIO_ACCOUNT_SID        — Main account SID (AC...)
- *   TWILIO_API_KEY_SID        — API Key SID (SK...)
- *   TWILIO_API_KEY_SECRET     — API Key Secret
- *   TWILIO_VERIFY_SERVICE_SID — Verify Service SID (VA...)
+ * OPTION A - API Key auth (recommended for production):
+ *   TWILIO_ACCOUNT_SID        - Main account SID (AC...)
+ *   TWILIO_API_KEY_SID        - API Key SID (SK...)
+ *   TWILIO_API_KEY_SECRET     - API Key Secret
+ *   TWILIO_VERIFY_SERVICE_SID - Verify Service SID (VA...)
  *
- * OPTION B — Account SID + Auth Token (simpler, works out of the box):
- *   TWILIO_ACCOUNT_SID        — Main account SID (AC...)
- *   TWILIO_AUTH_TOKEN         — Auth Token from Twilio Console
- *   TWILIO_VERIFY_SERVICE_SID — Verify Service SID (VA...)
+ * OPTION B - Account SID + Auth Token (simpler, works out of the box):
+ *   TWILIO_ACCOUNT_SID        - Main account SID (AC...)
+ *   TWILIO_AUTH_TOKEN         - Auth Token from Twilio Console
+ *   TWILIO_VERIFY_SERVICE_SID - Verify Service SID (VA...)
  */
 
 import twilio from 'twilio';
 import { getAdminAuth, getAdminFirestore } from '../../lib/firebaseAdmin';
 
-const accountSid       = process.env.TWILIO_ACCOUNT_SID;
-const apiKeySid        = process.env.TWILIO_API_KEY_SID;
-const apiKeySecret     = process.env.TWILIO_API_KEY_SECRET;
-const authToken        = process.env.TWILIO_AUTH_TOKEN;
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const apiKeySid = process.env.TWILIO_API_KEY_SID;
+const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
 const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
 // Log credential config on startup (without exposing secrets)
 console.log('[Twilio] Config check:');
-console.log('  TWILIO_ACCOUNT_SID        :', accountSid       ? accountSid.slice(0,6) + '...' : 'NOT SET');
-console.log('  TWILIO_API_KEY_SID        :', apiKeySid        ? apiKeySid.slice(0,6) + '...'  : 'NOT SET');
-console.log('  TWILIO_API_KEY_SECRET     :', apiKeySecret     ? '***set***'                    : 'NOT SET');
-console.log('  TWILIO_AUTH_TOKEN         :', authToken        ? '***set***'                    : 'NOT SET');
-console.log('  TWILIO_VERIFY_SERVICE_SID :', verifyServiceSid ? verifyServiceSid.slice(0,6) + '...' : 'NOT SET');
+console.log('  TWILIO_ACCOUNT_SID        :', accountSid ? accountSid.slice(0, 6) + '...' : 'NOT SET');
+console.log('  TWILIO_API_KEY_SID        :', apiKeySid ? apiKeySid.slice(0, 6) + '...' : 'NOT SET');
+console.log('  TWILIO_API_KEY_SECRET     :', apiKeySecret ? '***set***' : 'NOT SET');
+console.log('  TWILIO_AUTH_TOKEN         :', authToken ? '***set***' : 'NOT SET');
+console.log('  TWILIO_VERIFY_SERVICE_SID :', verifyServiceSid ? verifyServiceSid.slice(0, 6) + '...' : 'NOT SET');
 
 // Lazy-initialise the Twilio client so the server still boots without creds.
 let _client: ReturnType<typeof twilio> | null = null;
@@ -39,7 +39,7 @@ function getClient(): ReturnType<typeof twilio> {
   if (_client) return _client;
 
   if (apiKeySid && apiKeySecret && accountSid) {
-    // Option A: API Key auth (more secure — rotate keys without changing password)
+    // Option A: API Key auth (more secure - rotate keys without changing password)
     console.log('[Twilio] Initialising with API Key auth (SK...)');
     _client = twilio(apiKeySid, apiKeySecret, { accountSid });
   } else if (accountSid && authToken) {
@@ -48,13 +48,13 @@ function getClient(): ReturnType<typeof twilio> {
     _client = twilio(accountSid, authToken);
   } else {
     const missing: string[] = [];
-    if (!accountSid)   missing.push('TWILIO_ACCOUNT_SID');
-    if (!authToken)    missing.push('TWILIO_AUTH_TOKEN (for Option B)');
-    if (!apiKeySid)    missing.push('TWILIO_API_KEY_SID (for Option A)');
+    if (!accountSid) missing.push('TWILIO_ACCOUNT_SID');
+    if (!authToken) missing.push('TWILIO_AUTH_TOKEN (for Option B)');
+    if (!apiKeySid) missing.push('TWILIO_API_KEY_SID (for Option A)');
     if (!apiKeySecret) missing.push('TWILIO_API_KEY_SECRET (for Option A)');
     throw new Error(
       `Twilio credentials not configured. Missing: ${missing.join(', ')}.\n` +
-      'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN in Railway Variables (Option B — simplest)\n' +
+      'Set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN in Railway Variables (Option B - simplest)\n' +
       'OR set TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (Option A).'
     );
   }
@@ -67,14 +67,14 @@ function getClient(): ReturnType<typeof twilio> {
  */
 export async function sendOtp(phone: string): Promise<{ sent: boolean; message: string }> {
   if (!verifyServiceSid) {
-    console.error('[Twilio] TWILIO_VERIFY_SERVICE_SID is not set — cannot send OTP');
+    console.error('[Twilio] TWILIO_VERIFY_SERVICE_SID is not set - cannot send OTP');
     throw new Error(
       'TWILIO_VERIFY_SERVICE_SID is not set. ' +
       'Create a Verify Service in Twilio Console → Verify → Services and add the SID to Railway Variables.'
     );
   }
   const normalized = normalizePhone(phone);
-  console.log('[Twilio/sendOtp] Sending OTP to', masked(normalized), '(service:', verifyServiceSid.slice(0,8) + '...)');
+  console.log('[Twilio/sendOtp] Sending OTP to', masked(normalized), '(service:', verifyServiceSid.slice(0, 8) + '...)');
 
   try {
     const verification = await getClient().verify.v2
@@ -162,7 +162,7 @@ export async function verifyOtpAndCreateFirebaseToken(
       .doc(normalized)
       .get();
     if (snap.exists) {
-      uid   = snap.data()?.uid   as string | undefined;
+      uid = snap.data()?.uid as string | undefined;
       email = snap.data()?.email as string | undefined;
     }
   } catch (err: any) {

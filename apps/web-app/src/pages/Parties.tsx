@@ -110,7 +110,7 @@ export const Parties: React.FC = () => {
       setFreezeLoading(false);
     }
   };
-  // Price debug fetch — uses the exact same shared pipeline as rates page:
+  // Price debug fetch - uses the exact same shared pipeline as rates page:
   //   1) Cloudflare Worker snapshot (preferred)
   //   2) Shared frontend utility fallback
   const fetchDebugRates = async () => {
@@ -146,15 +146,15 @@ export const Parties: React.FC = () => {
     }
   }, [userProfile?.role]);
 
-  const [customers, setCustomers]   = useState<CustomerParty[]>([]);
-  const [shops, setShops]           = useState<ShopParty[]>([]);
-  const [activeTab, setActiveTab]   = useState<'customers' | 'wholesalers'>('customers');
-  const [search, setSearch]         = useState('');
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
+  const [customers, setCustomers] = useState<CustomerParty[]>([]);
+  const [shops, setShops] = useState<ShopParty[]>([]);
+  const [activeTab, setActiveTab] = useState<'customers' | 'wholesalers'>('customers');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const [expandedUid, setExpandedUid]     = useState<string | null>(null);
-  const [ordersMap, setOrdersMap]         = useState<Record<string, Order[]>>({});
+  const [expandedUid, setExpandedUid] = useState<string | null>(null);
+  const [ordersMap, setOrdersMap] = useState<Record<string, Order[]>>({});
   const [ordersLoading, setOrdersLoading] = useState<string | null>(null);
   const shopNameVariants = useMemo(
     () => Array.from(new Set([(userProfile?.shopName ?? ''), (userProfile?.shopName ?? '').toLowerCase(), (userProfile?.shopName ?? '').toUpperCase()].filter(Boolean))),
@@ -302,68 +302,68 @@ export const Parties: React.FC = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-5">
-                {/* Owner Price Debug Panel */}
-                {userProfile?.role === 'OWNER' && (
-                  <div className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-2xl p-6 mb-6 shadow-sm">
-                    <h2 className="text-lg font-black text-amber-900 dark:text-amber-400 mb-2 flex items-center gap-2">
-                      <Shield size={20} className="text-amber-500" /> Price Debug Panel
-                    </h2>
-                    <div className="flex flex-wrap gap-6 items-center mb-3">
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/USD:</span>
-                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauUsd?.toFixed?.(2) ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/USD:</span>
-                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagUsd?.toFixed?.(2) ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">USD/INR:</span>
-                        <span className="ml-2 font-mono text-base text-green-700 dark:text-green-400">{debugRates?.usdInr?.toFixed?.(2) ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/INR:</span>
-                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/INR:</span>
-                        <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Fetched:</span>
-                        <span className="ml-2 font-mono text-xs text-stone-500">{debugRates?.fetchedAt ?? ''}</span>
-                      </div>
-                    </div>
-                    <div className="mb-2">
-                      <button onClick={fetchDebugRates} disabled={debugLoading} className="px-3 py-1.5 rounded bg-amber-500 text-white font-bold text-xs mr-2">
-                        {debugLoading ? 'Refreshing…' : 'Manual Refresh'}
-                      </button>
-                      <span className="text-xs text-stone-400">Auto-refreshes every 10s</span>
-                    </div>
-                    {debugError && <div className="text-xs text-red-500 mb-2">{debugError}</div>}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      {debugRates?.rates?.map?.((r: any) => (
-                        <div key={r.metalType + r.purity} className="bg-amber-50 dark:bg-gray-800 rounded-xl p-3 border border-amber-100 dark:border-gray-700">
-                          <div className="font-bold text-amber-700 dark:text-yellow-400 mb-1">{r.metalType} {r.purity}K</div>
-                          <div className="text-xs text-stone-500 dark:text-gray-400">Per gram: <span className="font-mono text-base text-amber-900 dark:text-yellow-300">{r.ratePerGram?.toFixed?.(2)}</span></div>
-                          <div className="text-xs text-stone-500 dark:text-gray-400">Display rate: <span className="font-mono">{r.displayRate?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 })}</span></div>
-                          <div className="text-xs text-stone-400 mt-1">Source: {r.source}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {(userProfile?.role as any) === 'SUPER_ADMIN' && (
-                      <div className="mt-4 flex items-center gap-4">
-                        <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Freeze Transactions:</span>
-                        <button onClick={handleFreezeToggle} disabled={freezeLoading} className={shopFreeze ? 'px-4 py-2 rounded bg-red-500 text-white font-bold text-xs' : 'px-4 py-2 rounded bg-green-500 text-white font-bold text-xs'}>
-                          {freezeLoading ? 'Saving…' : shopFreeze ? 'Unfreeze (Allow Buy/Sell)' : 'Freeze (Pause Buy/Sell)'}
-                        </button>
-                        <span className={shopFreeze ? 'text-xs text-red-500 font-bold' : 'text-xs text-green-500 font-bold'}>
-                          {shopFreeze ? 'Currently Paused' : 'Transactions Allowed'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
+        {/* Owner Price Debug Panel */}
+        {userProfile?.role === 'OWNER' && (
+          <div className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-2xl p-6 mb-6 shadow-sm">
+            <h2 className="text-lg font-black text-amber-900 dark:text-amber-400 mb-2 flex items-center gap-2">
+              <Shield size={20} className="text-amber-500" /> Price Debug Panel
+            </h2>
+            <div className="flex flex-wrap gap-6 items-center mb-3">
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/USD:</span>
+                <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauUsd?.toFixed?.(2) ?? '-'}</span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/USD:</span>
+                <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagUsd?.toFixed?.(2) ?? '-'}</span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">USD/INR:</span>
+                <span className="ml-2 font-mono text-base text-green-700 dark:text-green-400">{debugRates?.usdInr?.toFixed?.(2) ?? '-'}</span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAU/INR:</span>
+                <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xauInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '-'}</span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">XAG/INR:</span>
+                <span className="ml-2 font-mono text-base text-amber-700 dark:text-yellow-400">{debugRates?.xagInr?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 }) ?? '-'}</span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Fetched:</span>
+                <span className="ml-2 font-mono text-xs text-stone-500">{debugRates?.fetchedAt ?? ''}</span>
+              </div>
+            </div>
+            <div className="mb-2">
+              <button onClick={fetchDebugRates} disabled={debugLoading} className="px-3 py-1.5 rounded bg-amber-500 text-white font-bold text-xs mr-2">
+                {debugLoading ? 'Refreshing…' : 'Manual Refresh'}
+              </button>
+              <span className="text-xs text-stone-400">Auto-refreshes every 10s</span>
+            </div>
+            {debugError && <div className="text-xs text-red-500 mb-2">{debugError}</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              {debugRates?.rates?.map?.((r: any) => (
+                <div key={r.metalType + r.purity} className="bg-amber-50 dark:bg-gray-800 rounded-xl p-3 border border-amber-100 dark:border-gray-700">
+                  <div className="font-bold text-amber-700 dark:text-yellow-400 mb-1">{r.metalType} {r.purity}K</div>
+                  <div className="text-xs text-stone-500 dark:text-gray-400">Per gram: <span className="font-mono text-base text-amber-900 dark:text-yellow-300">{r.ratePerGram?.toFixed?.(2)}</span></div>
+                  <div className="text-xs text-stone-500 dark:text-gray-400">Display rate: <span className="font-mono">{r.displayRate?.toLocaleString?.('en-IN', { maximumFractionDigits: 0 })}</span></div>
+                  <div className="text-xs text-stone-400 mt-1">Source: {r.source}</div>
+                </div>
+              ))}
+            </div>
+            {(userProfile?.role as any) === 'SUPER_ADMIN' && (
+              <div className="mt-4 flex items-center gap-4">
+                <span className="text-xs font-bold text-stone-500 dark:text-gray-400">Freeze Transactions:</span>
+                <button onClick={handleFreezeToggle} disabled={freezeLoading} className={shopFreeze ? 'px-4 py-2 rounded bg-red-500 text-white font-bold text-xs' : 'px-4 py-2 rounded bg-green-500 text-white font-bold text-xs'}>
+                  {freezeLoading ? 'Saving…' : shopFreeze ? 'Unfreeze (Allow Buy/Sell)' : 'Freeze (Pause Buy/Sell)'}
+                </button>
+                <span className={shopFreeze ? 'text-xs text-red-500 font-bold' : 'text-xs text-green-500 font-bold'}>
+                  {shopFreeze ? 'Currently Paused' : 'Transactions Allowed'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         {error && (
           <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl px-4 py-3">
             <AlertCircle className="text-red-500 flex-shrink-0" size={18} />
@@ -472,7 +472,7 @@ interface CustomerCardProps {
 }
 
 const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders, ordersLoading, onToggle }) => {
-  const initials = customer.name?.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase() || '?';
+  const initials = customer.name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase() || '?';
   const totalGold = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + o.grams, 0);
   const totalInvested = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + o.totalAmountInr, 0);
   const totalCommission = (orders ?? []).filter(o => o.type === 'BUY' && o.status === 'SUCCESS').reduce((s, o) => s + (Number(o.shopCommissionInr) || 0), 0);
@@ -529,23 +529,23 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, expanded, orders,
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-amber-100 dark:border-gray-800">
-                    {['Date','Type','Metal','Grams','Amount','Commission','Status'].map(h => (
+                    {['Date', 'Type', 'Metal', 'Grams', 'Amount', 'Commission', 'Status'].map(h => (
                       <th key={h} className="text-left py-2 px-3 text-amber-700 dark:text-gray-400 font-semibold uppercase">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map(o => {
-                    const d = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '-';
+                    const d = o.createdAt?.toDate ? o.createdAt.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '-';
                     return (
                       <tr key={o.id} className="border-b border-amber-50 dark:border-gray-800/50 hover:bg-amber-50/40 dark:hover:bg-gray-800/40">
                         <td className="py-2 px-3 text-stone-500 dark:text-gray-400">{d}</td>
-                        <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.type==='BUY'?'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400')}>{o.type}</span></td>
+                        <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.type === 'BUY' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400')}>{o.type}</span></td>
                         <td className="py-2 px-3 font-semibold text-amber-700 dark:text-yellow-400">{o.metal} {o.purity}K</td>
                         <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{o.grams?.toFixed?.(4)}g</td>
                         <td className="py-2 px-3 font-black text-stone-800 dark:text-white">{fmtInr(Number(o.totalAmountInr || 0))}</td>
                         <td className="py-2 px-3 font-black text-amber-700 dark:text-amber-400">{fmtInr(Number(o.shopCommissionInr || 0))}</td>
-                        <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.status==='SUCCESS'?'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400':o.status==='PENDING'?'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400':'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')}>{o.status}</span></td>
+                        <td className="py-2 px-3"><span className={'font-bold px-1.5 py-0.5 rounded ' + (o.status === 'SUCCESS' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : o.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400')}>{o.status}</span></td>
                       </tr>
                     );
                   })}

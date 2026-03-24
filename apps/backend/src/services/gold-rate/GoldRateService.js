@@ -140,7 +140,7 @@ export class GoldRateService {
             }
             console.log(`[GoldRateService] ${metalType} per gram (INR, after 9% duty): ₹${pricePerGramINR.toFixed(2)}` +
                 ` | per 10g: ₹${(pricePerGramINR * 10).toFixed(2)}`);
-            // Purity-proportional rates — applies to BOTH gold and silver
+            // Purity-proportional rates - applies to BOTH gold and silver
             const calculatePurityRate = (purity) => (pricePerGramINR * purity) / 24;
             return {
                 price_gram_24k: pricePerGramINR, // 24÷24 = full price

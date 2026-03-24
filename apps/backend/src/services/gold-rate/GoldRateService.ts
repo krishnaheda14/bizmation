@@ -152,7 +152,7 @@ export class GoldRateService {
       // 1 troy ounce = 31.1035 grams
       // Add 9% Indian import duty
       const TROY_OZ_GRAMS = 31.1035;
-      const IMPORT_DUTY  = 1.09; // 9%
+      const IMPORT_DUTY = 1.09; // 9%
 
       const pricePerGramINR = (pricePerOunceUSD * usdToInrRate / TROY_OZ_GRAMS) * IMPORT_DUTY;
 
@@ -165,7 +165,7 @@ export class GoldRateService {
         ` | per 10g: ₹${(pricePerGramINR * 10).toFixed(2)}`
       );
 
-      // Purity-proportional rates — applies to BOTH gold and silver
+      // Purity-proportional rates - applies to BOTH gold and silver
       const calculatePurityRate = (purity: number) => (pricePerGramINR * purity) / 24;
 
       return {
@@ -193,7 +193,7 @@ export class GoldRateService {
    */
   private async fetchAndSaveRate(metalType: MetalType, purity: number): Promise<GoldRate> {
     const apiData = await this.fetchFromAPI(metalType);
-    
+
     // Map purity to the correct field from API response
     const purityMap: Record<number, string> = {
       24: 'price_gram_24k',
@@ -204,13 +204,13 @@ export class GoldRateService {
       16: 'price_gram_16k',
       14: 'price_gram_14k',
     };
-    
+
     const rateField = purityMap[purity] || 'price_gram_24k';
     let ratePerGram = Number(apiData[rateField]);
     if (!isFinite(ratePerGram) || ratePerGram <= 0) {
       throw new Error(`Rate not available or invalid for ${metalType} ${purity}K`);
     }
-    
+
     const goldRate: GoldRate = {
       id: this.generateId(),
       metalType,
@@ -222,14 +222,14 @@ export class GoldRateService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    
+
     const query = `
       INSERT INTO gold_rates (
         id, metal_type, purity, rate_per_gram, source, effective_date, is_active, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
-    
+
     const values = [
       goldRate.id,
       goldRate.metalType,
@@ -241,7 +241,7 @@ export class GoldRateService {
       goldRate.createdAt,
       goldRate.updatedAt,
     ];
-    
+
     try {
       const result = await this.db.query(query, values);
       return this.mapToGoldRate(result.rows[0]);
@@ -261,7 +261,7 @@ export class GoldRateService {
       'UPDATE gold_rates SET is_active = false WHERE metal_type = $1 AND purity = $2',
       [metalType, purity]
     );
-    
+
     const numericRate = Number(ratePerGram);
     if (!isFinite(numericRate) || numericRate <= 0) {
       throw new Error('Invalid ratePerGram for manual update');
@@ -278,14 +278,14 @@ export class GoldRateService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    
+
     const query = `
       INSERT INTO gold_rates (
         id, metal_type, purity, rate_per_gram, source, effective_date, is_active, created_at, updated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `;
-    
+
     const values = [
       goldRate.id,
       goldRate.metalType,
@@ -297,7 +297,7 @@ export class GoldRateService {
       goldRate.createdAt,
       goldRate.updatedAt,
     ];
-    
+
     const result = await this.db.query(query, values);
     return this.mapToGoldRate(result.rows[0]);
   }
@@ -316,7 +316,7 @@ export class GoldRateService {
         AND effective_date >= NOW() - INTERVAL '${days} days'
       ORDER BY effective_date DESC
     `;
-    
+
     const result = await this.db.query(query, [metalType, purity]);
     return result.rows.map(this.mapToGoldRate);
   }
@@ -326,10 +326,10 @@ export class GoldRateService {
    */
   async autoUpdateRates(): Promise<void> {
     console.log('[GoldRateService] Auto-updating gold rates...');
-    
+
     const metalTypes: MetalType[] = [MetalType.GOLD, MetalType.SILVER, MetalType.PLATINUM];
     const purities = [24, 22, 18]; // Common purities
-    
+
     for (const metalType of metalTypes) {
       for (const purity of purities) {
         try {
@@ -346,10 +346,10 @@ export class GoldRateService {
    * Reconcile backend DB rates with upstream API and update if discrepancy
    * exceeds `thresholdPercent`.
    */
-  async reconcileAndUpdateAll(thresholdPercent = 0.5): Promise<{updated: Array<{metalType: MetalType; purity: number; old?: number; newest: number}>}> {
+  async reconcileAndUpdateAll(thresholdPercent = 0.5): Promise<{ updated: Array<{ metalType: MetalType; purity: number; old?: number; newest: number }> }> {
     const metals: MetalType[] = [MetalType.GOLD, MetalType.SILVER];
     const purities = [24, 22, 18];
-    const updated: Array<{metalType: MetalType; purity: number; old?: number; newest: number}> = [];
+    const updated: Array<{ metalType: MetalType; purity: number; old?: number; newest: number }> = [];
 
     for (const metal of metals) {
       // Fetch upstream once per metal

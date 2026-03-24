@@ -51,10 +51,10 @@ interface InvoiceFormProps {
   partyType?: 'customer' | 'wholesaler'; // To differentiate B2C vs B2B
 }
 
-export const InvoiceForm: React.FC<InvoiceFormProps> = ({ 
-  onSubmit, 
-  onCancel, 
-  partyType = 'customer' 
+export const InvoiceForm: React.FC<InvoiceFormProps> = ({
+  onSubmit,
+  onCancel,
+  partyType = 'customer'
 }) => {
   const [goldRates, setGoldRates] = useState<Record<string, GoldRate>>({});
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -133,7 +133,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       // console.log('[InvoiceForm] Gold rates set successfully:', rates);
     } catch (error: any) {
       // console.error('[InvoiceForm] Failed to fetch gold rates:', error);
-      setRateError('Could not load live gold rates. Rates may be stale — please refresh or enter manually.');
+      setRateError('Could not load live gold rates. Rates may be stale - please refresh or enter manually.');
     } finally {
       setFetchingRate(false);
     }
@@ -157,15 +157,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
   const searchProduct = async (sku: string, index: number) => {
     if (!sku) return;
-    
+
     setSearchingProduct(index);
     try {
       const response = await fetch(`/api/inventory/products/sku/${sku}`);
       const data = await response.json();
-      
+
       if (data.success && data.data) {
         const product: Product = data.data;
-        
+
         // Auto-fill item details from product
         setValue(`items.${index}.description`, product.name);
         setValue(`items.${index}.weightGrams`, product.netWeightGrams);
@@ -173,7 +173,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         setValue(`items.${index}.makingCharges`, product.makingCharges);
         setValue(`items.${index}.hsnCode`, product.hsnCode);
         setValue(`items.${index}.productId`, product.id);
-        
+
         // Calculate amount
         calculateItemAmount(index);
       }
@@ -195,11 +195,11 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
     // Calculate base amount: (weight * rate * quantity) + making charges
     const baseAmount = (weightGrams * rate * quantity) + makingCharges;
-    
+
     // Calculate GST
     const gstRate = item.gstRate || 3;
     const gstAmount = baseAmount * (gstRate / 100);
-    
+
     // Total amount including GST
     const amount = baseAmount + gstAmount;
 
@@ -269,7 +269,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
   const handleCustomerSelect = (customerId: string) => {
     setSelectedCustomerId(customerId);
-    
+
     if (customerId === 'new') {
       // New customer - show form
       setShowCustomerForm(true);
@@ -313,7 +313,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-4">New Invoice</h2>
-        
+
         {/* Customer Selection */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
@@ -374,7 +374,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
               {partyType === 'customer' ? 'Customer' : 'Wholesaler/Supplier'} Details
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Name */}
               <div>
@@ -569,8 +569,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             {/* Info box */}
             <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                💡 <strong>Analytics Tip:</strong> Collecting complete customer details helps with sales analytics, 
-                customer segmentation, regional insights, and personalized marketing. 
+                💡 <strong>Analytics Tip:</strong> Collecting complete customer details helps with sales analytics,
+                customer segmentation, regional insights, and personalized marketing.
                 {partyType === 'wholesaler' && ' GSTIN is mandatory for GST-compliant B2B invoicing.'}
               </p>
             </div>
@@ -732,12 +732,12 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
               <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(totals.subtotal)}</span>
             </div>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-gray-600 dark:text-gray-400">CGST (1.5%):</span>
               <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(totals.cgst)}</span>
             </div>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-gray-600 dark:text-gray-400">SGST (1.5%):</span>
               <span className="font-medium text-gray-900 dark:text-white">{formatCurrency(totals.sgst)}</span>

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Bizmation Backend — Production Dockerfile
+# Bizmation Backend - Production Dockerfile
 #
 # Build context: REPO ROOT (not apps/backend)
 # Used by: Railway deployment
@@ -31,7 +31,7 @@ RUN echo "[deps] node $(node -v) | npm $(npm -v) | root tsconfig: $(test -f tsco
 # deps stage already has tsconfig.json at /repo/tsconfig.json
 FROM deps AS build-shared
 COPY packages/shared-types ./packages/shared-types/
-RUN echo "[build-shared] tsconfig.json present: $(test -f tsconfig.json && echo YES || echo NO — build will fail)"
+RUN echo "[build-shared] tsconfig.json present: $(test -f tsconfig.json && echo YES || echo NO - build will fail)"
 # Run the shared-types build (tsc -b --force)
 RUN cd packages/shared-types && npm run build
 RUN echo "[build-shared] shared-types dist: $(ls packages/shared-types/dist 2>/dev/null || echo EMPTY)"

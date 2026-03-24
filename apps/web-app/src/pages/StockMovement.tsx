@@ -23,7 +23,7 @@ interface StockMovement {
 }
 
 export const StockMovement: React.FC = () => {
-  // No default movements — fetch from DB
+  // No default movements - fetch from DB
   const [movements] = useState<StockMovement[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');

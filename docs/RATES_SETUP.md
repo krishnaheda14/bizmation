@@ -1,20 +1,20 @@
-# Live Gold / Silver / USD-INR Rates — Setup Guide
+# Live Gold / Silver / USD-INR Rates - Setup Guide
 
 This guide covers three approaches for fetching live market rates:
-1. **Current (CDN — zero config)** — already working
-2. **Cloudflare Workers** — edge-cached rates globally
-3. **Railway backend** — centralised caching via your existing Express server
+1. **Current (CDN - zero config)** - already working
+2. **Cloudflare Workers** - edge-cached rates globally
+3. **Railway backend** - centralised caching via your existing Express server
 
 ---
 
-## Approach 1 — Current CDN Setup (Already Working)
+## Approach 1 - Current CDN Setup (Already Working)
 
 The app already fetches rates from two free, no-auth CDN endpoints:
 
 | Data | Source |
 |------|--------|
 | Gold (XAU/USD) & Silver (XAG/USD) | `cdn.jsdelivr.net/@fawazahmed0/currency-api` |
-| USD/INR forex | same API — `usd` → `inr` key |
+| USD/INR forex | same API - `usd` → `inr` key |
 
 **No API keys, no sign-up, free forever.**
 
@@ -39,11 +39,11 @@ This logic lives in [apps/web-app/src/lib/goldPrices.ts](../apps/web-app/src/lib
 
 ---
 
-## Approach 2 — Cloudflare Workers (Recommended for Production)
+## Approach 2 - Cloudflare Workers (Recommended for Production)
 
 Use a Worker as a proxy/cache layer so the browser never hits external APIs directly (better CORS, better caching).
 
-### Step 1 — Create the Worker
+### Step 1 - Create the Worker
 
 In [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **Create Worker**
 
@@ -57,7 +57,7 @@ Paste this code:
 
 const GOLD_API  = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json';
 const FX_API    = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
-const CACHE_TTL = 300; // seconds — 5 minutes
+const CACHE_TTL = 300; // seconds - 5 minutes
 
 export default {
   async fetch(request, env, ctx) {
@@ -86,11 +86,11 @@ export default {
       const goldData = await goldRes.json();
       const fxData   = await fxRes.json();
 
-      const xauUsd  = goldData.xau?.usd   ?? 0; // price of 1 USD in XAU — invert it
+      const xauUsd  = goldData.xau?.usd   ?? 0; // price of 1 USD in XAU - invert it
       const usdPerOz = xauUsd > 0 ? 1 / xauUsd : 0; // XAU in USD per oz
       const usdInr  = fxData.usd?.inr    ?? 84;
 
-      // XAG (silver) — fetch separately if needed, or use a second endpoint
+      // XAG (silver) - fetch separately if needed, or use a second endpoint
       // For now derive silver from a rough ratio or add a second fetch
 
       const payload = {
@@ -119,7 +119,7 @@ export default {
 };
 ```
 
-### Step 2 — Add a Custom Route (optional)
+### Step 2 - Add a Custom Route (optional)
 
 In the Worker settings → **Triggers** → add route:
 ```
@@ -128,7 +128,7 @@ rates.yourdomain.com/*
 
 Or just use the default `*.workers.dev` URL.
 
-### Step 3 — Local Dev with Wrangler
+### Step 3 - Local Dev with Wrangler
 
 ```bash
 npm install -g wrangler
@@ -150,7 +150,7 @@ crons = ["*/5 * * * *"]   # optional: pre-warm cache every 5 min
 wrangler deploy
 ```
 
-### Step 4 — Set `VITE_RATES_WORKER_URL` in Cloudflare Pages
+### Step 4 - Set `VITE_RATES_WORKER_URL` in Cloudflare Pages
 
 ```
 VITE_RATES_WORKER_URL = https://bizmation-rates.YOUR_SUBDOMAIN.workers.dev
@@ -160,7 +160,7 @@ Then in `goldPrices.ts` you can fetch from that Worker URL instead of the CDN di
 
 ---
 
-## Approach 3 — Railway Backend (Existing Server)
+## Approach 3 - Railway Backend (Existing Server)
 
 Your Express server at Railway already has a `/api/gold-rates` route via `apps/backend/src/modules/gold-rate/`. It can cache rates in PostgreSQL or in-memory.
 
@@ -177,7 +177,7 @@ Make sure `VITE_API_URL` is set in Cloudflare Pages:
 ```
 VITE_API_URL = https://YOUR_APP.up.railway.app
 ```
-(No trailing slash. No `/api` suffix — the app adds that.)
+(No trailing slash. No `/api` suffix - the app adds that.)
 
 ### Add a caching layer to Railway (optional)
 
@@ -203,8 +203,8 @@ export async function getCachedRates(): Promise<GoldRate> {
 
 | Use case | Recommendation |
 |----------|---------------|
-| Development / MVP | Approach 1 (CDN) — already works |
-| Production with global users | Approach 2 (Cloudflare Worker) — fastest |
+| Development / MVP | Approach 1 (CDN) - already works |
+| Production with global users | Approach 2 (Cloudflare Worker) - fastest |
 | Need server-side audit log / DB storage | Approach 3 (Railway) |
 
 For most jewellery shop deployments, **Approach 1 is sufficient.** The CDN has 99.9% uptime, is free, and updates every minute.

@@ -1,5 +1,5 @@
 /**
- * Orders Page — Customer View
+ * Orders Page - Customer View
  *
  * Shows all orders for the logged-in customer.
  * Supports invoice generation & PDF download per order.

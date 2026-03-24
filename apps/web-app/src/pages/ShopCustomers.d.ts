@@ -1,5 +1,5 @@
 /**
- * Shop Customers Page — Owner / Staff View
+ * Shop Customers Page - Owner / Staff View
  *
  * Shows all customers registered under this shop with
  * full purchase analytics and expandable order history.

@@ -70,7 +70,7 @@ function App() {
     return null;
   }
 
-  const isCustomer   = userProfile?.role === 'CUSTOMER';
+  const isCustomer = userProfile?.role === 'CUSTOMER';
   const isSuperAdmin = userProfile?.role === 'SUPER_ADMIN';
   const ownerStatus = ((userProfile as any)?.shopVerificationStatus ?? '').toUpperCase();
   const isOwnerOrStaff = userProfile?.role === 'OWNER' || userProfile?.role === 'STAFF';
@@ -90,12 +90,12 @@ function App() {
   // Render component based on route
   const renderPage = () => {
     // Customer-only routes
-    if (currentRoute === '/portfolio')  return <CustomerPortfolio />;
-    if (currentRoute === '/orders')     return <Orders />;
-    if (currentRoute === '/nominee')    return <NomineePage />;
-    if (currentRoute === '/profile')    return <Profile />;
+    if (currentRoute === '/portfolio') return <CustomerPortfolio />;
+    if (currentRoute === '/orders') return <Orders />;
+    if (currentRoute === '/nominee') return <NomineePage />;
+    if (currentRoute === '/profile') return <Profile />;
     if (currentRoute === '/redemption') return <RedemptionPage />;
-    if (currentRoute === '/referral')   return <Referral />;
+    if (currentRoute === '/referral') return <Referral />;
 
     // For customer accounts, only home, portfolio and profile are allowed
     if (isCustomer) {
@@ -121,16 +121,16 @@ function App() {
         return <RedemptionRequests />;
       case '/rates':
         return <GoldRates />;
-      // Legacy routes — keep for backward compat but hidden from nav
-      case '/billing':         return <Billing />;
-      case '/inventory':       return <Inventory />;
-      case '/catalog':         return <Catalog />;
-      case '/repairs':         return <Repairs />;
-      case '/schemes':         return <Schemes />;
-      case '/shop-customers':  return <ShopCustomers />;
-      case '/suppliers':       return <Suppliers />;
+      // Legacy routes - keep for backward compat but hidden from nav
+      case '/billing': return <Billing />;
+      case '/inventory': return <Inventory />;
+      case '/catalog': return <Catalog />;
+      case '/repairs': return <Repairs />;
+      case '/schemes': return <Schemes />;
+      case '/shop-customers': return <ShopCustomers />;
+      case '/suppliers': return <Suppliers />;
       case '/purchase-orders': return <PurchaseOrders />;
-      case '/stock-on-hand':   return <StockOnHand />;
+      case '/stock-on-hand': return <StockOnHand />;
       default:
         return <Dashboard />;
     }
