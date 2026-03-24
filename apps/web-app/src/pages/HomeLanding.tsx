@@ -10,7 +10,7 @@ import {
   TrendingUp, TrendingDown, ShoppingCart, ArrowUpRight,
   RefreshCw, Shield, Bell, Zap, Star, ChevronRight,
   Coins, CreditCard, Repeat, CheckCircle, AlertCircle,
-  X, Loader2, Phone, Mail, User, Timer,
+  X, Loader2, Phone, Mail, User, Timer, Gift
 } from 'lucide-react';
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
 import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
@@ -1182,7 +1182,7 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                 <button
                   onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                   className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
@@ -1224,6 +1224,13 @@ export const HomeLanding: React.FC = () => {
                 >
                   <Coins size={18} />
                   Buy Coins
+                </button>
+                <button
+                  onClick={() => { setModal({ type: 'gift' }); setGiftForm({ phone: '', confirm: '', metal: 'GOLD', mode: 'GRAMS', value: '' }); setGiftReceiver(null); }}
+                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold rounded-xl shadow-lg hover:shadow-pink-500/40 transition-all hover:-translate-y-0.5 text-base"
+                >
+                  <Gift size={18} />
+                  Gift Metal
                 </button>
               </div>
 
