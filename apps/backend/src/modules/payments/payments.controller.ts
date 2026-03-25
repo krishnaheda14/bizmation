@@ -218,21 +218,50 @@ export function paymentsRouter(): Router {
     try {
       const phone = String(req.body?.phone || '').trim();
       if (!phone) return res.status(400).json({ success: false, error: 'Phone number required' });
-      
+
+      const normalized = (() => {
+        if (phone.startsWith('+')) return '+' + phone.slice(1).replace(/\D/g, '');
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length === 10) return `+91${digits}`;
+        if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+        return digits ? `+${digits}` : phone;
+      })();
+      const digitsOnly = phone.replace(/\D/g, '');
+      const candidates = Array.from(new Set([phone, normalized, digitsOnly].filter(Boolean)));
+
       const db = getAdminFirestore();
-      
-      // Look up phoneIndex
-      const phoneDoc = await db.collection('phoneIndex').doc(phone).get();
-      if (!phoneDoc.exists) return res.json({ success: true, data: { found: false } });
-      
-      const uid = phoneDoc.data()?.uid;
-      if (!uid) return res.json({ success: true, data: { found: false } });
-      
-      const userDoc = await db.collection('users').doc(uid).get();
-      if (!userDoc.exists) return res.json({ success: true, data: { found: false } });
-      
-      const name = userDoc.data()?.name || 'User';
-      return res.json({ success: true, data: { found: true, name, uid, phone } });
+
+      // 1) phoneIndex doc lookup with multiple candidate formats
+      for (const candidate of candidates) {
+        const phoneDoc = await db.collection('phoneIndex').doc(candidate).get();
+        if (!phoneDoc.exists) continue;
+
+        const uid = String(phoneDoc.data()?.uid || '').trim();
+        if (!uid) continue;
+
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) continue;
+
+        const userData = userDoc.data() || {};
+        const name = String(userData.name || 'User');
+        const resolvedPhone = String(userData.phone || candidate);
+        return res.json({ success: true, data: { found: true, name, uid, phone: resolvedPhone } });
+      }
+
+      // 2) Fallback to users collection phone field match
+      for (const candidate of candidates) {
+        const snap = await db.collection('users').where('phone', '==', candidate).limit(1).get();
+        if (snap.empty) continue;
+
+        const userDoc = snap.docs[0];
+        const data = userDoc.data() || {};
+        const uid = userDoc.id;
+        const name = String(data.name || 'User');
+        const resolvedPhone = String(data.phone || candidate);
+        return res.json({ success: true, data: { found: true, name, uid, phone: resolvedPhone } });
+      }
+
+      return res.json({ success: true, data: { found: false } });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
     }

@@ -141,7 +141,7 @@ export const HomeLanding: React.FC = () => {
   const [giftMetal, setGiftMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
   const [giftMode, setGiftMode] = useState<'GRAMS' | 'INR'>('GRAMS');
   const [giftValue, setGiftValue] = useState('');
-  const [giftPhone, setGiftPhone] = useState('');
+  const [giftPhone, setGiftPhone] = useState('+91');
   const [giftSubmitting, setGiftSubmitting] = useState(false);
   const [giftLookupState, setGiftLookupState] = useState<'idle' | 'checking' | 'found' | 'not-found' | 'error'>('idle');
   const [giftLookupName, setGiftLookupName] = useState('');
@@ -939,7 +939,7 @@ export const HomeLanding: React.FC = () => {
 
       setModal({ type: null });
       setGiftValue('');
-      setGiftPhone('');
+      setGiftPhone('+91');
       setGiftMode('GRAMS');
       setGiftMetal('GOLD');
       setGiftLookupState('idle');
@@ -1182,7 +1182,7 @@ export const HomeLanding: React.FC = () => {
                         setGiftMetal('GOLD');
                         setGiftMode('GRAMS');
                         setGiftValue('');
-                        setGiftPhone('');
+                        setGiftPhone('+91');
                         setModal({ type: 'send-gift' });
                       }}
                       className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white font-bold rounded-xl shadow-lg hover:shadow-orange-400/40 transition-all hover:-translate-y-0.5 text-base"
