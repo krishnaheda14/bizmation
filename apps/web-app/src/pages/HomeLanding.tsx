@@ -10,7 +10,7 @@ import {
   TrendingUp, TrendingDown, ShoppingCart, ArrowUpRight,
   RefreshCw, Shield, Bell, Zap, Star, ChevronRight,
   Coins, CreditCard, Repeat, CheckCircle, AlertCircle,
-  X, Loader2, Sparkles, Phone, Mail, User, Timer,
+  X, Loader2, Sparkles, Phone, Mail, User, Timer, Gift,
 } from 'lucide-react';
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
 import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
@@ -18,12 +18,13 @@ import { useAuth } from '../context/AuthContext';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
+import { lookupGiftReceiver, transferGift } from '../lib/gift';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────────────────────────────────────
 interface ModalState {
-  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | null;
+  type: 'buy' | 'sell' | 'autopay' | 'coin-request' | 'send-gift' | null;
 }
 
 interface BuyFormData {
@@ -117,6 +118,8 @@ export const HomeLanding: React.FC = () => {
   const [modal, setModal] = useState<ModalState>({ type: null });
   const [lockedRate, setLockedRate] = useState<number | null>(null);
   const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
+  const [buyInputMode, setBuyInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
+  const [buyAmountInr, setBuyAmountInr] = useState('');
   const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', amountInr: '', bank: '', account: '', ifsc: '',
@@ -135,6 +138,11 @@ export const HomeLanding: React.FC = () => {
   const [coinNote, setCoinNote] = useState('');
   const [coinSubmitting, setCoinSubmitting] = useState(false);
   const [coinSuccessOverlay, setCoinSuccessOverlay] = useState(false);
+  const [giftMetal, setGiftMetal] = useState<'GOLD' | 'SILVER'>('GOLD');
+  const [giftMode, setGiftMode] = useState<'GRAMS' | 'INR'>('GRAMS');
+  const [giftValue, setGiftValue] = useState('');
+  const [giftPhone, setGiftPhone] = useState('');
+  const [giftSubmitting, setGiftSubmitting] = useState(false);
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -376,14 +384,27 @@ export const HomeLanding: React.FC = () => {
 
   // ── Buy Gold or Silver ───────────────────────────────────────────────────
   const handleBuy = () => {
-    if (!buyForm.grams) return;
     const liveMarketRate = buyMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
     const commissionPerGram = buyMetal === 'GOLD' ? GOLD_COMMISSION_PER_GRAM : SILVER_COMMISSION_PER_GRAM;
     const customerRate = buyMetal === 'GOLD'
       ? (lockedRate ?? (liveMarketRate + commissionPerGram))
       : (liveMarketRate + commissionPerGram);
     if (!customerRate || !liveMarketRate) return;
-    const grams       = parseFloat(buyForm.grams);
+    const gramsInput = parseFloat(buyForm.grams) || 0;
+    const amountInput = parseFloat(buyAmountInr) || 0;
+    let grams = 0;
+    if (buyInputMode === 'GRAMS') {
+      grams = gramsInput;
+    } else {
+      if (amountInput > 0 && Number.isFinite(amountInput) && customerRate > 0) {
+        grams = amountInput / customerRate;
+      }
+    }
+    if (!grams || !Number.isFinite(grams) || grams <= 0) {
+      setError('Enter a valid buy quantity or amount.');
+      setTimeout(() => setError(''), 7000);
+      return;
+    }
     const ratePerGram = customerRate;
     const baseAmountInr = grams * liveMarketRate;
     const shopCommissionInr = grams * commissionPerGram;
@@ -429,6 +450,8 @@ export const HomeLanding: React.FC = () => {
         setSlideValue(0);
         setSuccessMsg(`${buyMetal === 'GOLD' ? 'Gold' : 'Silver'} purchased! Payment ID: ${id}`);
         setBuyForm({ grams: '' });
+        setBuyAmountInr('');
+        setBuyInputMode('GRAMS');
         setTimeout(() => setSuccessMsg(''), 8000);
 
         // ── Write order to Firestore ────────────────────────────────────
@@ -657,9 +680,18 @@ export const HomeLanding: React.FC = () => {
   const activeRate = buyMetal === 'GOLD'
     ? (lockedRate ?? goldBuyPrice)
     : silverBuyPrice;
-  const buyTotal = buyForm.grams && activeRate
-    ? (parseFloat(buyForm.grams) * activeRate).toFixed(4)
-    : null;
+  const buyGramsNumeric = parseFloat(buyForm.grams) || 0;
+  const buyAmountNumeric = parseFloat(buyAmountInr) || 0;
+  const buyTotal = (() => {
+    if (!activeRate) return null;
+    if (buyInputMode === 'GRAMS' && buyGramsNumeric > 0) {
+      return (buyGramsNumeric * activeRate).toFixed(4);
+    }
+    if (buyInputMode === 'AMOUNT' && buyAmountNumeric > 0) {
+      return buyAmountNumeric.toFixed(4);
+    }
+    return null;
+  })();
 
   const sellLiveRate = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995)
     ?? rates.find((r) => r.metalType === 'GOLD' && r.purity === 999);
@@ -675,6 +707,15 @@ export const HomeLanding: React.FC = () => {
 
   const activeCoinRate = coinMetal === 'GOLD' ? goldBuyPrice : silverBuyPrice;
   const estimatedCoinAmount = Math.max(0, (activeCoinRate * coinWeightGrams * coinQuantity) + (COIN_MAKING_CHARGE_PER_UNIT * coinQuantity));
+
+  const giftRatePerGram = giftMetal === 'GOLD' ? goldOperationalRatePerGram : (silver24?.ratePerGram ?? 0);
+  const giftNumericValue = parseFloat(giftValue) || 0;
+  const giftGrams = giftMode === 'GRAMS'
+    ? giftNumericValue
+    : (giftRatePerGram > 0 ? giftNumericValue / giftRatePerGram : 0);
+  const giftAmountInr = giftMode === 'INR'
+    ? giftNumericValue
+    : giftGrams * (giftRatePerGram > 0 ? giftRatePerGram : 0);
 
   const submitCoinRequest = async () => {
     if (!currentUser || !userProfile) {
@@ -757,6 +798,62 @@ export const HomeLanding: React.FC = () => {
         setTimeout(() => setError(''), 8000);
       },
     });
+  };
+
+  const handleSendGift = async () => {
+    if (!currentUser) {
+      setError('Please sign in to send a gift.');
+      setTimeout(() => setError(''), 6000);
+      return;
+    }
+    const phone = giftPhone.trim();
+    if (!phone) {
+      setError('Enter recipient phone number.');
+      setTimeout(() => setError(''), 6000);
+      return;
+    }
+    if (!giftValue || giftNumericValue <= 0 || !Number.isFinite(giftNumericValue)) {
+      setError('Enter a valid gift amount.');
+      setTimeout(() => setError(''), 6000);
+      return;
+    }
+    if (!giftRatePerGram || !Number.isFinite(giftRatePerGram)) {
+      setError('Live rate not available. Please retry in a few seconds.');
+      setTimeout(() => setError(''), 6000);
+      return;
+    }
+
+    setGiftSubmitting(true);
+    try {
+      const lookup = await lookupGiftReceiver(phone);
+      if (!lookup?.found || !lookup.uid) {
+        setError('No Bizmation account found for this phone. Ask them to sign up first.');
+        setTimeout(() => setError(''), 8000);
+        return;
+      }
+
+      const res = await transferGift({
+        senderUid: currentUser.uid,
+        receiverUid: lookup.uid,
+        metal: giftMetal,
+        mode: giftMode,
+        value: giftNumericValue,
+        currentRate: giftRatePerGram,
+      });
+
+      setModal({ type: null });
+      setGiftValue('');
+      setGiftPhone('');
+      setGiftMode('GRAMS');
+      setGiftMetal('GOLD');
+      setSuccessMsg(`Gift sent successfully — ${res.grams.toFixed(4)}g (${res.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} INR).`);
+      setTimeout(() => setSuccessMsg(''), 10000);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to send gift.');
+      setTimeout(() => setError(''), 9000);
+    } finally {
+      setGiftSubmitting(false);
+    }
   };
 
   const noKey = !RAZORPAY_KEY_ID;
@@ -957,7 +1054,7 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
                     onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
@@ -999,6 +1096,19 @@ export const HomeLanding: React.FC = () => {
                   >
                     <Coins size={18} />
                     Buy Coins
+                  </button>
+                  <button
+                    onClick={() => {
+                      setGiftMetal('GOLD');
+                      setGiftMode('GRAMS');
+                      setGiftValue('');
+                      setGiftPhone(userProfile?.phone ?? '');
+                      setModal({ type: 'send-gift' });
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-purple-400/40 transition-all hover:-translate-y-0.5 text-base"
+                  >
+                    <Gift size={18} />
+                    Send Gift
                   </button>
               </div>
 
@@ -1387,7 +1497,7 @@ export const HomeLanding: React.FC = () => {
               <div className="grid grid-cols-4 gap-2">
                 {['0.5', '1', '2', '5'].map(g => (
                   <button key={g} type="button"
-                    onClick={() => { setBuyForm({ grams: g }); setSlideValue(0); }}
+                    onClick={() => { setBuyInputMode('GRAMS'); setBuyForm({ grams: g }); setBuyAmountInr(''); setSlideValue(0); }}
                     className={`py-2.5 rounded-xl text-sm font-bold transition-all border ${
                       buyForm.grams === g
                         ? 'bg-amber-500 border-amber-500 text-black shadow'
@@ -1398,23 +1508,91 @@ export const HomeLanding: React.FC = () => {
               </div>
             </div>
 
-            {/* Manual gram input */}
-            <div className="relative">
-              <input type="number" min="0.1" step="0.1" placeholder="Custom grams (e.g. 3.5)"
-                value={buyForm.grams}
-                onChange={e => { setBuyForm(f => ({ ...f, grams: e.target.value })); setSlideValue(0); }}
-                className="w-full rounded-2xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-300 dark:placeholder-gray-600"
-              />
+            {/* Input mode toggle + inputs */}
+            <div className="space-y-2">
+              <div className="flex gap-2 p-1 rounded-xl bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-gray-700 mb-1">
+                <button
+                  type="button"
+                  onClick={() => { setBuyInputMode('GRAMS'); setBuyAmountInr(''); }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${buyInputMode === 'GRAMS' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
+                >
+                  Enter Grams
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setBuyInputMode('AMOUNT'); setBuyForm({ grams: '' }); }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${buyInputMode === 'AMOUNT' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 dark:text-gray-300 hover:bg-amber-100/50'}`}
+                >
+                  Enter Amount (₹)
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="fieldLabel">Weight (grams)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 3.5"
+                    value={buyForm.grams}
+                    readOnly={buyInputMode === 'AMOUNT'}
+                    onChange={e => {
+                      setBuyInputMode('GRAMS');
+                      const gramsValue = e.target.value;
+                      const gramsNum = parseFloat(gramsValue) || 0;
+                      setBuyForm(f => ({ ...f, grams: gramsValue }));
+                      if (activeRate > 0 && gramsNum > 0) {
+                        setBuyAmountInr((gramsNum * activeRate).toFixed(2));
+                      } else if (!gramsValue) {
+                        setBuyAmountInr('');
+                      }
+                      setSlideValue(0);
+                    }}
+                    className="fieldInput"
+                  />
+                </div>
+                <div>
+                  <label className="fieldLabel">Amount (INR)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="e.g. 1000"
+                    value={buyAmountInr}
+                    readOnly={buyInputMode === 'GRAMS'}
+                    onChange={e => {
+                      setBuyInputMode('AMOUNT');
+                      const amountValue = e.target.value;
+                      const amountNum = parseFloat(amountValue) || 0;
+                      setBuyAmountInr(amountValue);
+                      if (activeRate > 0 && amountNum > 0) {
+                        setBuyForm(f => ({ ...f, grams: (amountNum / activeRate).toFixed(4) }));
+                      } else if (!amountValue) {
+                        setBuyForm({ grams: '' });
+                      }
+                      setSlideValue(0);
+                    }}
+                    className="fieldInput"
+                  />
+                </div>
+              </div>
+
               {buyTotal && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right pointer-events-none">
-                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">₹{Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+                <div className="flex justify-between items-center mt-1">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    {(buyInputMode === 'GRAMS' ? `${buyForm.grams || '-'}g` : `₹${buyAmountInr || '-'}`)} at live/locked rate ≈
+                  </p>
+                  <p className="text-lg font-black text-amber-900 dark:text-yellow-300 leading-tight">
+                    ₹{Number(buyTotal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Email verification disabled - customers can buy without verification */}
 
-            {buyForm.grams && buyTotal && (
+            {buyTotal && ((buyInputMode === 'GRAMS' && buyForm.grams) || (buyInputMode === 'AMOUNT' && buyAmountInr)) && (
               buyMetal === 'GOLD' ? (
                 <div className="space-y-2">
                   <SlideToConfirm
@@ -1551,6 +1729,110 @@ export const HomeLanding: React.FC = () => {
               {coinSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Coins size={18} />}
               {coinSubmitting ? 'Opening Payment...' : `Pay ₹${estimatedCoinAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} & Submit Order`}
             </button>
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* Send Gift Modal */}
+      {modal.type === 'send-gift' && (
+        <BottomSheet title="Send Gold / Silver Gift" onClose={() => setModal({ type: null })}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-800 flex items-start gap-2">
+              <Gift size={16} className="mt-0.5 text-amber-600" />
+              <div>
+                <p className="font-semibold">Send digital gold or silver as a gift.</p>
+                <p className="mt-0.5 text-[11px] text-amber-700">We move grams between your and your friend&apos;s Bizmation accounts at live rate. No extra payment step.</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 p-1 rounded-2xl bg-amber-50 border border-amber-200">
+              {(['GOLD', 'SILVER'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setGiftMetal(m)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${giftMetal === m ? 'bg-amber-500 text-black' : 'text-amber-700 hover:bg-amber-100'}`}
+                >
+                  {m === 'GOLD' ? 'Gold' : 'Silver'} Gift
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <p className="text-xs text-amber-700 font-semibold mb-2">Gift Mode</p>
+              <div className="flex gap-2 p-1 rounded-xl bg-amber-50 border border-amber-200">
+                <button
+                  type="button"
+                  onClick={() => setGiftMode('GRAMS')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${giftMode === 'GRAMS' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 hover:bg-amber-100/50'}`}
+                >
+                  Enter Grams
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGiftMode('INR')}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${giftMode === 'INR' ? 'bg-amber-500 text-black shadow' : 'text-amber-700 hover:bg-amber-100/50'}`}
+                >
+                  Enter Amount (₹)
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="fieldLabel">Gift {giftMode === 'GRAMS' ? 'Weight (grams)' : 'Amount (INR)'}</label>
+              <input
+                type="number"
+                min="0.0001"
+                step={giftMode === 'GRAMS' ? '0.0001' : '0.01'}
+                value={giftValue}
+                onChange={(e) => setGiftValue(e.target.value)}
+                placeholder={giftMode === 'GRAMS' ? 'e.g. 0.5' : 'e.g. 500'}
+                className="fieldInput"
+              />
+              {giftRatePerGram > 0 && giftNumericValue > 0 && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  ≈ {giftGrams.toFixed(4)}g · ≈ ₹{giftAmountInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at live rate
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="fieldLabel">Recipient Phone</label>
+              <div className="relative">
+                <input
+                  type="tel"
+                  value={giftPhone}
+                  onChange={(e) => setGiftPhone(e.target.value)}
+                  placeholder="Enter friend&apos;s registered phone"
+                  className="fieldInput pr-10"
+                />
+                <Phone size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500" />
+              </div>
+              <p className="text-[11px] text-amber-700 mt-1">Friend must have a Bizmation account with this phone number.</p>
+            </div>
+
+            {userProfile && (
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm">
+                <User size={16} className="text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-amber-900">From: {userProfile.name}</p>
+                  {userProfile.phone && <p className="text-xs text-amber-600">{userProfile.phone}</p>}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleSendGift}
+              disabled={giftSubmitting || !giftValue || !giftPhone.trim()}
+              className="w-full py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
+            >
+              {giftSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Gift size={18} />}
+              {giftSubmitting ? 'Sending gift...' : 'Send Gift Now'}
+            </button>
+
+            <p className="text-[11px] text-amber-700/80 text-center">
+              Your friend will see this as a GIFT order in their portfolio.
+            </p>
           </div>
         </BottomSheet>
       )}
