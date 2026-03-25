@@ -42,6 +42,7 @@ function normalizePhoneForLookup(raw: string): string {
 }
 
 async function callLookup(phone: string): Promise<GiftLookupResult> {
+  console.debug('[GiftLookup] calling /api/payments/gift/lookup-user with phone:', phone);
   const payload = { phone: String(phone || '').trim() };
   const res = await fetch('/api/payments/gift/lookup-user', {
     method: 'POST',
@@ -57,6 +58,7 @@ async function callLookup(phone: string): Promise<GiftLookupResult> {
   if (!json?.success) {
     throw new Error(json?.error || 'Lookup failed');
   }
+  console.debug('[GiftLookup] response for phone', phone, ':', json?.data || null);
   return (json.data || { found: false }) as GiftLookupResult;
 }
 
@@ -67,6 +69,7 @@ export async function lookupGiftReceiver(phone: string): Promise<GiftLookupResul
   const normalized = normalizePhoneForLookup(raw);
   const legacy = raw.replace(/\D/g, '');
   const candidates = Array.from(new Set([raw, normalized, legacy].filter(Boolean)));
+  console.debug('[GiftLookup] candidates:', candidates);
 
   let last: GiftLookupResult = { found: false };
   for (const candidate of candidates) {

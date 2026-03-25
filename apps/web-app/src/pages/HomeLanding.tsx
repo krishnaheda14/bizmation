@@ -750,9 +750,8 @@ export const HomeLanding: React.FC = () => {
   const activeGiftAvailable = giftMetal === 'GOLD' ? giftAvailable.GOLD : giftAvailable.SILVER;
   const giftExceedsAvailability = giftGrams > 0 && giftGrams > activeGiftAvailable.grams;
 
-  useEffect(() => {
-    if (modal.type !== 'send-gift') return;
-    const phone = giftPhone.trim();
+  const runGiftLookup = async (phoneRaw: string, source: 'auto' | 'manual' = 'auto') => {
+    const phone = phoneRaw.trim();
     const digits = phone.replace(/\D/g, '');
     if (!phone || digits.length < 10) {
       setGiftLookupState('idle');
@@ -762,35 +761,44 @@ export const HomeLanding: React.FC = () => {
       return;
     }
 
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        setGiftLookupState('checking');
-        setGiftLookupMsg('Checking recipient in database...');
-        const lookup = await lookupGiftReceiver(phone);
-        if (cancelled) return;
-        if (lookup?.found && lookup.uid) {
-          setGiftLookupState('found');
-          setGiftLookupUid(lookup.uid);
-          setGiftLookupName(String(lookup.name || 'Customer').trim());
-          setGiftLookupMsg('Recipient found. You can send gift now.');
-        } else {
-          setGiftLookupState('not-found');
-          setGiftLookupUid('');
-          setGiftLookupName('');
-          setGiftLookupMsg('No Bizmation account found for this number.');
-        }
-      } catch (err: any) {
-        if (cancelled) return;
-        setGiftLookupState('error');
+    try {
+      setGiftLookupState('checking');
+      setGiftLookupMsg('Checking recipient in database...');
+      console.debug(`[GiftLookup][${source}] checking phone:`, phone);
+      const lookup = await lookupGiftReceiver(phone);
+      console.debug(`[GiftLookup][${source}] lookup result:`, lookup);
+
+      if (lookup?.found && lookup.uid) {
+        setGiftLookupState('found');
+        setGiftLookupUid(lookup.uid);
+        setGiftLookupName(String(lookup.name || 'Customer').trim());
+        setGiftLookupMsg('Recipient found. You can send gift now.');
+      } else {
+        setGiftLookupState('not-found');
         setGiftLookupUid('');
         setGiftLookupName('');
-        setGiftLookupMsg(err?.message || 'Unable to verify recipient right now.');
+        setGiftLookupMsg('No Bizmation account found for this number.');
       }
+    } catch (err: any) {
+      console.error(`[GiftLookup][${source}] failed:`, err);
+      setGiftLookupState('error');
+      setGiftLookupUid('');
+      setGiftLookupName('');
+      setGiftLookupMsg(err?.message || 'Unable to verify recipient right now.');
+    }
+  };
+
+  useEffect(() => {
+    if (modal.type !== 'send-gift') return;
+    const phone = giftPhone.trim();
+
+    const timer = setTimeout(() => {
+      runGiftLookup(phone, 'auto').catch(() => {
+        // state already handled inside runGiftLookup
+      });
     }, 450);
 
     return () => {
-      cancelled = true;
       clearTimeout(timer);
     };
   }, [giftPhone, modal.type]);
@@ -1909,6 +1917,16 @@ export const HomeLanding: React.FC = () => {
                   className="fieldInput pr-10"
                 />
                 <Phone size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500" />
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => runGiftLookup(giftPhone, 'manual')}
+                  disabled={giftLookupState === 'checking' || giftPhone.replace(/\D/g, '').length < 10}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 disabled:bg-gray-200 disabled:text-gray-500"
+                >
+                  {giftLookupState === 'checking' ? 'Checking...' : 'Check Number'}
+                </button>
               </div>
               <p className="text-[11px] text-amber-700 mt-1">Friend must have a Bizmation account with this phone number.</p>
               {giftLookupState === 'checking' && (
