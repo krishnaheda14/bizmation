@@ -432,7 +432,6 @@ export async function buyCoins(options: BuyCoinsOptions) {
             razorpay_payment_id: response?.razorpay_payment_id,
             razorpay_signature: response?.razorpay_signature,
             customerUid: options.customerUid,
-            planAmount: options.planAmount,
           }),
         }, options.onDebug);
         const verifyRes = verifyCall.res;
