@@ -4,6 +4,8 @@ interface KVNamespace {
 }
 
 export interface Env {
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
   PAYMENTS_KV: KVNamespace;
   RAZORPAY_KEY_ID: string;
   RAZORPAY_KEY_SECRET: string;
@@ -179,6 +181,19 @@ async function handleCreateBuyOrder(request: Request, env: Env, origin: string |
       200,
       origin,
     );
+
+    return jsonResponse(
+      {
+        success: true,
+        data: {
+          expired: false,
+          paymentId: razorpayPaymentId,
+          lockId,
+        },
+      },
+      200,
+      origin
+    );
   } catch (err: any) {
     return jsonResponse({ success: false, error: err?.message || 'Failed to create payment order' }, 500, origin);
   }
@@ -213,6 +228,17 @@ async function handleVerifyBuyPayment(request: Request, env: Env, origin: string
     record.verifiedAtMs = Date.now();
     await env.PAYMENTS_KV.put(key, JSON.stringify(record), { expirationTtl: 3600 });
 
+    await sendTelegramAlert(
+      env,
+      `🚨 <b>NEW ${record.metal || ""} ORDER (PAID)</b> 🚨\n\n` +
+      `<b>Weight:</b> ${record.grams || 0}g\n` +
+      `<b>Amount:</b> ₹${((record.amountPaise || 0) / 100).toLocaleString('en-IN')}\n` +
+      `<b>Rate:</b> ₹${(record.ratePerGram || 0).toLocaleString('en-IN')}/g\n` +
+      `<b>Name:</b> ${record.customerName || 'N/A'}\n` +
+      `<b>Phone:</b> ${record.customerPhone || 'N/A'}\n\n` +
+      `<i>Please book/hedge this quantity immediately.</i>`
+    );
+
     return jsonResponse(
       {
         success: true,
@@ -223,10 +249,143 @@ async function handleVerifyBuyPayment(request: Request, env: Env, origin: string
         },
       },
       200,
-      origin,
+      origin
     );
   } catch (err: any) {
     return jsonResponse({ success: false, error: err?.message || 'Failed to verify payment' }, 500, origin);
+  }
+}
+
+
+async function sendTelegramAlert(env: Env, text: string) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
+  } catch (err: any) {
+    console.error('Telegram alert failed:', err?.message);
+  }
+}
+
+async function handleCreateSubscription(request: Request, env: Env, origin: string | null): Promise<Response> {
+  try {
+    const body: any = await request.json().catch(() => ({}));
+    const freq = body.freq || 'monthly';
+    const amountPaise = body.amountPaise;
+    const name = body.name || 'Gold SIP';
+    const customerNotify = body.customerNotify || 1;
+    const totalCount = body.totalCount || 60;
+    
+    if (!amountPaise || amountPaise < 100) {
+      return jsonResponse({ success: false, error: 'Invalid amount' }, 400, origin);
+    }
+
+    const keyId = env.RAZORPAY_KEY_ID;
+    const keySecret = env.RAZORPAY_KEY_SECRET;
+    const auth = btoa(`${keyId}:${keySecret}`);
+
+    // 1. Create Plan
+    const planRes = await fetch('https://api.razorpay.com/v1/plans', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${auth}`,
+      },
+      body: JSON.stringify({
+        period: freq,
+        interval: 1,
+        item: { name, amount: amountPaise, currency: 'INR' }
+      })
+    });
+    
+    if (!planRes.ok) throw new Error('Razorpay failed to create plan');
+    const planData = await planRes.json() as any;
+    const planId = planData.id;
+
+    // 2. Create Subscription
+    const subRes = await fetch('https://api.razorpay.com/v1/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${auth}`,
+      },
+      body: JSON.stringify({
+        plan_id: planId,
+        total_count: totalCount,
+        customer_notify: customerNotify
+      })
+    });
+
+    if (!subRes.ok) throw new Error('Razorpay failed to create subscription');
+    const subData = await subRes.json() as any;
+
+    return jsonResponse({
+      success: true,
+      data: {
+        subscriptionId: subData.id,
+        planId
+      }
+    }, 200, origin);
+  } catch (err: any) {
+    return jsonResponse({ success: false, error: 'Failed to create subscription: ' + err.message }, 500, origin);
+  }
+}
+
+async function handleVerifySubscription(request: Request, env: Env, origin: string | null): Promise<Response> {
+  try {
+    const body: any = await request.json().catch(() => ({}));
+    const razorpaySubscriptionId = String(body.razorpay_subscription_id || '').trim();
+    const razorpayPaymentId = String(body.razorpay_payment_id || '').trim();
+    const razorpaySignature = String(body.razorpay_signature || '').trim();
+    const customerUid = String(body.customerUid || 'N/A');
+    const planAmount = Number(body.planAmount || 0);
+
+    if (!razorpaySubscriptionId || !razorpayPaymentId || !razorpaySignature) {
+      return jsonResponse({ success: false, error: 'Missing subscription verification payload' }, 400, origin);
+    }
+
+    const expected = await hmacSha256Hex(env.RAZORPAY_KEY_SECRET, `${razorpayPaymentId}|${razorpaySubscriptionId}`);
+
+    if (expected !== razorpaySignature) {
+      return jsonResponse({ success: false, error: 'Invalid subscription signature' }, 400, origin);
+    }
+
+    const amountStr = planAmount > 0 ? ` for ₹${planAmount.toLocaleString('en-IN')}` : '';
+
+    // Fire & Forget Telegram Alert (Wait for it in workers using context.waitUntil if available, or just await)
+    await sendTelegramAlert(
+      env,
+      `♻️ <b>NEW SIP (AUTOPAY) ACTIVATED</b> ♻️\n\n` +
+      `<b>User ID:</b> <code>${customerUid}</code>\n` +
+      `<b>Amount:</b> ₹${planAmount.toLocaleString('en-IN')}\n` +
+      `<b>Subscription ID:</b> <code>${razorpaySubscriptionId}</code>\n` +
+      `<b>Payment ID:</b> <code>${razorpayPaymentId}</code>\n\n` +
+      `<i>A user has successfully set up a new Gold SIP${amountStr}. The first deduction is complete.</i>`
+    );
+
+    return jsonResponse(
+      {
+        success: true,
+        data: {
+          paymentId: razorpayPaymentId,
+          subscriptionId: razorpaySubscriptionId
+        }
+      },
+      200,
+      origin
+    );
+  } catch (err: any) {
+    return jsonResponse({ success: false, error: 'Failed to verify subscription' }, 500, origin);
   }
 }
 
@@ -249,6 +408,14 @@ export default {
 
     if (url.pathname === '/api/payments/verify-buy-payment' && request.method === 'POST') {
       return handleVerifyBuyPayment(request, env, origin);
+    }
+
+    if ((url.pathname === '/api/payments/create-subscription' || url.pathname === '/payments/create-subscription') && request.method === 'POST') {
+      return handleCreateSubscription(request, env, origin);
+    }
+
+    if ((url.pathname === '/api/payments/verify-subscription' || url.pathname === '/payments/verify-subscription') && request.method === 'POST') {
+      return handleVerifySubscription(request, env, origin);
     }
 
     return jsonResponse({ success: false, error: 'Not found' }, 404, origin);

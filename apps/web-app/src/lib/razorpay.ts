@@ -431,6 +431,8 @@ export async function buyCoins(options: BuyCoinsOptions) {
             razorpay_order_id: response?.razorpay_order_id,
             razorpay_payment_id: response?.razorpay_payment_id,
             razorpay_signature: response?.razorpay_signature,
+            customerUid: options.customerUid,
+            planAmount: options.planAmount,
           }),
         }, options.onDebug);
         const verifyRes = verifyCall.res;
@@ -467,6 +469,7 @@ export interface AutoPayOptions {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  customerUid?: string;
   onDebug?: (message: string) => void;
   onSuccess: (subscriptionId: string) => void;
   onFailure: (error: any) => void;
@@ -503,11 +506,16 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
       body: JSON.stringify({
         freq: freqLabel,
         amountPaise: amountInPaise,
-        name: `${metalLabel} SIP`
+        name: `${metalLabel} SIP`,
+        customerUid: options.customerUid,
+        customerName: options.customerName,
+        customerPhone: options.customerPhone,
       })
     }, options.onDebug);
 
-    const { json: createSubData } = await readApiResponse(createSubRes.res);
+    const { json: createSubData, text: createSubText } = await readApiResponse(createSubRes.res);
+    options.onDebug?.(`Create subscription response: HTTP ${createSubRes.res.status} | ${responseSnippet(createSubText)}`);
+
 
     if (!createSubData?.success || !createSubData.data?.subscriptionId) {
       options.onDebug?.('Subscription creation failed: ' + JSON.stringify(createSubData));
@@ -531,7 +539,7 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
         color: '#D97706',
       },
       handler: async (response: any) => {
-        options.onDebug?.('Payment successful, verifying subscription...');
+        options.onDebug?.(`Payment successful, verifying subscription... ${JSON.stringify(response)}`);
         try {
           const verifyRes = await fetchWithFallback('/payments/verify-subscription', {
             method: 'POST',
@@ -539,11 +547,15 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
             body: JSON.stringify({
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_subscription_id: response.razorpay_subscription_id,
-              razorpay_signature: response.razorpay_signature
+              razorpay_signature: response.razorpay_signature,
+              customerUid: options.customerUid,
+              planAmount: options.planAmount,
             })
           }, options.onDebug);
 
-          const { json: verifyData } = await readApiResponse(verifyRes.res);
+          const { json: verifyData, text: verifyText } = await readApiResponse(verifyRes.res);
+          options.onDebug?.(`Verify subscription response: HTTP ${verifyRes.res.status} | ${responseSnippet(verifyText)}`);
+
           if (!verifyData?.success) {
             options.onDebug?.('Verification failed: ' + JSON.stringify(verifyData));
             options.onFailure(new Error(verifyData?.error || 'Subscription verification failed'));
