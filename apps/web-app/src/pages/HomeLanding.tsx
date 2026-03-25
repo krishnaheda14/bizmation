@@ -1054,7 +1054,7 @@ export const HomeLanding: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-1 animate-fade-up-soft" style={{ animationDelay: '0.28s' }}>
                   <button
                     onClick={() => { setBuyMetal('GOLD'); setLockedRate(null); setLockExpiresAtMs(null); setModal({ type: 'buy' }); }}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-bold rounded-xl shadow-lg hover:shadow-amber-400/40 dark:hover:shadow-yellow-400/30 transition-all hover:-translate-y-0.5 text-base animate-gold-breathe"
@@ -1069,13 +1069,28 @@ export const HomeLanding: React.FC = () => {
                     <ShoppingCart size={18} />
                     Buy Silver Now
                   </button>
-                  <button
-                    onClick={() => setModal({ type: 'sell' })}
-                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
-                  >
-                    <ArrowUpRight size={18} />
-                    Redeem
-                  </button>
+                  <div className="grid grid-rows-2 gap-2">
+                    <button
+                      onClick={() => setModal({ type: 'sell' })}
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white/80 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-amber-800 dark:text-yellow-300 font-bold rounded-xl border border-amber-300 dark:border-yellow-600/40 shadow-md transition-all hover:-translate-y-0.5 text-base"
+                    >
+                      <ArrowUpRight size={18} />
+                      Redeem
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGiftMetal('GOLD');
+                        setGiftMode('GRAMS');
+                        setGiftValue('');
+                        setGiftPhone('');
+                        setModal({ type: 'send-gift' });
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white font-bold rounded-xl shadow-lg hover:shadow-orange-400/40 transition-all hover:-translate-y-0.5 text-base"
+                    >
+                      <Gift size={18} />
+                      Send Gift
+                    </button>
+                  </div>
                   <button
                     onClick={() => setModal({ type: 'autopay' })}
                     className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold rounded-xl border border-amber-300/60 shadow-md transition-all hover:-translate-y-0.5 text-base"
@@ -1096,19 +1111,6 @@ export const HomeLanding: React.FC = () => {
                   >
                     <Coins size={18} />
                     Buy Coins
-                  </button>
-                  <button
-                    onClick={() => {
-                      setGiftMetal('GOLD');
-                      setGiftMode('GRAMS');
-                      setGiftValue('');
-                      setGiftPhone(userProfile?.phone ?? '');
-                      setModal({ type: 'send-gift' });
-                    }}
-                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-lg hover:shadow-purple-400/40 transition-all hover:-translate-y-0.5 text-base"
-                  >
-                    <Gift size={18} />
-                    Send Gift
                   </button>
               </div>
 
