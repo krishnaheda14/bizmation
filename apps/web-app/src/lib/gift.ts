@@ -19,6 +19,47 @@ interface GiftTransferResponse {
   amount: number;
 }
 
+function getApiBaseUrl(): string {
+  const raw = String(import.meta.env.VITE_API_URL || '').trim();
+  return raw ? raw.replace(/\/$/, '') : '';
+}
+
+function normalizePath(path: string): string {
+  if (!path) return '/';
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
+function withBase(base: string, path: string): string {
+  const normalizedPath = normalizePath(path);
+  if (base.endsWith('/api') && normalizedPath.startsWith('/api/')) {
+    return `${base}${normalizedPath.replace(/^\/api/, '')}`;
+  }
+  return `${base}${normalizedPath}`;
+}
+
+function getApiCandidates(path: string): string[] {
+  const normalized = normalizePath(path);
+  const base = getApiBaseUrl();
+  const candidates: string[] = [];
+
+  // Prefer explicit backend base first to bypass misconfigured Pages proxy.
+  if (base) {
+    candidates.push(withBase(base, normalized));
+  }
+
+  // Same-origin fallback via Pages functions.
+  candidates.push(normalized);
+
+  // Secondary fallback between /api and non-/api variants.
+  if (normalized.startsWith('/api/')) {
+    candidates.push(normalized.replace(/^\/api/, ''));
+  } else {
+    candidates.push(`/api${normalized}`);
+  }
+
+  return Array.from(new Set(candidates));
+}
+
 async function readJson(res: Response): Promise<any> {
   const text = await res.text();
   if (!text) return null;
@@ -27,6 +68,31 @@ async function readJson(res: Response): Promise<any> {
   } catch {
     return null;
   }
+}
+
+async function fetchGiftApi(path: string, init: RequestInit): Promise<{ res: Response; url: string; json: any }> {
+  const candidates = getApiCandidates(path);
+  console.debug('[GiftLookup] endpoint candidates:', candidates);
+
+  let lastErr: any = null;
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, init);
+      const json = await readJson(res);
+      console.debug('[GiftLookup] endpoint result:', { url, status: res.status, body: json });
+
+      // Retry on routing misses only.
+      if ((res.status === 404 || res.status === 405) && url !== candidates[candidates.length - 1]) {
+        continue;
+      }
+      return { res, url, json };
+    } catch (err: any) {
+      lastErr = err;
+      console.error('[GiftLookup] endpoint error:', { url, error: err?.message || err });
+    }
+  }
+
+  throw lastErr || new Error('Unable to reach gift API');
 }
 
 function normalizePhoneForLookup(raw: string): string {
@@ -42,17 +108,16 @@ function normalizePhoneForLookup(raw: string): string {
 }
 
 async function callLookup(phone: string): Promise<GiftLookupResult> {
-  console.debug('[GiftLookup] calling /api/payments/gift/lookup-user with phone:', phone);
+  console.debug('[GiftLookup] lookup phone:', phone);
   const payload = { phone: String(phone || '').trim() };
-  const res = await fetch('/api/payments/gift/lookup-user', {
+  const { res, json, url } = await fetchGiftApi('/api/payments/gift/lookup-user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 
-  const json = await readJson(res);
   if (!res.ok) {
-    const message = json?.error || json?.message || `Lookup failed with HTTP ${res.status}`;
+    const message = json?.error || json?.message || `Lookup failed with HTTP ${res.status} at ${url}`;
     throw new Error(message);
   }
   if (!json?.success) {
@@ -82,15 +147,14 @@ export async function lookupGiftReceiver(phone: string): Promise<GiftLookupResul
 }
 
 export async function transferGift(request: GiftTransferRequest): Promise<GiftTransferResponse> {
-  const res = await fetch('/api/payments/gift/transfer', {
+  const { res, json, url } = await fetchGiftApi('/api/payments/gift/transfer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   });
 
-  const json = await readJson(res);
   if (!res.ok) {
-    const message = json?.error || json?.message || `Gift transfer failed with HTTP ${res.status}`;
+    const message = json?.error || json?.message || `Gift transfer failed with HTTP ${res.status} at ${url}`;
     throw new Error(message);
   }
 
