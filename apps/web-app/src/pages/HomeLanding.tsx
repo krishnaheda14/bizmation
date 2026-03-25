@@ -143,6 +143,14 @@ export const HomeLanding: React.FC = () => {
   const [giftValue, setGiftValue] = useState('');
   const [giftPhone, setGiftPhone] = useState('');
   const [giftSubmitting, setGiftSubmitting] = useState(false);
+  const [giftLookupState, setGiftLookupState] = useState<'idle' | 'checking' | 'found' | 'not-found' | 'error'>('idle');
+  const [giftLookupName, setGiftLookupName] = useState('');
+  const [giftLookupUid, setGiftLookupUid] = useState('');
+  const [giftLookupMsg, setGiftLookupMsg] = useState('');
+  const [giftAvailable, setGiftAvailable] = useState({
+    GOLD: { grams: 0, valueInr: 0 },
+    SILVER: { grams: 0, valueInr: 0 },
+  });
   const [customerSummary, setCustomerSummary] = useState({ totalOrders: 0, totalGoldGrams: 0, totalSilverGrams: 0 });
   const [customerPortfolioStats, setCustomerPortfolioStats] = useState({
     totalValueInr: 0,
@@ -307,11 +315,34 @@ export const HomeLanding: React.FC = () => {
       }
 
       let maxRedeemableGoldGrams = 0;
+      let giftableGoldGrams = 0;
+      let giftableSilverGrams = 0;
       for (const [key, h] of Object.entries(holdings)) {
+        const netGrams = h.buyGrams - h.sellGrams;
+        if (netGrams <= 0) continue;
         if (key.startsWith('GOLD_')) {
-          maxRedeemableGoldGrams += (h.buyGrams - h.sellGrams);
+          maxRedeemableGoldGrams += netGrams;
+          giftableGoldGrams += netGrams;
+        }
+        if (key.startsWith('SILVER_')) {
+          giftableSilverGrams += netGrams;
         }
       }
+
+      const liveGoldRate = rates.find((r) => r.metalType === 'GOLD' && r.purity === 995)?.ratePerGram
+        ?? rates.find((r) => r.metalType === 'GOLD' && r.purity === 999)?.ratePerGram
+        ?? 0;
+      const liveSilverRate = rates.find((r) => r.metalType === 'SILVER' && r.purity === 999)?.ratePerGram ?? 0;
+      setGiftAvailable({
+        GOLD: {
+          grams: Math.max(0, giftableGoldGrams),
+          valueInr: Math.max(0, giftableGoldGrams) * liveGoldRate,
+        },
+        SILVER: {
+          grams: Math.max(0, giftableSilverGrams),
+          valueInr: Math.max(0, giftableSilverGrams) * liveSilverRate,
+        },
+      });
 
       const gain = totalCurrentValue - costBasisTotal;
       const gainPct = costBasisTotal > 0 ? (gain / costBasisTotal) * 100 : 0;
@@ -716,6 +747,53 @@ export const HomeLanding: React.FC = () => {
   const giftAmountInr = giftMode === 'INR'
     ? giftNumericValue
     : giftGrams * (giftRatePerGram > 0 ? giftRatePerGram : 0);
+  const activeGiftAvailable = giftMetal === 'GOLD' ? giftAvailable.GOLD : giftAvailable.SILVER;
+  const giftExceedsAvailability = giftGrams > 0 && giftGrams > activeGiftAvailable.grams;
+
+  useEffect(() => {
+    if (modal.type !== 'send-gift') return;
+    const phone = giftPhone.trim();
+    const digits = phone.replace(/\D/g, '');
+    if (!phone || digits.length < 10) {
+      setGiftLookupState('idle');
+      setGiftLookupName('');
+      setGiftLookupUid('');
+      setGiftLookupMsg('');
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setGiftLookupState('checking');
+        setGiftLookupMsg('Checking recipient in database...');
+        const lookup = await lookupGiftReceiver(phone);
+        if (cancelled) return;
+        if (lookup?.found && lookup.uid) {
+          setGiftLookupState('found');
+          setGiftLookupUid(lookup.uid);
+          setGiftLookupName(String(lookup.name || 'Customer').trim());
+          setGiftLookupMsg('Recipient found. You can send gift now.');
+        } else {
+          setGiftLookupState('not-found');
+          setGiftLookupUid('');
+          setGiftLookupName('');
+          setGiftLookupMsg('No Bizmation account found for this number.');
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setGiftLookupState('error');
+        setGiftLookupUid('');
+        setGiftLookupName('');
+        setGiftLookupMsg(err?.message || 'Unable to verify recipient right now.');
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [giftPhone, modal.type]);
 
   const submitCoinRequest = async () => {
     if (!currentUser || !userProfile) {
@@ -822,11 +900,29 @@ export const HomeLanding: React.FC = () => {
       setTimeout(() => setError(''), 6000);
       return;
     }
+    if (giftExceedsAvailability) {
+      setError(`Insufficient ${giftMetal.toLowerCase()} balance to gift. Available: ${activeGiftAvailable.grams.toFixed(4)}g.`);
+      setTimeout(() => setError(''), 8000);
+      return;
+    }
 
     setGiftSubmitting(true);
     try {
-      const lookup = await lookupGiftReceiver(phone);
-      if (!lookup?.found || !lookup.uid) {
+      let receiverUid = giftLookupUid;
+      let receiverName = giftLookupName;
+
+      if (!receiverUid || giftLookupState !== 'found') {
+        const lookup = await lookupGiftReceiver(phone);
+        if (!lookup?.found || !lookup.uid) {
+          setError('No Bizmation account found for this phone. Ask them to sign up first.');
+          setTimeout(() => setError(''), 8000);
+          return;
+        }
+        receiverUid = lookup.uid;
+        receiverName = String(lookup.name || 'Customer').trim();
+      }
+
+      if (!receiverUid) {
         setError('No Bizmation account found for this phone. Ask them to sign up first.');
         setTimeout(() => setError(''), 8000);
         return;
@@ -834,7 +930,7 @@ export const HomeLanding: React.FC = () => {
 
       const res = await transferGift({
         senderUid: currentUser.uid,
-        receiverUid: lookup.uid,
+        receiverUid,
         metal: giftMetal,
         mode: giftMode,
         value: giftNumericValue,
@@ -846,7 +942,11 @@ export const HomeLanding: React.FC = () => {
       setGiftPhone('');
       setGiftMode('GRAMS');
       setGiftMetal('GOLD');
-      setSuccessMsg(`Gift sent successfully — ${res.grams.toFixed(4)}g (${res.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} INR).`);
+      setGiftLookupState('idle');
+      setGiftLookupUid('');
+      setGiftLookupName('');
+      setGiftLookupMsg('');
+      setSuccessMsg(`Gift sent to ${receiverName || 'recipient'} successfully — ${res.grams.toFixed(4)}g (${res.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} INR).`);
       setTimeout(() => setSuccessMsg(''), 10000);
     } catch (err: any) {
       setError(err?.message || 'Failed to send gift.');
@@ -1811,6 +1911,24 @@ export const HomeLanding: React.FC = () => {
                 <Phone size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500" />
               </div>
               <p className="text-[11px] text-amber-700 mt-1">Friend must have a Bizmation account with this phone number.</p>
+              {giftLookupState === 'checking' && (
+                <p className="text-[11px] text-blue-700 mt-1.5">Checking recipient in database...</p>
+              )}
+              {giftLookupState === 'found' && (
+                <p className="text-[11px] text-green-700 mt-1.5 font-semibold">Sending gift to {giftLookupName || 'Customer'}.</p>
+              )}
+              {(giftLookupState === 'not-found' || giftLookupState === 'error') && giftLookupMsg && (
+                <p className="text-[11px] text-red-700 mt-1.5">{giftLookupMsg}</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm space-y-1">
+              <p className="text-green-800 font-semibold">Available To Gift ({giftMetal})</p>
+              <p className="text-green-900 font-black">{activeGiftAvailable.grams.toFixed(4)}g</p>
+              <p className="text-[11px] text-green-700">≈ ₹{activeGiftAvailable.valueInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} at live rate</p>
+              {giftExceedsAvailability && (
+                <p className="text-[11px] text-red-700 font-semibold">Gift amount exceeds available balance.</p>
+              )}
             </div>
 
             {userProfile && (
@@ -1825,7 +1943,7 @@ export const HomeLanding: React.FC = () => {
 
             <button
               onClick={handleSendGift}
-              disabled={giftSubmitting || !giftValue || !giftPhone.trim()}
+              disabled={giftSubmitting || !giftValue || !giftPhone.trim() || giftLookupState !== 'found' || giftExceedsAvailability}
               className="w-full py-3.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base"
             >
               {giftSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Gift size={18} />}
