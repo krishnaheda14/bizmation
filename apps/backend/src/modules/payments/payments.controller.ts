@@ -21,6 +21,22 @@ function validatePositiveNumber(value: any, field: string): number {
   return n;
 }
 
+async function sendTelegramAlert(text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+
+  try {
+    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+      chat_id: chatId,
+      text,
+      parse_mode: 'HTML',
+    });
+  } catch (err: any) {
+    console.error('[payments] Telegram alert failed:', err?.message);
+  }
+}
+
 export function paymentsRouter(): Router {
   const router = Router();
   
@@ -166,6 +182,23 @@ export function paymentsRouter(): Router {
         razorpayPaymentId,
         updatedAt: new Date(),
       });
+
+      // Fire & Forget Telegram Alert
+      const data = lockSnap.data();
+      const metal = data?.metal || 'GOLD';
+      const weight = data?.grams || 0;
+      const amount = (data?.amountPaise || 0) / 100;
+      const rate = data?.ratePerGram || 0;
+      
+      sendTelegramAlert(
+        `🚨 <b>NEW ${metal} ORDER (PAID)</b> 🚨\n\n` +
+        `<b>Weight:</b> ${weight}g\n` +
+        `<b>Amount:</b> ₹${amount.toLocaleString('en-IN')}\n` +
+        `<b>Rate:</b> ₹${rate.toLocaleString('en-IN')}/g\n` +
+        `<b>Name:</b> ${data?.customerName || 'N/A'}\n` +
+        `<b>Phone:</b> ${data?.customerPhone || 'N/A'}\n\n` +
+        `<i>Please book/hedge this quantity immediately.</i>`
+      ).catch(() => {});
 
       return res.json({
         success: true,
@@ -424,6 +457,13 @@ export function paymentsRouter(): Router {
       if (expected !== razorpaySignature) {
         return res.status(400).json({ success: false, error: 'Invalid subscription signature' });
       }
+
+      sendTelegramAlert(
+        `♻️ <b>NEW SIP (AUTOPAY) ACTIVATED</b> ♻️\n\n` +
+        `<b>Subscription ID:</b> <code>${razorpaySubscriptionId}</code>\n` +
+        `<b>Payment ID:</b> <code>${razorpayPaymentId}</code>\n\n` +
+        `<i>A user has successfully set up a new Gold SIP. The first deduction is complete.</i>`
+      ).catch(() => {});
 
       return res.json({
         success: true,
