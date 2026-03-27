@@ -14,15 +14,17 @@ import {
   query,
   where,
   onSnapshot,
-  addDoc,
+  doc,
   serverTimestamp,
   orderBy,
   Timestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { TrendingDown, ArrowDownCircle, Clock, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { fetchLiveMetalRates, type MetalRate } from '../lib/goldPrices';
 import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
+import { notifyRedemptionTelegram } from '../lib/redemptionApi';
 
 interface PortfolioEntry {
   metal: 'GOLD' | 'SILVER';
@@ -49,8 +51,10 @@ interface RedemptionRequest {
   marketRatePerGram: number;
   redeemRatePerGram: number;
   estimatedInr: number;
-  status: string;
+  status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
+  linkedOrderId?: string | null;
   createdAt?: Timestamp;
+  adminNote?: string;
   notes?: string;
 }
 
@@ -80,6 +84,7 @@ function StatusBadge({ status }: { status: string }) {
     APPROVED: { label: 'Approved', icon: <CheckCircle size={12} />, style: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' },
     SETTLED: { label: 'Settled', icon: <CheckCircle size={12} />, style: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300' },
     REJECTED: { label: 'Rejected', icon: <XCircle size={12} />, style: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
+    CANCELLED: { label: 'Cancelled', icon: <XCircle size={12} />, style: 'bg-stone-200 text-stone-700 dark:bg-gray-800 dark:text-gray-300' },
   };
   const cfg = map[status] ?? map.PENDING;
   return <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.style}`}>{cfg.icon}{cfg.label}</span>;
@@ -104,6 +109,7 @@ export const RedemptionPage: React.FC = () => {
   const [upiId, setUpiId] = useState('');
   const [inputMode, setInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
   const [submitting, setSubmitting] = useState(false);
+  const [cancelLoadingMap, setCancelLoadingMap] = useState<Record<string, boolean>>({});
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
@@ -291,7 +297,36 @@ export const RedemptionPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'redemptionRequests'), {
+      const orderRef = doc(collection(db, 'goldOnlineOrders'));
+      const requestRef = doc(collection(db, 'redemptionRequests'));
+      const batch = writeBatch(db);
+
+      batch.set(orderRef, {
+        userId: currentUser.uid,
+        customerUid: currentUser.uid,
+        linkedRequestId: requestRef.id,
+        type: 'SELL',
+        metal,
+        purity,
+        grams,
+        ratePerGram: redeemRatePerGram,
+        marketRatePerGram: liveRate,
+        redeemGstReductionPercent: 3,
+        redeemFlatDeductionPerGram: REDEEM_DEDUCTION_PER_GRAM,
+        availableBalanceAtRequestGrams: heldGrams,
+        totalAmountInr: estimatedInr,
+        customerRequestedInr: enteredAmount > 0 ? enteredAmount : estimatedInr,
+        customerName: (userProfile as any)?.name ?? currentUser.email ?? '',
+        customerEmail: currentUser.email,
+        customerPhone: (userProfile as any)?.phone ?? '',
+        shopName,
+        shopId,
+        status: 'PENDING',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      batch.set(requestRef, {
         customerUid: currentUser.uid,
         customerName: (userProfile as any)?.name ?? currentUser.email ?? '',
         customerEmail: currentUser.email,
@@ -309,9 +344,13 @@ export const RedemptionPage: React.FC = () => {
         customerRequestedInr: enteredAmount > 0 ? enteredAmount : estimatedInr,
         upiId: upiId.trim() || null,
         availableBalanceAtRequestGrams: heldGrams,
+        linkedOrderId: orderRef.id,
         status: 'PENDING',
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+
+      await batch.commit();
 
       setSubmitMsg({
         type: 'ok',
@@ -319,10 +358,72 @@ export const RedemptionPage: React.FC = () => {
       });
       setGramsStr('');
       setAmountStr('');
+
+      void notifyRedemptionTelegram({
+        event: 'CREATED',
+        requestId: requestRef.id,
+        status: 'PENDING',
+        customerName: (userProfile as any)?.name ?? currentUser.email ?? '',
+        customerPhone: (userProfile as any)?.phone ?? '',
+        shopName,
+        metal,
+        purity,
+        grams,
+        redeemRatePerGram,
+        estimatedInr,
+        note: upiId.trim() || undefined,
+        actorName: (userProfile as any)?.name ?? currentUser.email ?? '',
+      });
     } catch (err: any) {
       setSubmitMsg({ type: 'err', text: err?.message ?? 'Failed to submit. Try again.' });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCancelRequest = async (req: RedemptionRequest) => {
+    if (!currentUser) return;
+    if (req.status !== 'PENDING') return;
+
+    setCancelLoadingMap((s) => ({ ...s, [req.id]: true }));
+    setSubmitMsg(null);
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'redemptionRequests', req.id), {
+        status: 'CANCELLED',
+        cancelReason: 'Cancelled by customer before processing',
+        updatedAt: serverTimestamp(),
+      });
+
+      if (req.linkedOrderId) {
+        batch.update(doc(db, 'goldOnlineOrders', req.linkedOrderId), {
+          status: 'REJECTED',
+          rejectionReason: 'Cancelled by customer before processing',
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+      setSubmitMsg({ type: 'ok', text: 'Request cancelled successfully. Any blocked redeem quantity has been restored.' });
+
+      void notifyRedemptionTelegram({
+        event: 'CANCELLED',
+        requestId: req.id,
+        status: 'CANCELLED',
+        customerName: (userProfile as any)?.name ?? currentUser.email ?? '',
+        customerPhone: (userProfile as any)?.phone ?? '',
+        shopName,
+        metal: req.metal,
+        purity: req.purity,
+        grams: req.grams,
+        redeemRatePerGram: req.redeemRatePerGram,
+        estimatedInr: req.estimatedInr,
+        actorName: (userProfile as any)?.name ?? currentUser.email ?? '',
+      });
+    } catch (err: any) {
+      setSubmitMsg({ type: 'err', text: err?.message ?? 'Unable to cancel this request.' });
+    } finally {
+      setCancelLoadingMap((s) => ({ ...s, [req.id]: false }));
     }
   };
 
@@ -544,8 +645,18 @@ export const RedemptionPage: React.FC = () => {
                       <div>
                         <p className="font-bold text-stone-800 dark:text-white text-sm">{r.metal} {purityLabel(r.metal, Number(r.purity))} - {fmtG(r.grams)}</p>
                         <p className="text-xs text-stone-400 mt-0.5">{fmtInr(r.redeemRatePerGram)}/g {'->'} <strong>{fmtInr(r.estimatedInr)}</strong></p>
-                        {r.notes && <p className="text-xs text-stone-400 mt-0.5 italic">{r.notes}</p>}
+                        {(r.adminNote || r.notes) && <p className="text-xs text-stone-400 mt-0.5 italic">{r.adminNote || r.notes}</p>}
                         {ts && <p className="text-xs text-stone-300 mt-0.5">{ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</p>}
+                        {r.status === 'PENDING' && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelRequest(r)}
+                            disabled={cancelLoadingMap[r.id]}
+                            className="mt-2 inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                          >
+                            {cancelLoadingMap[r.id] ? 'Cancelling...' : 'Cancel Request'}
+                          </button>
+                        )}
                       </div>
                       <StatusBadge status={r.status} />
                     </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, orderBy, query, updateDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { ShopRow, UserRow, PlatformOrderRow, CoinPurchaseRequestRow, TabType } from './types';
+import { ShopRow, UserRow, PlatformOrderRow, CoinPurchaseRequestRow, RedemptionRequestRow, TabType } from './types';
 import { ShopsTab } from './ShopsTab';
 import { UsersTab } from './UsersTab';
 import { OrdersTab } from './OrdersTab';
@@ -14,6 +14,7 @@ const TABS: TabType[] = [
   { key: 'customers', label: 'Users' },
   { key: 'orders', label: 'Orders' },
   { key: 'coin-requests', label: 'Coin Orders' },
+  { key: 'redemptions', label: 'Redemptions' },
   { key: 'stats', label: 'Platform' },
 ];
 
@@ -24,6 +25,7 @@ export function SuperAdmin() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [orders, setOrders] = useState<PlatformOrderRow[]>([]);
   const [coinRequests, setCoinRequests] = useState<CoinPurchaseRequestRow[]>([]);
+  const [redemptions, setRedemptions] = useState<RedemptionRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [loadErr, setLoadErr] = useState('');
@@ -53,16 +55,18 @@ export function SuperAdmin() {
     setLoading(true);
     setLoadErr('');
     try {
-      const [shopsSnap, usersSnap, ordersSnap, coinRequestsSnap] = await Promise.all([
+      const [shopsSnap, usersSnap, ordersSnap, coinRequestsSnap, redemptionsSnap] = await Promise.all([
         getDocs(query(collection(db, 'shops'), orderBy('name'))),
         getDocs(collection(db, 'users')),
         getDocs(query(collection(db, 'goldOnlineOrders'), orderBy('createdAt', 'desc'))),
         getDocs(query(collection(db, 'coinPurchaseOrders'), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'redemptionRequests'), orderBy('createdAt', 'desc'))),
       ]);
       setShops(shopsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as ShopRow)));
       setUsers(usersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as UserRow)));
       setOrders(ordersSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as PlatformOrderRow)));
       setCoinRequests(coinRequestsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as CoinPurchaseRequestRow)));
+      setRedemptions(redemptionsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) } as RedemptionRequestRow)));
     } catch (err: any) {
       // console.error('[SuperAdmin] loadData error:', err?.code, err?.message);
       setLoadErr(err?.message ?? 'Failed to load data.');
@@ -125,6 +129,7 @@ export function SuperAdmin() {
               {t.key === 'customers' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{users.length}</span>}
               {t.key === 'orders' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{orders.length}</span>}
               {t.key === 'coin-requests' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{coinRequests.length}</span>}
+              {t.key === 'redemptions' && <span className="text-[10px] bg-white text-stone-600 border border-stone-200 rounded-full px-2 py-0.5">{redemptions.length}</span>}
             </button>
           ))}
         </div>
@@ -204,6 +209,85 @@ export function SuperAdmin() {
                 userProfile={userProfile}
                 handleActionMsg={handleActionMsg}
               />
+            )}
+
+            {tab === 'redemptions' && (
+              <div className="space-y-4">
+                {(() => {
+                  const searchLower = search.trim().toLowerCase();
+                  const rows = !searchLower
+                    ? redemptions
+                    : redemptions.filter((r) =>
+                      String(r.customerName || '').toLowerCase().includes(searchLower)
+                      || String(r.customerEmail || '').toLowerCase().includes(searchLower)
+                      || String(r.customerPhone || '').toLowerCase().includes(searchLower)
+                      || String(r.shopName || '').toLowerCase().includes(searchLower)
+                      || String(r.status || '').toLowerCase().includes(searchLower)
+                      || String(r.requestType || '').toLowerCase().includes(searchLower),
+                    );
+
+                  const fmtInr = (value: number | undefined) =>
+                    `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+                  const fmtG = (value: number | undefined) => `${Number(value || 0).toFixed(4)}g`;
+                  const badgeClass = (status: string | undefined) => {
+                    const s = String(status || '').toUpperCase();
+                    if (s === 'APPROVED') return 'bg-green-100 text-green-800 border-green-200';
+                    if (s === 'SETTLED') return 'bg-teal-100 text-teal-800 border-teal-200';
+                    if (s === 'REJECTED') return 'bg-red-100 text-red-800 border-red-200';
+                    if (s === 'CANCELLED') return 'bg-stone-200 text-stone-700 border-stone-300';
+                    return 'bg-amber-100 text-amber-800 border-amber-200';
+                  };
+
+                  return (
+                    <div className="rounded-2xl border border-amber-100 bg-white shadow-sm overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-amber-50 border-b border-amber-100">
+                            <tr>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Customer</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Shop</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Type</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Metal</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Qty</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Rate</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Amount</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Status</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-8 text-center text-stone-400" colSpan={9}>No redemption requests found.</td>
+                              </tr>
+                            ) : rows.map((r) => (
+                              <tr key={r.id} className="border-b border-stone-100 hover:bg-amber-50/30">
+                                <td className="px-4 py-3 align-top">
+                                  <p className="font-semibold text-stone-800">{r.customerName || 'Customer'}</p>
+                                  <p className="text-xs text-stone-500">{r.customerEmail || '-'}</p>
+                                  <p className="text-xs text-stone-500">{r.customerPhone || '-'}</p>
+                                </td>
+                                <td className="px-4 py-3 align-top text-stone-700">{r.shopName || '-'}</td>
+                                <td className="px-4 py-3 align-top text-stone-700">{r.requestType || 'REDEEM'}</td>
+                                <td className="px-4 py-3 align-top text-stone-700">{r.metal || '-'} {r.purity ?? ''}</td>
+                                <td className="px-4 py-3 align-top text-stone-700">{fmtG(Number(r.grams || 0))}</td>
+                                <td className="px-4 py-3 align-top text-stone-700">{fmtInr(Number(r.redeemRatePerGram || 0))}/g</td>
+                                <td className="px-4 py-3 align-top font-semibold text-amber-700">{fmtInr(Number(r.estimatedInr || 0))}</td>
+                                <td className="px-4 py-3 align-top">
+                                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass(r.status)}`}>
+                                    {String(r.status || 'PENDING').toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 align-top text-xs text-stone-600">{r.adminNote || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             )}
             
             {tab === 'stats' && (

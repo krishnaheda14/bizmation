@@ -15,10 +15,11 @@ import {
 import { fetchLiveMetalRates, fetchWorkerData, type MetalRate } from '../lib/goldPrices';
 import { buyGold, buyCoins, setupGoldAutoPay, RAZORPAY_KEY_ID } from '../lib/razorpay';
 import { useAuth } from '../context/AuthContext';
-import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { fetchCustomerOrders, normalizeGoldPurity } from '../lib/customerOrders';
 import { lookupGiftReceiver, transferGift } from '../lib/gift';
+import { notifyRedemptionTelegram } from '../lib/redemptionApi';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Types
@@ -644,14 +645,13 @@ export const HomeLanding: React.FC = () => {
     const custName    = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custPhone   = userProfile?.phone ?? '';
 
-    setModal({ type: null });
-    setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${grams.toFixed(4)}g of 24K (995) gold.`);
-    setSellForm({ grams: '', amountInr: '', bank: '', account: '', ifsc: '' });
-    setTimeout(() => setSuccessMsg(''), 12000);
-
     // ── Write jeweller-visible request to Firestore ───────────────────────
     try {
-      await addDoc(collection(db, 'redemptionRequests'), {
+      const requestRef = doc(collection(db, 'redemptionRequests'));
+      const linkedOrderRef = redeemMode === 'REDEEM' ? doc(collection(db, 'goldOnlineOrders')) : null;
+      const batch = writeBatch(db);
+
+      batch.set(requestRef, {
         customerUid:    currentUser?.uid ?? 'anonymous',
         customerName:   custName,
         customerEmail:  userProfile?.email ?? currentUser?.email ?? '',
@@ -671,15 +671,17 @@ export const HomeLanding: React.FC = () => {
         bankName:       sellForm.bank,
         accountNumber:  sellForm.account,
         ifscCode:       sellForm.ifsc,
+        linkedOrderId:  linkedOrderRef?.id ?? null,
         status:         'PENDING',
         createdAt:      serverTimestamp(),
         updatedAt:      serverTimestamp(),
       });
 
-      if (redeemMode === 'REDEEM') {
-        await addDoc(collection(db, 'goldOnlineOrders'), {
+      if (linkedOrderRef) {
+        batch.set(linkedOrderRef, {
           userId:         currentUser?.uid ?? 'anonymous',
           customerUid:    currentUser?.uid ?? 'anonymous',
+          linkedRequestId: requestRef.id,
           type:           'SELL',
           metal:          'GOLD',
           purity:         purityNum,
@@ -705,7 +707,33 @@ export const HomeLanding: React.FC = () => {
           updatedAt:      serverTimestamp(),
         });
       }
-    } catch { /* non-blocking */ }
+
+      await batch.commit();
+
+      setModal({ type: null });
+      setSuccessMsg(`${redeemMode === 'REDEEM' ? 'Redeem' : 'Sell-to-jeweller'} request submitted for ${grams.toFixed(4)}g of 24K (995) gold.`);
+      setSellForm({ grams: '', amountInr: '', bank: '', account: '', ifsc: '' });
+      setTimeout(() => setSuccessMsg(''), 12000);
+
+      void notifyRedemptionTelegram({
+        event: 'CREATED',
+        requestId: requestRef.id,
+        status: 'PENDING',
+        customerName: custName,
+        customerPhone: custPhone,
+        shopName: (userProfile as any)?.shopName ?? '',
+        metal: 'GOLD',
+        purity: purityNum,
+        grams,
+        redeemRatePerGram: effectiveSellRatePerGram,
+        estimatedInr: totalAmount,
+        note: redeemMode,
+        actorName: custName,
+      });
+    } catch (err: any) {
+      setSuccessMsg(err?.message ?? 'Failed to submit request. Please retry.');
+      setTimeout(() => setSuccessMsg(''), 9000);
+    }
   };
 
   const activeRate = buyMetal === 'GOLD'

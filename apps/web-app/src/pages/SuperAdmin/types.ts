@@ -123,7 +123,31 @@ export interface CoinPurchaseRequestRow {
   [k: string]: any;
 }
 
+export interface RedemptionRequestRow {
+  id: string;
+  requestType?: 'REDEEM' | 'SELL_TO_JEWELLER';
+  status?: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
+  linkedOrderId?: string | null;
+  customerUid?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  shopId?: string;
+  shopName?: string;
+  metal?: 'GOLD' | 'SILVER' | string;
+  purity?: number | string;
+  grams?: number;
+  marketRatePerGram?: number;
+  redeemRatePerGram?: number;
+  estimatedInr?: number;
+  customerRequestedInr?: number;
+  adminNote?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  [k: string]: any;
+}
+
 export interface TabType {
-  key: 'shops' | 'customers' | 'orders' | 'coin-requests' | 'stats';
+  key: 'shops' | 'customers' | 'orders' | 'coin-requests' | 'redemptions' | 'stats';
   label: string;
 }

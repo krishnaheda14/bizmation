@@ -9,11 +9,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  collection, query, where, onSnapshot, doc, updateDoc,
-  serverTimestamp, orderBy, Timestamp,
+  collection, query, where, onSnapshot, doc, orderBy, Timestamp, writeBatch,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { CheckCircle, XCircle, Clock, ArrowDownCircle, SlidersHorizontal } from 'lucide-react';
+import { notifyRedemptionTelegram } from '../lib/redemptionApi';
 
 interface RedemptionRequest {
   id: string;
@@ -28,13 +29,15 @@ interface RedemptionRequest {
   ratePerGram?: number;
   redeemRatePerGram?: number;
   estimatedInr: number;
-  status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED';
+  linkedOrderId?: string | null;
+  status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   adminNote?: string;
+  customerPhone?: string;
 }
 
-type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED';
+type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
 
 const fmtInr = (v: number) => '₹' + (v || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const fmtG   = (v: number) => (v || 0).toFixed(4) + 'g';
@@ -45,6 +48,7 @@ function StatusBadge({ status }: { status: string }) {
     APPROVED: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
     SETTLED:  'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
     REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+    CANCELLED: 'bg-stone-200 text-stone-700 dark:bg-gray-800 dark:text-gray-300',
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${map[status] ?? ''}`}>
@@ -55,6 +59,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export const RedemptionRequests: React.FC = () => {
   const { userProfile } = useAuth();
+  const isSuperAdmin = userProfile?.role === 'SUPER_ADMIN';
   const shopName = (userProfile as any)?.shopName ?? '';
   const shopNameVariants = useMemo(
     () => Array.from(new Set([shopName, shopName.toLowerCase(), shopName.toUpperCase()].filter(Boolean))),
@@ -69,30 +74,74 @@ export const RedemptionRequests: React.FC = () => {
   const [expandId, setExpandId]     = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shopName) { setLoading(false); return; }
-    const q = query(
-      collection(db, 'redemptionRequests'),
-      where('shopName', 'in', shopNameVariants),
-      orderBy('createdAt', 'desc'),
-    );
+    if (!isSuperAdmin && !shopName) { setLoading(false); return; }
+    const q = isSuperAdmin
+      ? query(collection(db, 'redemptionRequests'), orderBy('createdAt', 'desc'))
+      : query(
+        collection(db, 'redemptionRequests'),
+        where('shopName', 'in', shopNameVariants),
+        orderBy('createdAt', 'desc'),
+      );
     const unsub = onSnapshot(q, snap => {
       setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as RedemptionRequest)));
       setLoading(false);
     }, () => setLoading(false));
     return () => unsub();
-  }, [shopName, shopNameVariants]);
+  }, [isSuperAdmin, shopName, shopNameVariants]);
 
-  const setStatus = async (id: string, status: RedemptionRequest['status']) => {
-    setActionMap(m => ({ ...m, [id]: true }));
+  const setStatus = async (request: RedemptionRequest, status: RedemptionRequest['status']) => {
+    setActionMap(m => ({ ...m, [request.id]: true }));
     try {
-      await updateDoc(doc(db, 'redemptionRequests', id), {
+      const note = noteMap[request.id] ?? '';
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'redemptionRequests', request.id), {
         status,
-        adminNote: noteMap[id] ?? '',
+        adminNote: note,
         updatedAt: serverTimestamp(),
       });
+
+      if (request.linkedOrderId) {
+        const mappedOrderStatus = status === 'SETTLED'
+          ? 'SUCCESS'
+          : status === 'REJECTED'
+            ? 'REJECTED'
+            : status;
+        batch.update(doc(db, 'goldOnlineOrders', request.linkedOrderId), {
+          status: mappedOrderStatus,
+          ...(status === 'REJECTED' ? { rejectionReason: note || 'Rejected by shop' } : {}),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+
+      const event = status === 'APPROVED'
+        ? 'APPROVED'
+        : status === 'SETTLED'
+          ? 'SETTLED'
+          : status === 'REJECTED'
+            ? 'REJECTED'
+            : 'CANCELLED';
+
+      void notifyRedemptionTelegram({
+        event,
+        requestId: request.id,
+        status,
+        customerName: request.customerName,
+        customerPhone: request.customerPhone,
+        shopName: request.shopName,
+        metal: request.metal,
+        purity: request.purity,
+        grams: request.grams,
+        redeemRatePerGram: Number(request.redeemRatePerGram ?? request.ratePerGram ?? 0),
+        estimatedInr: request.estimatedInr,
+        note,
+        actorName: (userProfile as any)?.name ?? userProfile?.email ?? 'Admin',
+      });
+
       setExpandId(null);
     } finally {
-      setActionMap(m => ({ ...m, [id]: false }));
+      setActionMap(m => ({ ...m, [request.id]: false }));
     }
   };
 
@@ -104,6 +153,7 @@ export const RedemptionRequests: React.FC = () => {
     APPROVED: requests.filter(r => r.status === 'APPROVED').length,
     SETTLED:  requests.filter(r => r.status === 'SETTLED').length,
     REJECTED: requests.filter(r => r.status === 'REJECTED').length,
+    CANCELLED: requests.filter(r => r.status === 'CANCELLED').length,
   };
 
   const totalPendingInr = requests.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.estimatedInr, 0);
@@ -113,6 +163,7 @@ export const RedemptionRequests: React.FC = () => {
     { key: 'APPROVED', label: 'Approved' },
     { key: 'SETTLED',  label: 'Settled' },
     { key: 'REJECTED', label: 'Rejected' },
+    { key: 'CANCELLED', label: 'Cancelled' },
     { key: 'ALL',      label: 'All' },
   ];
 
@@ -126,7 +177,9 @@ export const RedemptionRequests: React.FC = () => {
             Redemption Requests
           </h1>
           <p className="text-amber-700/70 dark:text-gray-400 text-sm mt-1">
-            Review and process customer sell / redeem requests for your shop.
+            {isSuperAdmin
+              ? 'Review and process customer sell / redeem requests across all shops.'
+              : 'Review and process customer sell / redeem requests for your shop.'}
           </p>
         </div>
       </div>
@@ -247,21 +300,21 @@ export const RedemptionRequests: React.FC = () => {
                       <div className="flex gap-2 flex-wrap">
                         <button
                           disabled={loading}
-                          onClick={() => setStatus(r.id, 'APPROVED')}
+                          onClick={() => setStatus(r, 'APPROVED')}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
                           style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', boxShadow: '0 2px 8px rgba(34,197,94,0.3)' }}>
                           <CheckCircle size={14} /> Approve
                         </button>
                         <button
                           disabled={loading}
-                          onClick={() => setStatus(r.id, 'SETTLED')}
+                          onClick={() => setStatus(r, 'SETTLED')}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
                           style={{ background: 'linear-gradient(135deg,#0d9488,#0f766e)', boxShadow: '0 2px 8px rgba(13,148,136,0.3)' }}>
                           <CheckCircle size={14} /> Mark Settled
                         </button>
                         <button
                           disabled={loading}
-                          onClick={() => setStatus(r.id, 'REJECTED')}
+                          onClick={() => setStatus(r, 'REJECTED')}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
                           style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: '0 2px 8px rgba(239,68,68,0.3)' }}>
                           <XCircle size={14} /> Reject

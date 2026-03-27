@@ -127,15 +127,20 @@ service cloud.firestore {
         )
       );
       allow update: if isAuth() && (
-        resource.data.userId == request.auth.uid
-        || resource.data.customerUid == request.auth.uid
-        || isSuperAdmin()
+        isSuperAdmin()
         || (
           isOwnerOrStaff()
           && (
             (resource.data.shopId != null && resource.data.shopId == callerShopId())
             || (resource.data.shopName != null && resource.data.shopName == callerShopName())
           )
+        )
+        || (
+          (resource.data.userId == request.auth.uid || resource.data.customerUid == request.auth.uid)
+          && resource.data.type == 'SELL'
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status == 'REJECTED'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rejectionReason', 'updatedAt'])
         )
       );
       allow delete: if false;
@@ -184,14 +189,20 @@ service cloud.firestore {
       );
 
       allow update: if isAuth() && (
-        resource.data.customerUid == request.auth.uid
-        || isSuperAdmin()
+        isSuperAdmin()
         || (
           isOwnerOrStaff()
           && (
             (resource.data.shopId != null && resource.data.shopId == callerShopId())
             || (resource.data.shopName != null && resource.data.shopName == callerShopName())
           )
+        )
+        || (
+          resource.data.customerUid == request.auth.uid
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status == 'CANCELLED'
+          && request.resource.data.customerUid == resource.data.customerUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelReason', 'updatedAt'])
         )
       );
 

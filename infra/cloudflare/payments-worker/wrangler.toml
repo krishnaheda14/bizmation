@@ -2,6 +2,15 @@ name = "payments-worker"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
+# Required secrets (set via `wrangler secret put`):
+# RAZORPAY_KEY_ID
+# RAZORPAY_KEY_SECRET
+# TELEGRAM_BOT_TOKEN
+# TELEGRAM_CHAT_ID
+# FIREBASE_PROJECT_ID
+# FIREBASE_CLIENT_EMAIL
+# FIREBASE_PRIVATE_KEY
+
 [[kv_namespaces]]
 # Create this with: wrangler kv namespace create PAYMENTS_KV
 binding = "PAYMENTS_KV"
