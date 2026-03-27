@@ -1,11 +1,10 @@
 /**
  * Redemption Page – Customer
  *
- * • Shows customer's current gold / silver portfolio
- * • Allows submitting a sell/redeem request
- * • Validates requested grams ≤ held grams
- * • Writes request to Firestore `redemptionRequests`
- * • Shows existing pending / completed requests
+ * - Uses live rates from shared pricing utility
+ * - Applies redeem formula only for redemption:
+ *     redeemRate = (liveMarketRate * 0.97) - 50
+ * - Allows submit only if customer has enough net holdings
  */
 import React from 'react';
 export declare const RedemptionPage: React.FC;

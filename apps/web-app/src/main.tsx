@@ -27,6 +27,30 @@ import { RedemptionPage } from './pages/RedemptionPage';
 import { RedemptionRequests } from './pages/RedemptionRequests';
 import { SuperAdmin } from './pages/SuperAdmin';
 import { NomineePage } from './pages/Nominee';
+import { LegalPoliciesPage } from './pages/LegalPoliciesPage';
+
+const PUBLIC_ROUTES = new Set([
+  '/terms-and-conditions',
+  '/privacy-policy',
+  '/refund-cancellation-policy',
+  '/return-policy',
+  '/shipping-policy',
+]);
+
+function getActiveRouteFromLocation(): string {
+  const hashRoute = window.location.hash.slice(1);
+  const route = (hashRoute || window.location.pathname || '/').trim();
+  if (route.length > 1 && route.endsWith('/')) return route.slice(0, -1);
+  return route || '/';
+}
+
+function renderPublicPage(route: string) {
+  if (route === '/privacy-policy') return <LegalPoliciesPage section="privacy" />;
+  if (route === '/refund-cancellation-policy') return <LegalPoliciesPage section="refund" />;
+  if (route === '/return-policy') return <LegalPoliciesPage section="return" />;
+  if (route === '/shipping-policy') return <LegalPoliciesPage section="shipping" />;
+  return <LegalPoliciesPage section="terms" />;
+}
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState('/');
@@ -34,15 +58,18 @@ function App() {
 
   // Simple hash-based routing
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.slice(1) || '/';
-      setCurrentRoute(hash);
+    const handleLocationChange = () => {
+      setCurrentRoute(getActiveRouteFromLocation());
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    window.addEventListener('hashchange', handleLocationChange);
+    window.addEventListener('popstate', handleLocationChange);
+    handleLocationChange();
 
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('popstate', handleLocationChange);
+    };
   }, []);
 
   // ── Loading spinner while Firebase resolves auth ──────────────────────────
@@ -95,6 +122,9 @@ function App() {
 
   // ── Auth wall: not signed in ──────────────────────────────────────────────
   if (!currentUser) {
+    if (PUBLIC_ROUTES.has(currentRoute)) {
+      return <ThemeProvider>{renderPublicPage(currentRoute)}</ThemeProvider>;
+    }
     return <ThemeProvider><AuthPage /></ThemeProvider>;
   }
 
@@ -123,6 +153,8 @@ function App() {
 
   // Render component based on route
   const renderPage = () => {
+    if (PUBLIC_ROUTES.has(currentRoute)) return renderPublicPage(currentRoute);
+
     // Customer-only routes
     if (currentRoute === '/portfolio') return <CustomerPortfolio />;
     if (currentRoute === '/orders') return <Orders />;
@@ -171,7 +203,24 @@ function App() {
   };
 
   // Pages that manage their own full-width layout
-  const fullWidthRoutes = new Set(['/', '/rates', '/portfolio', '/orders', '/nominee', '/profile', '/redemption', '/referral', '/analytics', '/redemption-requests', '/super-admin']);
+  const fullWidthRoutes = new Set([
+    '/',
+    '/rates',
+    '/portfolio',
+    '/orders',
+    '/nominee',
+    '/profile',
+    '/redemption',
+    '/referral',
+    '/analytics',
+    '/redemption-requests',
+    '/super-admin',
+    '/terms-and-conditions',
+    '/privacy-policy',
+    '/refund-cancellation-policy',
+    '/return-policy',
+    '/shipping-policy',
+  ]);
 
   return (
     <ThemeProvider>

@@ -1,19 +1,7 @@
 /**
  * Razorpay Integration Library
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * HOW TO SET YOUR RAZORPAY KEY:
- *   1. Open apps/web-app/.env  (create it from .env.example if it doesn't exist)
- *   2. Add the line:
- *        VITE_RAZORPAY_KEY_ID=rzp_live_XXXXXXXXXXXXXX
- *      (Use rzp_test_... for testing)
- *   3. Restart the dev server
- *
- * Your Razorpay Key ID can be found at:
- *   Razorpay Dashboard → Settings → API Keys → Key ID
- *
- * NEVER put your Key Secret in this file or any client-side code.
- * ─────────────────────────────────────────────────────────────────────────────
+ * Set VITE_RAZORPAY_KEY_ID in apps/web-app/.env
  */
 export declare const RAZORPAY_KEY_ID: any;
 declare global {
@@ -21,7 +9,6 @@ declare global {
         Razorpay: any;
     }
 }
-/** Load the Razorpay checkout.js script (idempotent) */
 export declare function loadRazorpayScript(): Promise<boolean>;
 export interface BuyGoldOptions {
     grams: number;
@@ -38,12 +25,39 @@ export interface BuyGoldOptions {
         razorpayOrderId: string;
         amountPaise: number;
     }) => void;
+    onLockCreated?: (lockData: {
+        lockId: string;
+        expiresAtMs: number;
+        createdAtMs: number;
+    }) => void;
     onDebug?: (message: string) => void;
     onSuccess: (paymentId: string) => void;
     onFailure: (error: any) => void;
 }
-/** Open Razorpay checkout for buying gold */
+export interface BuyCoinsOptions {
+    metal: 'GOLD' | 'SILVER';
+    gramsPerCoin: number;
+    quantity: number;
+    ratePerGram: number;
+    makingChargesPerCoinInr: number;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    customerUid?: string;
+    onSuccess: (paymentId: string, details: {
+        totalAmountInr: number;
+        lockId: string;
+    }) => void;
+    onFailure: (error: any) => void;
+    onLockCreated?: (lockData: {
+        lockId: string;
+        expiresAtMs: number;
+        createdAtMs: number;
+    }) => void;
+    onDebug?: (details: string) => void;
+}
 export declare function buyGold(options: BuyGoldOptions): Promise<void>;
+export declare function buyCoins(options: BuyCoinsOptions): Promise<void>;
 export interface AutoPayOptions {
     planAmount: number;
     /** GOLD SIP can be configured for both gold and silver */
@@ -53,9 +67,10 @@ export interface AutoPayOptions {
     customerName: string;
     customerEmail: string;
     customerPhone: string;
+    customerUid?: string;
+    onDebug?: (message: string) => void;
     onSuccess: (subscriptionId: string) => void;
     onFailure: (error: any) => void;
 }
-/** Open Razorpay for setting up GOLD SIP (recurring investment) */
 export declare function setupGoldAutoPay(options: AutoPayOptions): Promise<void>;
 //# sourceMappingURL=razorpay.d.ts.map

@@ -652,7 +652,13 @@ const AuthPage: React.FC = () => {
                       <GoldInput label="Aadhaar Last 4 Digits (optional)" value={form.aadhaarLast4} onChange={setF('aadhaarLast4')} placeholder="e.g. 6789" maxLength={4} />
                     </>
                   )}
-                  <p className="text-[11px] text-stone-400 leading-relaxed px-1">By creating an account you agree to our Terms of Service and Privacy Policy. Data stored securely for KYC and tax compliance (India).</p>
+                  <p className="text-[11px] text-stone-400 leading-relaxed px-1">
+                    By creating an account you agree to our{' '}
+                    <a href="/terms-and-conditions" className="underline text-amber-700 hover:text-amber-800">Terms of Service</a>{' '}
+                    and{' '}
+                    <a href="/privacy-policy" className="underline text-amber-700 hover:text-amber-800">Privacy Policy</a>.
+                    Data stored securely for KYC and tax compliance (India).
+                  </p>
                   <div className="flex gap-3">
                     <BackButton onClick={() => setSignupStep(2)} />
                     <GoldButton loading={loading} className="flex-1">Create Account</GoldButton>

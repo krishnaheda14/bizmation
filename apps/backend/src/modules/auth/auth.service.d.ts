@@ -31,4 +31,13 @@ export declare function verifyOtp(phone: string, code: string): Promise<{
     valid: boolean;
     message: string;
 }>;
+/**
+ * Verify OTP via Twilio, then look up the user in Firestore phoneIndex and
+ * return a Firebase custom token so the client can call signInWithCustomToken().
+ */
+export declare function verifyOtpAndCreateFirebaseToken(phone: string, code: string): Promise<{
+    valid: boolean;
+    customToken?: string;
+    email?: string;
+}>;
 //# sourceMappingURL=auth.service.d.ts.map

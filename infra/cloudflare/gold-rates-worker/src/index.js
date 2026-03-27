@@ -1,12 +1,9 @@
 const TROY_OZ_GRAMS = 31.1035;
 const IMPORT_DUTY = 1.09;
-const CDN_XAU_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json';
-const CDN_XAU_MIRROR = 'https://latest.currency-api.pages.dev/v1/currencies/xau.json';
-const CDN_XAG_PRIMARY = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json';
-const CDN_XAG_MIRROR = 'https://latest.currency-api.pages.dev/v1/currencies/xag.json';
 const SWISSQUOTE_XAU = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD';
 const SWISSQUOTE_XAG = 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD';
-const USD_TO_INR_URL = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
+const YAHOO_USDINR_CHART = 'https://query1.finance.yahoo.com/v8/finance/chart/INR=X?interval=1m&range=1d';
+const YAHOO_USDINR_QUOTE = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=INR=X';
 async function fetchJSON(url, timeoutMs = 8000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -44,78 +41,110 @@ function parseSwissquoteMid(data) {
         return (first.bid + first.ask) / 2;
     throw new Error('Could not parse bid/ask from Swissquote');
 }
-async function fetchViaCDN() {
-    const bust = `?_=${Date.now()}`;
-    const [xauData, xagData] = await Promise.all([
-        fetchWithFallback(CDN_XAU_PRIMARY + bust, CDN_XAU_MIRROR + bust),
-        fetchWithFallback(CDN_XAG_PRIMARY + bust, CDN_XAG_MIRROR + bust),
-    ]);
-    const xauInr = xauData?.xau?.inr;
-    const xagInr = xagData?.xag?.inr;
-    if (!xauInr || isNaN(xauInr) || xauInr < 1000)
-        throw new Error(`Invalid XAU→INR from CDN: ${xauInr}`);
-    if (!xagInr || isNaN(xagInr) || xagInr < 1)
-        throw new Error(`Invalid XAG→INR from CDN: ${xagInr}`);
-    return { xauInr, xagInr, source: 'fawazahmed0-CDN' };
+async function fetchYahooUsdInr() {
+    const bust = `&_=${Date.now()}`;
+    const chartData = await fetchJSON(`${YAHOO_USDINR_CHART}${bust}`);
+    const result = chartData?.chart?.result?.[0];
+    const metaPrice = Number(result?.meta?.regularMarketPrice);
+    if (isFinite(metaPrice) && metaPrice > 0)
+        return metaPrice;
+    const closes = result?.indicators?.quote?.[0]?.close ?? [];
+    for (let i = closes.length - 1; i >= 0; i -= 1) {
+        const v = Number(closes[i]);
+        if (isFinite(v) && v > 0)
+            return v;
+    }
+    const quoteData = await fetchJSON(`${YAHOO_USDINR_QUOTE}&_=${Date.now()}`);
+    const q = Number(quoteData?.quoteResponse?.result?.[0]?.regularMarketPrice);
+    if (isFinite(q) && q > 0)
+        return q;
+    throw new Error('No valid USD/INR from Yahoo Finance');
 }
 async function fetchViaSwissquote() {
     const bust = `?_=${Date.now()}`;
     const [xauData, xagData, usdData] = await Promise.all([
         fetchJSON(SWISSQUOTE_XAU + bust),
         fetchJSON(SWISSQUOTE_XAG + bust),
-        fetchJSON(USD_TO_INR_URL + bust),
+        fetchYahooUsdInr(),
     ]);
     const xauUsd = parseSwissquoteMid(xauData);
     const xagUsd = parseSwissquoteMid(xagData);
-    const usdToInr = Number(usdData?.usd?.inr);
+    if (!isFinite(xauUsd) || xauUsd < 500 || xauUsd > 10000)
+        throw new Error(`Invalid XAU/USD from Swissquote: ${xauUsd}`);
+    if (!isFinite(xagUsd) || xagUsd < 1 || xagUsd > 200)
+        throw new Error(`Invalid XAG/USD from Swissquote: ${xagUsd}`);
+    const usdToInr = Number(usdData);
     if (!isFinite(usdToInr) || usdToInr <= 0)
         throw new Error('No valid USD→INR rate');
-    return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, usdToInr, source: 'Swissquote+fawazahmed0' };
+    return { xauInr: xauUsd * usdToInr, xagInr: xagUsd * usdToInr, xauUsd, xagUsd, usdToInr, source: 'Swissquote+YahooFinance' };
 }
+/**
+ * Build display rates from raw spot prices.
+ *
+ * Gold purity grades (Indian market):
+ *   999 (24K) = spot_base × (999/995)  - highest purity, 0.4% premium over 995
+ *   995 (24K) = spot_base              - most liquid physical bar/coin purity (the market reference)
+ *   916 (22K) = spot_base × (916/995)  - hallmark jewellery standard
+ *   750 (18K) = spot_base × (750/995)  - fashion/designer jewellery
+ *
+ * Silver:
+ *   999 only - no hidden surcharge.
+ *
+ * displayRate: per 10g for gold, per 1kg for silver.
+ */
 function buildRates(xauInr, xagInr, source, now) {
-    const gold24 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
-    const silver24 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+    // Spot price → per gram for 995 purity (most common Indian physical bar)
+    const base995 = (xauInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
+    const gold999 = base995 * (999 / 995);
+    const gold916 = base995 * (916 / 995);
+    const gold750 = base995 * (750 / 995);
+    const silver999 = (xagInr / TROY_OZ_GRAMS) * IMPORT_DUTY;
     return [
-        { metalType: 'GOLD', purity: 24, ratePerGram: gold24, displayRate: gold24 * 10, effectiveDate: now, source },
-        { metalType: 'GOLD', purity: 22, ratePerGram: (gold24 * 22) / 24, displayRate: ((gold24 * 22) / 24) * 10, effectiveDate: now, source },
-        { metalType: 'GOLD', purity: 18, ratePerGram: (gold24 * 18) / 24, displayRate: ((gold24 * 18) / 24) * 10, effectiveDate: now, source },
-        { metalType: 'SILVER', purity: 24, ratePerGram: silver24, displayRate: silver24 * 1000, effectiveDate: now, source },
-        { metalType: 'SILVER', purity: 22, ratePerGram: (silver24 * 22) / 24, displayRate: ((silver24 * 22) / 24) * 1000, effectiveDate: now, source },
-        { metalType: 'SILVER', purity: 18, ratePerGram: (silver24 * 18) / 24, displayRate: ((silver24 * 18) / 24) * 1000, effectiveDate: now, source },
+        { metalType: 'GOLD', purity: 999, purityLabel: '24K (999)', ratePerGram: gold999, displayRate: gold999 * 10, effectiveDate: now, source },
+        { metalType: 'GOLD', purity: 995, purityLabel: '24K (995)', ratePerGram: base995, displayRate: base995 * 10, effectiveDate: now, source },
+        { metalType: 'GOLD', purity: 916, purityLabel: '22K (916)', ratePerGram: gold916, displayRate: gold916 * 10, effectiveDate: now, source },
+        { metalType: 'GOLD', purity: 750, purityLabel: '18K (750)', ratePerGram: gold750, displayRate: gold750 * 10, effectiveDate: now, source },
+        { metalType: 'SILVER', purity: 999, purityLabel: '999', ratePerGram: silver999, displayRate: silver999 * 1000, effectiveDate: now, source },
     ];
 }
 async function fetchAndCacheRates(env) {
     const now = new Date().toISOString();
-    let xauInr, xagInr, usdToInr, source;
-    try {
-        ({ xauInr, xagInr, source } = await fetchViaCDN());
-    }
-    catch (cdnErr) {
-        console.error('[Worker] CDN fetch failed, trying Swissquote:', cdnErr);
-        try {
-            ({ xauInr, xagInr, usdToInr, source } = await fetchViaSwissquote());
-        }
-        catch (swissErr) {
-            console.error('[Worker] Swissquote fetch also failed:', swissErr);
-            throw new Error(`All price sources failed.`);
-        }
-    }
+    let xauInr, xagInr, xauUsd, xagUsd, usdToInr, source;
+    ({ xauInr, xagInr, xauUsd, xagUsd, usdToInr, source } = await fetchViaSwissquote());
     const rates = buildRates(xauInr, xagInr, source, now);
-    const cached = { rates, fetchedAt: now, source, xauInr, xagInr, usdToInr };
+    const cached = {
+        rates,
+        fetchedAt: now,
+        source,
+        xauInr,
+        xagInr,
+        xauUsd,
+        xagUsd,
+        usdToInr,
+        inputs: {
+            xauUsd: { value: xauUsd, source: 'Swissquote BBO midpoint', url: SWISSQUOTE_XAU },
+            xagUsd: { value: xagUsd, source: 'Swissquote BBO midpoint', url: SWISSQUOTE_XAG },
+            usdToInr: { value: usdToInr, source: 'Yahoo Finance INR=X', url: YAHOO_USDINR_CHART },
+            derived: {
+                xauInrPerTroyOz: xauInr,
+                xagInrPerTroyOz: xagInr,
+                formula: 'metalInrPerTroyOz = metalUsdPerTroyOz * usdToInr',
+            },
+        },
+    };
     try {
         if (!env.GOLD_RATES_KV)
             throw new Error('GOLD_RATES_KV binding not found');
         await env.GOLD_RATES_KV.put('gold_rates_cache', JSON.stringify(cached), { expirationTtl: 600 });
-        console.log(`[Worker] Rates cached at ${now}. XAU/INR: ${xauInr.toFixed(2)}, XAG/INR: ${xagInr.toFixed(2)}, Source: ${source}`);
+        console.log(`[Worker] Cached at ${now} | XAU/USD: ${xauUsd.toFixed(2)} | XAG/USD: ${xagUsd.toFixed(4)} | USD/INR: ${usdToInr.toFixed(2)} | Source: ${source}`);
     }
     catch (kvErr) {
-        console.warn('[Worker] Could not write to KV (running without KV?):', kvErr?.message || kvErr);
+        console.warn('[Worker] Could not write to KV:', kvErr?.message || kvErr);
     }
     return cached;
 }
 function corsHeaders(origin) {
-    const allowed = ['https://bizmation.pages.dev', 'https://bizmation.com', 'http://localhost:5173', 'http://localhost:4173'];
-    const allowOrigin = (origin && allowed.some(o => origin.startsWith(o.replace(/\/$/, '')))) ? origin : allowed[0];
+    const allowOrigin = origin ?? '*';
     return { 'Access-Control-Allow-Origin': allowOrigin, 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400' };
 }
 function jsonResponse(data, status = 200, origin = null) {

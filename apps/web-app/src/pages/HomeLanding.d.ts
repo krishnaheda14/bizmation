@@ -2,7 +2,7 @@
  * Home Landing Page
  *
  * Golden/cream theme in light mode | Golden/black theme in dark mode
- * Features: Live gold & silver rates, Buy, Sell, AutoPay, daily tracking
+ * Features: Live gold & silver rates, Buy, Sell, GOLD SIP, daily tracking
  */
 import React from 'react';
 export declare const HomeLanding: React.FC;

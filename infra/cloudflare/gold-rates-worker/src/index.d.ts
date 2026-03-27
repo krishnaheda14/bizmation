@@ -1,3 +1,16 @@
+interface KVNamespace {
+    get(key: string): Promise<string | null>;
+    put(key: string, value: string, options?: {
+        expirationTtl?: number;
+    }): Promise<void>;
+}
+interface ExecutionContext {
+    waitUntil(promise: Promise<any>): void;
+}
+interface ScheduledEvent {
+    cron: string;
+    scheduledTime: number;
+}
 export interface Env {
     GOLD_RATES_KV: KVNamespace;
 }

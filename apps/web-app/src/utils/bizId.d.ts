@@ -15,6 +15,11 @@ export declare const generateCustomerId: () => string;
 export declare const generateOrderId: () => string;
 export declare const generateProductId: () => string;
 export declare const generateSessionId: () => string;
+/**
+ * Owner code format: FIRST4 + 4 random chars, e.g. RAVI7K2Q.
+ * Used by customers during signup to link with the correct retailer/shop.
+ */
+export declare const generateOwnerCode: (ownerName: string) => string;
 /** Generate a deterministic BUT unique code from a Firebase UID (for referral codes, etc.) */
 export declare const uidToShortCode: (uid: string) => string;
 //# sourceMappingURL=bizId.d.ts.map

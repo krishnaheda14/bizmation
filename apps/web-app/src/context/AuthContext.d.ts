@@ -30,8 +30,34 @@ export interface UserProfile {
     kycStatus: 'PENDING' | 'VERIFIED';
     role: 'CUSTOMER' | 'STAFF' | 'OWNER' | 'SUPER_ADMIN';
     shopName?: string;
+    shopId?: string;
+    ownerCode?: string;
     gstNumber?: string;
+    hallmarkLicenseNumber?: string;
+    aadhaarNumber?: string;
+    businessAddress?: string;
+    businessPincode?: string;
+    shopVerificationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+    shopVerificationRequestedAt?: any;
+    shopVerificationReviewedAt?: any;
+    shopVerificationReviewedBy?: string;
+    shopVerificationNote?: string;
+    shopVerified?: boolean;
+    nominee?: {
+        name?: string;
+        relation?: string;
+        phone?: string;
+        aadhaarNumber?: string;
+        panNumber?: string;
+        address?: string;
+        city?: string;
+        state?: string;
+        pincode?: string;
+        country?: string;
+        updatedAt?: any;
+    };
     phoneVerified?: boolean;
+    manualEmailVerified?: boolean;
     totalGoldPurchasedGrams: number;
     totalSilverPurchasedGrams: number;
     totalInvestedInr: number;
@@ -49,9 +75,14 @@ export interface SignUpData {
     dateOfBirth: string;
     panNumber: string;
     aadhaarLast4: string;
+    aadhaarNumber?: string;
     role?: 'CUSTOMER' | 'OWNER';
     shopName?: string;
+    ownerCode?: string;
     gstNumber?: string;
+    hallmarkLicenseNumber?: string;
+    businessAddress?: string;
+    businessPincode?: string;
 }
 interface AuthContextType {
     currentUser: User | null;
@@ -67,6 +98,9 @@ interface AuthContextType {
     }>;
     sendPhoneOtp: (phone: string) => Promise<void>;
     verifyPhoneOtp: (phone: string, code: string) => Promise<{
+        valid: boolean;
+    }>;
+    verifyPhoneOtpAndLogin: (phone: string, code: string) => Promise<{
         valid: boolean;
     }>;
     signOut: () => Promise<void>;
