@@ -228,9 +228,13 @@ export const CustomerPortfolio: React.FC = () => {
                       {/* Metal title */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{ background: h.metal === 'GOLD' ? 'linear-gradient(135deg,#fde68a,#f59e0b)' : 'linear-gradient(135deg,#e2e8f0,#94a3b8)' }}>
-                            {h.metal === 'GOLD' ? '🥇' : '🥈'}
+                            <img
+                              src={h.metal === 'GOLD' ? '/coins/gold-coin.svg' : '/coins/silver-coin.svg'}
+                              alt={h.metal === 'GOLD' ? 'Gold coin' : 'Silver coin'}
+                              className="w-6 h-6"
+                            />
                           </div>
                           <div>
                             <p className="font-black text-stone-800 dark:text-white">{h.metal} {h.purity}K</p>

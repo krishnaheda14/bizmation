@@ -5,6 +5,12 @@
  */
 
 export const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || '';
+const CHECKOUT_BUSINESS_NAME = 'Devichand D Mirande';
+
+function getCheckoutLogoUrl(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return `${window.location.origin}/logo.png`;
+}
 
 declare global {
   interface Window {
@@ -279,9 +285,9 @@ export async function buyGold(options: BuyGoldOptions) {
     amount: amountInPaise,
     currency: 'INR',
     order_id: razorpayOrderId,
-    name: `${options.metal === 'SILVER' ? 'Silver' : 'Gold'} Purchase`,
+    name: CHECKOUT_BUSINESS_NAME,
     description: `${options.grams}g of ${options.metal === 'SILVER' ? 'Silver' : '24K Gold'} @ INR ${options.ratePerGram.toFixed(2)}/g`,
-    image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/gem.svg',
+    image: getCheckoutLogoUrl(),
     prefill: {
       name: options.customerName,
       email: options.customerEmail,
@@ -409,9 +415,9 @@ export async function buyCoins(options: BuyCoinsOptions) {
     amount: amountInPaise,
     currency: 'INR',
     order_id: razorpayOrderId,
-    name: `${options.metal === 'GOLD' ? 'Gold' : 'Silver'} Coin Purchase`,
+    name: CHECKOUT_BUSINESS_NAME,
     description: `${options.quantity} x ${options.gramsPerCoin}g ${options.metal} coin(s) + making charges`,
-    image: 'https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/coins.svg',
+    image: getCheckoutLogoUrl(),
     prefill: {
       name: options.customerName,
       email: options.customerEmail,
@@ -468,6 +474,7 @@ export interface AutoPayOptions {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  upiId: string;
   customerUid?: string;
   onDebug?: (message: string) => void;
   onSuccess: (subscriptionId: string) => void;
@@ -496,6 +503,11 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
 
   const metalLabel = options.metal === 'GOLD' ? 'Gold' : 'Silver';
   const freqLabel = freqLabelMap[options.frequency] ?? 'monthly';
+  const upiId = String(options.upiId || '').trim();
+  if (!upiId) {
+    options.onFailure(new Error('UPI ID is required for SIP autopay setup.'));
+    return;
+  }
 
   try {
     options.onDebug?.('Creating subscription on backend...');
@@ -527,12 +539,42 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
     const razorpayOptions = {
       key: RAZORPAY_KEY_ID,
       subscription_id: subscriptionId,
-      name: 'GOLD SIP',
+      name: CHECKOUT_BUSINESS_NAME,
       description: `${metalLabel} SIP - ₹${options.planAmount.toLocaleString('en-IN')} / ${freqLabel}`,
+      image: getCheckoutLogoUrl(),
       prefill: {
         name: options.customerName,
         email: options.customerEmail,
         contact: options.customerPhone,
+        vpa: upiId,
+      },
+      // Restrict checkout to UPI mandate flow for SIP to avoid one-time QR/card flows.
+      method: {
+        upi: true,
+        card: false,
+        netbanking: false,
+        wallet: false,
+        emi: false,
+        paylater: false,
+      },
+      upi: {
+        flow: 'collect',
+        vpa: upiId,
+      },
+      config: {
+        display: {
+          hide: [],
+          sequence: ['block.upi'],
+          preferences: {
+            show_default_blocks: false,
+          },
+          blocks: {
+            upi: {
+              name: 'Pay using UPI ID',
+              instruments: [{ method: 'upi', flows: ['collect'] }],
+            },
+          },
+        },
       },
       theme: {
         color: '#D97706',

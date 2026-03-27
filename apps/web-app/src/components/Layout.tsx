@@ -233,7 +233,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             <h1 className="text-base font-black text-amber-900 dark:text-white">
               Bizmation Gold
             </h1>
-            <div className="w-6" /> {/* Spacer for centering */}
+            <a
+              href="/terms-and-conditions"
+              className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 underline"
+            >
+              Legal
+            </a>
           </div>
         </header>
 
@@ -248,6 +253,16 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           )}
           {children}
+
+          <footer className="mt-auto border-t border-amber-200/70 dark:border-gray-700 bg-amber-50/80 dark:bg-gray-900/60 px-4 py-3">
+            <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+              <a href="/terms-and-conditions" className="underline hover:text-amber-900 dark:hover:text-yellow-300">Terms & Conditions</a>
+              <a href="/privacy-policy" className="underline hover:text-amber-900 dark:hover:text-yellow-300">Privacy Policy</a>
+              <a href="/refund-cancellation-policy" className="underline hover:text-amber-900 dark:hover:text-yellow-300">Refund & Cancellation</a>
+              <a href="/return-policy" className="underline hover:text-amber-900 dark:hover:text-yellow-300">Return Policy</a>
+              <a href="/shipping-policy" className="underline hover:text-amber-900 dark:hover:text-yellow-300">Shipping Policy</a>
+            </div>
+          </footer>
         </main>
       </div>
     </div>

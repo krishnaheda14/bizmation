@@ -141,6 +141,10 @@ export interface RedemptionRequestRow {
   redeemRatePerGram?: number;
   estimatedInr?: number;
   customerRequestedInr?: number;
+  upiId?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
   adminNote?: string;
   createdAt?: any;
   updatedAt?: any;

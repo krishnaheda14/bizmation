@@ -36,6 +36,7 @@ interface AutoPayFormData {
   amount: string;
   metal: 'GOLD' | 'SILVER';
   frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  upiId: string;
 }
 
 interface SellFormData {
@@ -121,7 +122,7 @@ export const HomeLanding: React.FC = () => {
   const [buyForm, setBuyForm] = useState<BuyFormData>({ grams: '' });
   const [buyInputMode, setBuyInputMode] = useState<'GRAMS' | 'AMOUNT'>('GRAMS');
   const [buyAmountInr, setBuyAmountInr] = useState('');
-  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
+  const [autoPayForm, setAutoPayForm] = useState<AutoPayFormData>({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY', upiId: '' });
   const [sellForm, setSellForm] = useState<SellFormData>({
     grams: '', amountInr: '', bank: '', account: '', ifsc: '',
   });
@@ -555,6 +556,10 @@ export const HomeLanding: React.FC = () => {
   // ── AutoPay ───────────────────────────────────────────────────────────────
   const handleAutoPay = () => {
     if (!autoPayForm.amount) return;
+    if (!autoPayForm.upiId.trim()) {
+      alert('Please enter your UPI ID to setup SIP autopay mandate.');
+      return;
+    }
     const planAmount   = parseFloat(autoPayForm.amount);
     const custName     = userProfile?.name  ?? currentUser?.displayName ?? '';
     const custEmail    = userProfile?.email ?? currentUser?.email ?? '';
@@ -567,13 +572,14 @@ export const HomeLanding: React.FC = () => {
       customerName:  custName,
       customerEmail: custEmail,
       customerPhone: custPhone,
+      upiId: autoPayForm.upiId.trim(),
       onDebug: (msg) => console.log('[AutoPay Debug]:', msg),
       onSuccess: async (id) => {
         setPaying(false);
         setModal({ type: null });
         const freqLabel = autoPayForm.frequency === 'DAILY' ? 'day' : autoPayForm.frequency === 'WEEKLY' ? 'week' : 'month';
         setSuccessMsg(`GOLD SIP activated! ID: ${id}. ${autoPayForm.metal === 'GOLD' ? 'Gold' : 'Silver'} SIP of ₹${Number(autoPayForm.amount).toLocaleString('en-IN')}/${freqLabel} is set up.`);
-        setAutoPayForm({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY' });
+        setAutoPayForm({ amount: '500', metal: 'GOLD', frequency: 'MONTHLY', upiId: '' });
         setTimeout(() => setSuccessMsg(''), 10000);
 
         // ── Write subscription to Firestore ───────────────────────────────
@@ -2227,6 +2233,20 @@ export const HomeLanding: React.FC = () => {
               </div>
             </div>
 
+            <div>
+              <label className="fieldLabel">UPI ID (required for SIP mandate)</label>
+              <input
+                type="text"
+                placeholder="e.g. 9876543210@upi"
+                value={autoPayForm.upiId}
+                onChange={(e) => setAutoPayForm((f) => ({ ...f, upiId: e.target.value }))}
+                className="w-full rounded-xl border border-amber-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800 px-4 py-3 text-sm font-medium text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-400 dark:placeholder-gray-500"
+              />
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                SIP setup uses direct UPI mandate via this UPI ID.
+              </p>
+            </div>
+
             {userProfile && (
               <div className="flex items-center gap-3 bg-amber-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm mb-1">
                 <User size={16} className="text-amber-600 flex-shrink-0" />
@@ -2240,7 +2260,7 @@ export const HomeLanding: React.FC = () => {
 
             <button
               onClick={handleAutoPay}
-              disabled={Boolean(paying || !autoPayForm.amount)}
+              disabled={Boolean(paying || !autoPayForm.amount || !autoPayForm.upiId.trim())}
               className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 disabled:from-gray-300 disabled:to-gray-400 text-amber-950 font-black rounded-xl transition-all flex items-center justify-center gap-2 text-base dark:text-amber-950"
             >
               {paying ? <Loader2 size={18} className="animate-spin" /> : <Repeat size={18} />}

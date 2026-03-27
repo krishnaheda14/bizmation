@@ -251,6 +251,7 @@ export function SuperAdmin() {
                               <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Qty</th>
                               <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Rate</th>
                               <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Amount</th>
+                              <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Payout Details</th>
                               <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Status</th>
                               <th className="text-left py-3 px-4 text-xs font-semibold uppercase text-stone-500">Note</th>
                             </tr>
@@ -258,7 +259,7 @@ export function SuperAdmin() {
                           <tbody>
                             {rows.length === 0 ? (
                               <tr>
-                                <td className="px-4 py-8 text-center text-stone-400" colSpan={9}>No redemption requests found.</td>
+                                <td className="px-4 py-8 text-center text-stone-400" colSpan={10}>No redemption requests found.</td>
                               </tr>
                             ) : rows.map((r) => (
                               <tr key={r.id} className="border-b border-stone-100 hover:bg-amber-50/30">
@@ -273,6 +274,11 @@ export function SuperAdmin() {
                                 <td className="px-4 py-3 align-top text-stone-700">{fmtG(Number(r.grams || 0))}</td>
                                 <td className="px-4 py-3 align-top text-stone-700">{fmtInr(Number(r.redeemRatePerGram || 0))}/g</td>
                                 <td className="px-4 py-3 align-top font-semibold text-amber-700">{fmtInr(Number(r.estimatedInr || 0))}</td>
+                                <td className="px-4 py-3 align-top text-xs text-stone-600">
+                                  {r.upiId
+                                    ? `UPI: ${r.upiId}`
+                                    : `${r.bankName || 'Bank'} | A/C ${r.accountNumber || '-'} | IFSC ${r.ifscCode || '-'}`}
+                                </td>
                                 <td className="px-4 py-3 align-top">
                                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${badgeClass(r.status)}`}>
                                     {String(r.status || 'PENDING').toUpperCase()}

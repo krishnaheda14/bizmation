@@ -35,6 +35,10 @@ interface RedemptionRequest {
   updatedAt?: Timestamp;
   adminNote?: string;
   customerPhone?: string;
+  upiId?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
 }
 
 type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
@@ -267,25 +271,30 @@ export const RedemptionRequests: React.FC = () => {
                           <span className="font-bold text-amber-700 dark:text-amber-400">{fmtInr(r.estimatedInr)}</span>
                           {ts && <span>{ts.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>}
                         </div>
+                        {(r.upiId || r.bankName || r.accountNumber || r.ifscCode) && (
+                          <p className="text-xs text-stone-500 mt-1.5">
+                            Payout: {r.upiId ? `UPI ${r.upiId}` : `${r.bankName || 'Bank'} | A/C ${r.accountNumber || '-'} | IFSC ${r.ifscCode || '-'}`}
+                          </p>
+                        )}
                         {r.adminNote && (
                           <p className="text-xs text-stone-400 mt-1 italic">Note: {r.adminNote}</p>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <StatusBadge status={r.status} />
-                        {r.status === 'PENDING' && (
+                        {r.status !== 'CANCELLED' && (
                           <button
                             onClick={() => setExpandId(isExpanded ? null : r.id)}
                             className="text-xs text-amber-600 hover:text-amber-800 font-bold underline transition-colors">
-                            {isExpanded ? 'Close' : 'Take Action'}
+                            {isExpanded ? 'Close' : 'Review / Edit'}
                           </button>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Action panel (expand for PENDING) */}
-                  {isExpanded && r.status === 'PENDING' && (
+                  {/* Action panel (expand for active requests) */}
+                  {isExpanded && r.status !== 'CANCELLED' && (
                     <div className="border-t border-amber-100 dark:border-gray-800 px-5 py-4 bg-amber-50/40 dark:bg-gray-800/40 space-y-3">
                       <div>
                         <label className="block text-xs font-bold text-stone-500 dark:text-gray-400 mb-1 uppercase tracking-wide">
@@ -298,6 +307,13 @@ export const RedemptionRequests: React.FC = () => {
                           className="w-full px-3.5 py-2 rounded-xl border border-stone-200 dark:border-gray-700 text-sm bg-white dark:bg-gray-900 text-stone-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 transition-colors" />
                       </div>
                       <div className="flex gap-2 flex-wrap">
+                        <button
+                          disabled={loading}
+                          onClick={() => setStatus(r, 'PENDING')}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
+                          style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)', boxShadow: '0 2px 8px rgba(245,158,11,0.3)' }}>
+                          <Clock size={14} /> Mark Pending
+                        </button>
                         <button
                           disabled={loading}
                           onClick={() => setStatus(r, 'APPROVED')}
