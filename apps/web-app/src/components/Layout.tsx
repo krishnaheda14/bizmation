@@ -81,9 +81,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const ownerNav: NavItem[] = [
     { id: 'home',                label: 'Home',                icon: <Home size={20} />,            path: '/' },
     { id: 'dashboard',           label: 'Dashboard',           icon: <LayoutDashboard size={20} />,  path: '/dashboard' },
-    { id: 'inventory-upload',    label: 'Upload Inventory',    icon: <Upload size={20} />,          path: '/inventory-upload' },
     { id: 'rates',               label: 'Gold Rates',          icon: <TrendingUp size={20} />,       path: '/rates' },
     { id: 'parties',             label: 'Customers',           icon: <Users size={20} />,            path: '/parties' },
+    { id: 'inventory-upload',    label: 'Upload Inventory',    icon: <Upload size={20} />,          path: '/inventory-upload' },
     { id: 'analytics',           label: 'Analytics',           icon: <BarChart3 size={20} />,        path: '/analytics' },
     { id: 'redemption-requests', label: 'Redemption Requests', icon: <ArrowDownCircle size={20} />,  path: '/redemption-requests' },
     { id: 'profile',             label: 'My Profile',          icon: <Settings size={20} />,         path: '/profile' },
