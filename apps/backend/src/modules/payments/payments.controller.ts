@@ -5,6 +5,10 @@ import { getAdminFirestore } from '../../lib/firebaseAdmin';
 
 const LOCK_WINDOW_SECONDS = 120;
 const LOCK_COLLECTION = 'paymentPriceLocks';
+const MAX_UPI_AMOUNT_PAISE = 20_000_000; // ₹2,00,000
+const REDEMPTION_COLLECTION = 'redemptionRequests';
+
+type RazorpayXPayoutMode = 'UPI' | 'IMPS' | 'NEFT' | 'RTGS';
 
 function getRazorpayConfig() {
   const keyId = process.env.RAZORPAY_KEY_ID || '';
@@ -15,10 +19,184 @@ function getRazorpayConfig() {
   return { keyId, keySecret };
 }
 
+function getRazorpayXConfig() {
+  const keyId = process.env.RAZORPAYX_KEY_ID || process.env.RAZORPAY_KEY_ID || '';
+  const keySecret = process.env.RAZORPAYX_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET || '';
+  const accountNumber = process.env.RAZORPAYX_ACCOUNT_NUMBER || '';
+  const webhookSecret = process.env.RAZORPAYX_WEBHOOK_SECRET || '';
+  if (!keyId || !keySecret || !accountNumber) {
+    throw new Error('RAZORPAYX not configured. Set RAZORPAYX_ACCOUNT_NUMBER and API keys (RAZORPAYX_* or RAZORPAY_*).');
+  }
+  return { keyId, keySecret, accountNumber, webhookSecret };
+}
+
 function validatePositiveNumber(value: any, field: string): number {
   const n = Number(value);
   if (!isFinite(n) || n <= 0) throw new Error(`Invalid ${field}`);
   return n;
+}
+
+function normalizePhone(phone: string): string {
+  const raw = String(phone || '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (raw.startsWith('+')) return `+${raw.slice(1).replace(/\D/g, '')}`;
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  return digits ? `+${digits}` : raw;
+}
+
+function normalizeUpi(upiId: string): string {
+  return String(upiId || '').trim().toLowerCase();
+}
+
+function normalizeIfsc(ifsc: string): string {
+  return String(ifsc || '').trim().toUpperCase();
+}
+
+function mapPayoutEventToStatus(event: string, payoutStatus: string): 'APPROVED' | 'SETTLED' | 'PAYOUT_FAILED' {
+  const ev = String(event || '').toLowerCase();
+  const st = String(payoutStatus || '').toLowerCase();
+  if (ev === 'payout.processed' || st === 'processed') return 'SETTLED';
+  if (ev === 'payout.failed' || ev === 'payout.reversed' || ev === 'payout.rejected' || st === 'failed' || st === 'reversed' || st === 'rejected') {
+    return 'PAYOUT_FAILED';
+  }
+  return 'APPROVED';
+}
+
+async function createRazorpayXContact(input: {
+  keyId: string;
+  keySecret: string;
+  customerUid: string;
+  name: string;
+  email: string;
+  phone: string;
+  requestId: string;
+}): Promise<string> {
+  const response = await axios.post(
+    'https://api.razorpay.com/v1/contacts',
+    {
+      name: input.name || 'Customer',
+      email: input.email || undefined,
+      contact: normalizePhone(input.phone),
+      type: 'customer',
+      reference_id: input.customerUid || input.requestId,
+      notes: {
+        requestId: input.requestId,
+      },
+    },
+    {
+      auth: { username: input.keyId, password: input.keySecret },
+      timeout: 15000,
+    },
+  );
+  const contactId = String(response.data?.id || '').trim();
+  if (!contactId) throw new Error('Failed to create RazorpayX contact');
+  return contactId;
+}
+
+async function createRazorpayXFundAccount(input: {
+  keyId: string;
+  keySecret: string;
+  contactId: string;
+  requestId: string;
+  customerName: string;
+  upiId?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+}): Promise<{ fundAccountId: string; mode: RazorpayXPayoutMode; type: 'vpa' | 'bank_account' }> {
+  const upiId = normalizeUpi(input.upiId || '');
+  if (upiId) {
+    const response = await axios.post(
+      'https://api.razorpay.com/v1/fund_accounts',
+      {
+        contact_id: input.contactId,
+        account_type: 'vpa',
+        vpa: {
+          address: upiId,
+          name: input.customerName || 'Customer',
+        },
+      },
+      {
+        auth: { username: input.keyId, password: input.keySecret },
+        timeout: 15000,
+      },
+    );
+    const fundAccountId = String(response.data?.id || '').trim();
+    if (!fundAccountId) throw new Error('Failed to create RazorpayX UPI fund account');
+    return { fundAccountId, mode: 'UPI', type: 'vpa' };
+  }
+
+  const ifscCode = normalizeIfsc(input.ifscCode || '');
+  const accountNumber = String(input.accountNumber || '').trim();
+  if (!accountNumber || !ifscCode) {
+    throw new Error('Missing payout destination. Provide either UPI ID or bank account + IFSC.');
+  }
+
+  const response = await axios.post(
+    'https://api.razorpay.com/v1/fund_accounts',
+    {
+      contact_id: input.contactId,
+      account_type: 'bank_account',
+      bank_account: {
+        name: input.customerName || 'Customer',
+        ifsc: ifscCode,
+        account_number: accountNumber,
+      },
+    },
+    {
+      auth: { username: input.keyId, password: input.keySecret },
+      timeout: 15000,
+    },
+  );
+  const fundAccountId = String(response.data?.id || '').trim();
+  if (!fundAccountId) throw new Error('Failed to create RazorpayX bank fund account');
+  return { fundAccountId, mode: 'IMPS', type: 'bank_account' };
+}
+
+async function createRazorpayXPayout(input: {
+  keyId: string;
+  keySecret: string;
+  accountNumber: string;
+  fundAccountId: string;
+  amountPaise: number;
+  mode: RazorpayXPayoutMode;
+  requestId: string;
+  customerUid: string;
+  metal: string;
+}): Promise<{ payoutId: string; payoutStatus: string; idempotencyKey: string }> {
+  const idempotencyKey = `redeem_${input.requestId}_${Date.now()}`;
+  const response = await axios.post(
+    'https://api.razorpay.com/v1/payouts',
+    {
+      account_number: input.accountNumber,
+      fund_account_id: input.fundAccountId,
+      amount: input.amountPaise,
+      currency: 'INR',
+      mode: input.mode,
+      purpose: 'payout',
+      queue_if_low_balance: true,
+      reference_id: input.requestId,
+      narration: `BIZMATION ${String(input.metal || 'GOLD').toUpperCase()} SELL`,
+      notes: {
+        requestId: input.requestId,
+        customerUid: input.customerUid || '',
+      },
+    },
+    {
+      auth: { username: input.keyId, password: input.keySecret },
+      headers: {
+        'X-Payout-Idempotency': idempotencyKey,
+      },
+      timeout: 20000,
+    },
+  );
+
+  const payoutId = String(response.data?.id || '').trim();
+  const payoutStatus = String(response.data?.status || 'pending').trim();
+  if (!payoutId) throw new Error('Failed to create RazorpayX payout');
+  return { payoutId, payoutStatus, idempotencyKey };
 }
 
 async function sendTelegramAlert(text: string) {
@@ -51,6 +229,232 @@ export function paymentsRouter(): Router {
     });
   });
 
+  router.post('/redemption/approve-and-payout', async (req: Request, res: Response) => {
+    try {
+      const requestId = String(req.body?.requestId || '').trim();
+      const adminNote = String(req.body?.adminNote || '').trim();
+      const actorName = String(req.body?.actorName || '').trim() || 'Admin';
+      if (!requestId) {
+        return res.status(400).json({ success: false, error: 'requestId is required' });
+      }
+
+      const db = getAdminFirestore();
+      const redemptionRef = db.collection(REDEMPTION_COLLECTION).doc(requestId);
+      const redemptionSnap = await redemptionRef.get();
+      if (!redemptionSnap.exists) {
+        return res.status(404).json({ success: false, error: 'Redemption request not found' });
+      }
+
+      const data = redemptionSnap.data() || {};
+      const currentStatus = String(data.status || 'PENDING').toUpperCase();
+      if (!['PENDING', 'APPROVED', 'PAYOUT_FAILED'].includes(currentStatus)) {
+        return res.status(400).json({ success: false, error: `Cannot payout request in ${currentStatus} state` });
+      }
+
+      const estimatedInr = Number(data.estimatedInr || 0);
+      const amountPaise = Math.round(estimatedInr * 100);
+      if (!Number.isFinite(amountPaise) || amountPaise < 100) {
+        return res.status(400).json({ success: false, error: 'Invalid payout amount on redemption request' });
+      }
+
+      const { keyId, keySecret, accountNumber } = getRazorpayXConfig();
+      const customerUid = String(data.customerUid || '').trim();
+      const customerName = String(data.customerName || 'Customer').trim();
+      const customerEmail = String(data.customerEmail || '').trim();
+      const customerPhone = String(data.customerPhone || '').trim();
+      const upiId = String(data.upiId || '').trim();
+      const bankName = String(data.bankName || '').trim();
+      const accountNum = String(data.accountNumber || '').trim();
+      const ifscCode = String(data.ifscCode || '').trim();
+
+      let contactId = String(data.payoutContactId || '').trim();
+      if (!contactId) {
+        contactId = await createRazorpayXContact({
+          keyId,
+          keySecret,
+          customerUid,
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone,
+          requestId,
+        });
+      }
+
+      let fundAccountId = String(data.payoutFundAccountId || '').trim();
+      let payoutMode: RazorpayXPayoutMode = 'IMPS';
+      let fundAccountType: 'vpa' | 'bank_account' = 'bank_account';
+
+      if (!fundAccountId) {
+        const fundAccount = await createRazorpayXFundAccount({
+          keyId,
+          keySecret,
+          contactId,
+          requestId,
+          customerName,
+          upiId,
+          bankName,
+          accountNumber: accountNum,
+          ifscCode,
+        });
+        fundAccountId = fundAccount.fundAccountId;
+        payoutMode = fundAccount.mode;
+        fundAccountType = fundAccount.type;
+      } else {
+        payoutMode = upiId ? 'UPI' : 'IMPS';
+        fundAccountType = upiId ? 'vpa' : 'bank_account';
+      }
+
+      const payout = await createRazorpayXPayout({
+        keyId,
+        keySecret,
+        accountNumber,
+        fundAccountId,
+        amountPaise,
+        mode: payoutMode,
+        requestId,
+        customerUid,
+        metal: String(data.metal || 'GOLD'),
+      });
+
+      const batch = db.batch();
+      batch.update(redemptionRef, {
+        status: 'APPROVED',
+        adminNote,
+        approvedBy: actorName,
+        approvedAt: new Date(),
+        payoutProvider: 'RAZORPAYX',
+        payoutContactId: contactId,
+        payoutFundAccountId: fundAccountId,
+        payoutFundAccountType: fundAccountType,
+        payoutId: payout.payoutId,
+        payoutStatusRaw: payout.payoutStatus,
+        payoutMode: payoutMode,
+        payoutAttemptCount: Number(data.payoutAttemptCount || 0) + 1,
+        payoutIdempotencyKeyLast: payout.idempotencyKey,
+        payoutInitiatedAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      if (data.linkedOrderId) {
+        batch.update(db.collection('goldOnlineOrders').doc(String(data.linkedOrderId)), {
+          status: 'APPROVED',
+          updatedAt: new Date(),
+        });
+      }
+
+      await batch.commit();
+
+      sendTelegramAlert(
+        `📤 <b>SELL PAYOUT INITIATED</b>\n\n` +
+        `<b>Request ID:</b> <code>${requestId}</code>\n` +
+        `<b>Customer:</b> ${customerName || 'N/A'}\n` +
+        `<b>Amount:</b> ₹${estimatedInr.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+        `<b>Payout ID:</b> <code>${payout.payoutId}</code>\n` +
+        `<b>Mode:</b> ${payoutMode}`
+      ).catch(() => {});
+
+      return res.json({
+        success: true,
+        data: {
+          requestId,
+          payoutId: payout.payoutId,
+          payoutStatus: payout.payoutStatus,
+          payoutMode,
+          fundAccountType,
+        },
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.error?.description || err?.message || 'Failed to create payout';
+      console.error('[payments] approve-and-payout failed:', msg);
+      return res.status(500).json({ success: false, error: msg });
+    }
+  });
+
+  router.post('/webhook/razorpayx', async (req: Request, res: Response) => {
+    try {
+      const { webhookSecret } = getRazorpayXConfig();
+      if (!webhookSecret) {
+        return res.status(500).json({ success: false, error: 'RAZORPAYX_WEBHOOK_SECRET not configured' });
+      }
+
+      const signature = String(req.headers['x-razorpay-signature'] || '');
+      const rawBody = String((req as any).rawBody || JSON.stringify(req.body || {}));
+      const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+
+      const expectedBuf = Buffer.from(expected, 'utf8');
+      const signatureBuf = Buffer.from(signature, 'utf8');
+      const signatureValid = signatureBuf.length === expectedBuf.length && crypto.timingSafeEqual(expectedBuf, signatureBuf);
+
+      if (!signature || !signatureValid) {
+        return res.status(400).json({ success: false, error: 'Invalid webhook signature' });
+      }
+
+      const event = String(req.body?.event || '').trim();
+      const payout = req.body?.payload?.payout?.entity || {};
+      const payoutId = String(payout.id || '').trim();
+      const payoutStatus = String(payout.status || '').trim().toLowerCase();
+      const referenceId = String(payout.reference_id || payout.notes?.requestId || '').trim();
+
+      if (!payoutId || !referenceId) {
+        return res.json({ success: true, ignored: true });
+      }
+
+      const db = getAdminFirestore();
+      const redemptionRef = db.collection(REDEMPTION_COLLECTION).doc(referenceId);
+      const redemptionSnap = await redemptionRef.get();
+      if (!redemptionSnap.exists) {
+        return res.json({ success: true, ignored: true });
+      }
+
+      const redemptionData = redemptionSnap.data() || {};
+      const mappedStatus = mapPayoutEventToStatus(event, payoutStatus);
+      const batch = db.batch();
+
+      batch.update(redemptionRef, {
+        status: mappedStatus,
+        payoutId,
+        payoutStatusRaw: payoutStatus,
+        payoutUtr: String(payout.utr || ''),
+        payoutMode: String(payout.mode || ''),
+        payoutFailureSource: String(payout.status_details?.source || ''),
+        payoutFailureReason: String(payout.status_details?.reason || ''),
+        payoutFailureDescription: String(payout.status_details?.description || ''),
+        payoutProcessedAt: mappedStatus === 'SETTLED' ? new Date() : redemptionData.payoutProcessedAt || null,
+        updatedAt: new Date(),
+      });
+
+      if (redemptionData.linkedOrderId) {
+        batch.update(db.collection('goldOnlineOrders').doc(String(redemptionData.linkedOrderId)), {
+          status: mappedStatus === 'SETTLED' ? 'SUCCESS' : mappedStatus === 'PAYOUT_FAILED' ? 'APPROVED' : 'APPROVED',
+          updatedAt: new Date(),
+        });
+      }
+
+      await batch.commit();
+
+      if (mappedStatus === 'SETTLED') {
+        sendTelegramAlert(
+          `✅ <b>SELL PAYOUT PROCESSED</b>\n\n` +
+          `<b>Request ID:</b> <code>${referenceId}</code>\n` +
+          `<b>Payout ID:</b> <code>${payoutId}</code>\n` +
+          `<b>UTR:</b> <code>${String(payout.utr || 'N/A')}</code>`
+        ).catch(() => {});
+      } else if (mappedStatus === 'PAYOUT_FAILED') {
+        sendTelegramAlert(
+          `❌ <b>SELL PAYOUT FAILED</b>\n\n` +
+          `<b>Request ID:</b> <code>${referenceId}</code>\n` +
+          `<b>Payout ID:</b> <code>${payoutId}</code>\n` +
+          `<b>Reason:</b> ${String(payout.status_details?.description || payout.status_details?.reason || payoutStatus || 'Unknown')}`
+        ).catch(() => {});
+      }
+
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('[payments] razorpayx webhook error:', err?.message || err);
+      return res.status(500).json({ success: false, error: 'Webhook processing failed' });
+    }
+  });
+
   const handleCreateBuyOrder = async (req: Request, res: Response) => {
     try {
       console.log('[payments] create-buy-order called', {
@@ -70,6 +474,9 @@ export function paymentsRouter(): Router {
       const amountPaise = Math.round(grams * ratePerGram * 100);
       if (amountPaise < 100) {
         return res.status(400).json({ success: false, error: 'Minimum amount should be at least ₹1.' });
+      }
+      if (amountPaise > MAX_UPI_AMOUNT_PAISE) {
+        return res.status(400).json({ success: false, error: 'UPI transactions cannot exceed ₹2,00,000.' });
       }
 
       const nowMs = Date.now();
@@ -359,6 +766,9 @@ export function paymentsRouter(): Router {
       const planAmount = validatePositiveNumber(req.body?.planAmount, 'planAmount');
       const frequency = String(req.body?.frequency || 'MONTHLY').trim().toLowerCase();
       const amountPaise = Math.round(planAmount * 100);
+      if (amountPaise > MAX_UPI_AMOUNT_PAISE) {
+        return res.status(400).json({ success: false, error: 'UPI transactions cannot exceed ₹2,00,000.' });
+      }
       const { keyId, keySecret } = getRazorpayConfig();
 
       // Create or get plan
@@ -424,6 +834,9 @@ export function paymentsRouter(): Router {
 
       if (!amountPaise || amountPaise < 100) {
         return res.status(400).json({ success: false, error: 'Invalid amount' });
+      }
+      if (amountPaise > MAX_UPI_AMOUNT_PAISE) {
+        return res.status(400).json({ success: false, error: 'UPI transactions cannot exceed ₹2,00,000.' });
       }
 
       // 1. Create Plan

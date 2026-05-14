@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   Shield,
   AlertTriangle,
+  Upload,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -80,6 +81,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const ownerNav: NavItem[] = [
     { id: 'home',                label: 'Home',                icon: <Home size={20} />,            path: '/' },
     { id: 'dashboard',           label: 'Dashboard',           icon: <LayoutDashboard size={20} />,  path: '/dashboard' },
+    { id: 'inventory-upload',    label: 'Upload Inventory',    icon: <Upload size={20} />,          path: '/inventory-upload' },
     { id: 'rates',               label: 'Gold Rates',          icon: <TrendingUp size={20} />,       path: '/rates' },
     { id: 'parties',             label: 'Customers',           icon: <Users size={20} />,            path: '/parties' },
     { id: 'analytics',           label: 'Analytics',           icon: <BarChart3 size={20} />,        path: '/analytics' },

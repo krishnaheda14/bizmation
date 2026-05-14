@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { CheckCircle, XCircle, Clock, ArrowDownCircle, SlidersHorizontal } from 'lucide-react';
-import { notifyRedemptionTelegram } from '../lib/redemptionApi';
+import { approveRedemptionPayout, notifyRedemptionTelegram } from '../lib/redemptionApi';
 
 interface RedemptionRequest {
   id: string;
@@ -30,7 +30,7 @@ interface RedemptionRequest {
   redeemRatePerGram?: number;
   estimatedInr: number;
   linkedOrderId?: string | null;
-  status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
+  status: 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED' | 'PAYOUT_FAILED';
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   adminNote?: string;
@@ -39,9 +39,13 @@ interface RedemptionRequest {
   bankName?: string;
   accountNumber?: string;
   ifscCode?: string;
+  payoutId?: string;
+  payoutStatusRaw?: string;
+  payoutMode?: string;
+  payoutFailureDescription?: string;
 }
 
-type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
+type FilterStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED' | 'PAYOUT_FAILED';
 
 const fmtInr = (v: number) => '₹' + (v || 0).toLocaleString('en-IN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const fmtG   = (v: number) => (v || 0).toFixed(4) + 'g';
@@ -53,6 +57,7 @@ function StatusBadge({ status }: { status: string }) {
     SETTLED:  'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
     REJECTED: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
     CANCELLED: 'bg-stone-200 text-stone-700 dark:bg-gray-800 dark:text-gray-300',
+    PAYOUT_FAILED: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${map[status] ?? ''}`}>
@@ -97,6 +102,34 @@ export const RedemptionRequests: React.FC = () => {
     setActionMap(m => ({ ...m, [request.id]: true }));
     try {
       const note = noteMap[request.id] ?? '';
+
+      if (status === 'APPROVED') {
+        await approveRedemptionPayout({
+          requestId: request.id,
+          adminNote: note,
+          actorName: (userProfile as any)?.name ?? userProfile?.email ?? 'Admin',
+        });
+
+        void notifyRedemptionTelegram({
+          event: 'APPROVED',
+          requestId: request.id,
+          status: 'APPROVED',
+          customerName: request.customerName,
+          customerPhone: request.customerPhone,
+          shopName: request.shopName,
+          metal: request.metal,
+          purity: request.purity,
+          grams: request.grams,
+          redeemRatePerGram: Number(request.redeemRatePerGram ?? request.ratePerGram ?? 0),
+          estimatedInr: request.estimatedInr,
+          note,
+          actorName: (userProfile as any)?.name ?? userProfile?.email ?? 'Admin',
+        });
+
+        setExpandId(null);
+        return;
+      }
+
       const batch = writeBatch(db);
       batch.update(doc(db, 'redemptionRequests', request.id), {
         status,
@@ -119,13 +152,13 @@ export const RedemptionRequests: React.FC = () => {
 
       await batch.commit();
 
-      const event = status === 'APPROVED'
-        ? 'APPROVED'
-        : status === 'SETTLED'
-          ? 'SETTLED'
-          : status === 'REJECTED'
-            ? 'REJECTED'
-            : 'CANCELLED';
+      const event = status === 'SETTLED'
+        ? 'SETTLED'
+        : status === 'PAYOUT_FAILED'
+          ? 'PAYOUT_FAILED'
+        : status === 'REJECTED'
+          ? 'REJECTED'
+          : 'CANCELLED';
 
       void notifyRedemptionTelegram({
         event,
@@ -158,6 +191,7 @@ export const RedemptionRequests: React.FC = () => {
     SETTLED:  requests.filter(r => r.status === 'SETTLED').length,
     REJECTED: requests.filter(r => r.status === 'REJECTED').length,
     CANCELLED: requests.filter(r => r.status === 'CANCELLED').length,
+    PAYOUT_FAILED: requests.filter(r => r.status === 'PAYOUT_FAILED').length,
   };
 
   const totalPendingInr = requests.filter(r => r.status === 'PENDING').reduce((s, r) => s + r.estimatedInr, 0);
@@ -166,6 +200,7 @@ export const RedemptionRequests: React.FC = () => {
     { key: 'PENDING',  label: 'Pending' },
     { key: 'APPROVED', label: 'Approved' },
     { key: 'SETTLED',  label: 'Settled' },
+    { key: 'PAYOUT_FAILED', label: 'Payout Failed' },
     { key: 'REJECTED', label: 'Rejected' },
     { key: 'CANCELLED', label: 'Cancelled' },
     { key: 'ALL',      label: 'All' },
@@ -276,6 +311,14 @@ export const RedemptionRequests: React.FC = () => {
                             Payout: {r.upiId ? `UPI ${r.upiId}` : `${r.bankName || 'Bank'} | A/C ${r.accountNumber || '-'} | IFSC ${r.ifscCode || '-'}`}
                           </p>
                         )}
+                        {!!(r.payoutId || r.payoutStatusRaw) && (
+                          <p className="text-xs text-stone-500 mt-1">
+                            RazorpayX: {r.payoutId ? `ID ${r.payoutId}` : 'ID pending'} {r.payoutStatusRaw ? `· ${String(r.payoutStatusRaw).toUpperCase()}` : ''} {r.payoutMode ? `· ${r.payoutMode}` : ''}
+                          </p>
+                        )}
+                        {!!r.payoutFailureDescription && (
+                          <p className="text-xs text-rose-600 mt-1">Failure: {r.payoutFailureDescription}</p>
+                        )}
                         {r.adminNote && (
                           <p className="text-xs text-stone-400 mt-1 italic">Note: {r.adminNote}</p>
                         )}
@@ -319,14 +362,7 @@ export const RedemptionRequests: React.FC = () => {
                           onClick={() => setStatus(r, 'APPROVED')}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
                           style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', boxShadow: '0 2px 8px rgba(34,197,94,0.3)' }}>
-                          <CheckCircle size={14} /> Approve
-                        </button>
-                        <button
-                          disabled={loading}
-                          onClick={() => setStatus(r, 'SETTLED')}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white transition-all hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50"
-                          style={{ background: 'linear-gradient(135deg,#0d9488,#0f766e)', boxShadow: '0 2px 8px rgba(13,148,136,0.3)' }}>
-                          <CheckCircle size={14} /> Mark Settled
+                          <CheckCircle size={14} /> {r.status === 'PAYOUT_FAILED' ? 'Retry Payout' : 'Approve & Payout'}
                         </button>
                         <button
                           disabled={loading}
@@ -337,7 +373,7 @@ export const RedemptionRequests: React.FC = () => {
                         </button>
                       </div>
                       <p className="text-xs text-stone-400 text-center">
-                        Settlement can be done online or offline at your discretion.
+                        Approval triggers RazorpayX payout automatically. Final settlement is updated via webhook events.
                       </p>
                     </div>
                   )}

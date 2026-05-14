@@ -5,6 +5,7 @@ compatibility_date = "2024-01-01"
 # Required secrets (set via `wrangler secret put`):
 # RAZORPAY_KEY_ID
 # RAZORPAY_KEY_SECRET
+# BACKEND_BASE_URL
 # TELEGRAM_BOT_TOKEN
 # TELEGRAM_CHAT_ID
 # FIREBASE_PROJECT_ID

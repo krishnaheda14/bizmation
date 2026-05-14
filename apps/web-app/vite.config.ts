@@ -6,10 +6,16 @@ import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const isCordova = mode === 'cordova';
+
+  return {
+  base: isCordova ? './' : '/',
   plugins: [
-    react(),
-    VitePWA({
+    react({
+      include: /\.[jt]sx?$/,
+    }),
+    ...(isCordova ? [] : [VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
@@ -46,9 +52,10 @@ export default defineConfig({
           },
         ],
       },
-    }),
+    })]),
   ],
   resolve: {
+    extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json'],
     alias: {
       '@': path.resolve(__dirname, 'src'),
       // Point Vite directly at the TS source so Rollup gets proper ESM named exports
@@ -66,4 +73,5 @@ export default defineConfig({
       },
     },
   },
+};
 });

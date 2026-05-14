@@ -6,6 +6,8 @@
 
 export const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || '';
 const CHECKOUT_BUSINESS_NAME = 'Devichand D Mirande';
+const MAX_UPI_PAYMENT_AMOUNT_INR = 200000;
+const MAX_UPI_PAYMENT_AMOUNT_PAISE = MAX_UPI_PAYMENT_AMOUNT_INR * 100;
 
 function getCheckoutLogoUrl(): string | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -221,6 +223,20 @@ export async function buyGold(options: BuyGoldOptions) {
   let expiresAt = '';
   let lockWindowSeconds = 120;
 
+  const estimatedAmountInr = options.grams * options.ratePerGram;
+  if (!isFinite(estimatedAmountInr) || estimatedAmountInr <= 0) {
+    const error = new Error('Invalid order amount.');
+    debug(`Failure: ${error.message}`);
+    options.onFailure(error);
+    return;
+  }
+  if (estimatedAmountInr > MAX_UPI_PAYMENT_AMOUNT_INR) {
+    const error = new Error('UPI transactions cannot exceed ₹2,00,000.');
+    debug(`Failure: ${error.message}`);
+    options.onFailure(error);
+    return;
+  }
+
   try {
     debug('Creating payment lock for buy order...');
     const createCall = await fetchWithFallback('/api/payments/create-buy-order', {
@@ -364,6 +380,10 @@ export async function buyCoins(options: BuyCoinsOptions) {
     options.onFailure(new Error('Invalid coin order amount.'));
     return;
   }
+  if (totalAmountInr > MAX_UPI_PAYMENT_AMOUNT_INR) {
+    options.onFailure(new Error('UPI transactions cannot exceed ₹2,00,000.'));
+    return;
+  }
 
   options.onDebug?.('Creating payment lock for coin order...');
   const createCall = await fetchWithFallback('/api/payments/create-buy-order', {
@@ -494,6 +514,14 @@ export async function setupGoldAutoPay(options: AutoPayOptions) {
   }
 
   const amountInPaise = Math.round(options.planAmount * 100);
+  if (!Number.isFinite(amountInPaise) || amountInPaise < 100) {
+    options.onFailure(new Error('Invalid amount.'));
+    return;
+  }
+  if (amountInPaise > MAX_UPI_PAYMENT_AMOUNT_PAISE) {
+    options.onFailure(new Error('UPI transactions cannot exceed ₹2,00,000.'));
+    return;
+  }
 
   const freqLabelMap: Record<AutoPayOptions['frequency'], string> = {
     DAILY: 'daily',

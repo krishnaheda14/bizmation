@@ -1,0 +1,10 @@
+platforms/
+plugins/
+node_modules/
+build/
+www/
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+.DS_Store

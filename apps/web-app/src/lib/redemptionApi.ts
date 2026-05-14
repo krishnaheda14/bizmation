@@ -1,4 +1,4 @@
-export type RedemptionTelegramEvent = 'CREATED' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED';
+export type RedemptionTelegramEvent = 'CREATED' | 'APPROVED' | 'SETTLED' | 'REJECTED' | 'CANCELLED' | 'PAYOUT_FAILED';
 
 export interface RedemptionTelegramPayload {
   event: RedemptionTelegramEvent;
@@ -75,4 +75,52 @@ export async function notifyRedemptionTelegram(payload: RedemptionTelegramPayloa
   }
 
   return false;
+}
+
+export interface ApprovePayoutResponse {
+  requestId: string;
+  payoutId: string;
+  payoutStatus: string;
+  payoutMode: string;
+  fundAccountType: 'vpa' | 'bank_account';
+}
+
+export async function approveRedemptionPayout(input: {
+  requestId: string;
+  adminNote?: string;
+  actorName?: string;
+}): Promise<ApprovePayoutResponse> {
+  const candidates = getApiCandidates('/api/payments/redemption/approve-and-payout');
+  let lastError: string | null = null;
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      const text = await res.text();
+      let json: any = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+
+      if (res.ok && json?.success && json?.data?.payoutId) {
+        return json.data as ApprovePayoutResponse;
+      }
+
+      if (res.status !== 404 && res.status !== 405) {
+        throw new Error(json?.error || `Approve payout failed with HTTP ${res.status}`);
+      }
+      lastError = json?.error || `Endpoint not available at ${url}`;
+    } catch (err: any) {
+      lastError = err?.message || 'Network error while approving payout';
+    }
+  }
+
+  throw new Error(lastError || 'Unable to reach payout approval API');
 }

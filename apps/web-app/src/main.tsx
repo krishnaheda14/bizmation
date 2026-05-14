@@ -28,6 +28,7 @@ import { RedemptionRequests } from './pages/RedemptionRequests';
 import { SuperAdmin } from './pages/SuperAdmin';
 import { NomineePage } from './pages/Nominee';
 import { LegalPoliciesPage } from './pages/LegalPoliciesPage';
+import InventoryPage from './screens/InventoryPage';
 
 const PUBLIC_ROUTES = new Set([
   '/terms-and-conditions',
@@ -187,6 +188,8 @@ function App() {
         return <RedemptionRequests />;
       case '/rates':
         return <GoldRates />;
+      case '/inventory-upload':
+        return <InventoryPage />;
       // Legacy routes - keep for backward compat but hidden from nav
       case '/billing': return <Billing />;
       case '/inventory': return <Inventory />;

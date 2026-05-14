@@ -9,12 +9,14 @@ export interface Env {
   PAYMENTS_KV: KVNamespace;
   RAZORPAY_KEY_ID: string;
   RAZORPAY_KEY_SECRET: string;
+  BACKEND_BASE_URL?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_CLIENT_EMAIL?: string;
   FIREBASE_PRIVATE_KEY?: string;
 }
 
 const LOCK_WINDOW_SECONDS = 120;
+const MAX_UPI_AMOUNT_PAISE = 20_000_000; // ₹2,00,000
 
 interface CreateBuyOrderBody {
   grams: number;
@@ -551,6 +553,9 @@ async function handleCreateBuyOrder(request: Request, env: Env, origin: string |
     if (amountPaise < 100) {
       return jsonResponse({ success: false, error: 'Minimum amount should be at least \\u20b91.' }, 400, origin);
     }
+    if (amountPaise > MAX_UPI_AMOUNT_PAISE) {
+      return jsonResponse({ success: false, error: 'UPI transactions cannot exceed ₹2,00,000.' }, 400, origin);
+    }
 
     const nowMs = Date.now();
     const expiresAtMs = nowMs + LOCK_WINDOW_SECONDS * 1000;
@@ -696,6 +701,9 @@ async function handleCreateSubscription(request: Request, env: Env, origin: stri
     if (!amountPaise || amountPaise < 100) {
       return jsonResponse({ success: false, error: 'Invalid amount' }, 400, origin);
     }
+    if (Number(amountPaise) > MAX_UPI_AMOUNT_PAISE) {
+      return jsonResponse({ success: false, error: 'UPI transactions cannot exceed ₹2,00,000.' }, 400, origin);
+    }
 
     const keyId = env.RAZORPAY_KEY_ID;
     const keySecret = env.RAZORPAY_KEY_SECRET;
@@ -835,6 +843,47 @@ async function handleRedemptionNotify(request: Request, env: Env, origin: string
   return jsonResponse({ success: true }, 200, origin);
 }
 
+async function handleRazorpayXWebhookProxy(request: Request, env: Env, origin: string | null): Promise<Response> {
+  const backendBaseUrl = String(env.BACKEND_BASE_URL || '').trim();
+  if (!backendBaseUrl) {
+    return jsonResponse({ success: false, error: 'Worker missing BACKEND_BASE_URL' }, 500, origin);
+  }
+
+  let backendWebhookUrl: URL;
+  try {
+    backendWebhookUrl = new URL('/api/payments/webhook/razorpayx', backendBaseUrl);
+  } catch {
+    return jsonResponse({ success: false, error: 'Invalid BACKEND_BASE_URL in worker config' }, 500, origin);
+  }
+
+  const rawBody = await request.arrayBuffer();
+  const forwardHeaders = new Headers();
+  const contentType = request.headers.get('content-type');
+  const signature = request.headers.get('x-razorpay-signature');
+
+  if (contentType) forwardHeaders.set('content-type', contentType);
+  if (signature) forwardHeaders.set('x-razorpay-signature', signature);
+
+  const upstream = await fetch(backendWebhookUrl.toString(), {
+    method: 'POST',
+    headers: forwardHeaders,
+    body: rawBody,
+  });
+
+  const upstreamBody = await upstream.text();
+  const responseHeaders = new Headers();
+  const upstreamContentType = upstream.headers.get('content-type');
+  responseHeaders.set('Content-Type', upstreamContentType || 'application/json');
+
+  const cors = corsHeaders(origin);
+  for (const [k, v] of Object.entries(cors)) responseHeaders.set(k, v);
+
+  return new Response(upstreamBody, {
+    status: upstream.status,
+    headers: responseHeaders,
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -874,6 +923,10 @@ export default {
 
     if ((url.pathname === '/api/payments/redemption/notify' || url.pathname === '/payments/redemption/notify') && request.method === 'POST') {
       return handleRedemptionNotify(request, env, origin);
+    }
+
+    if ((url.pathname === '/api/payments/webhook/razorpayx' || url.pathname === '/payments/webhook/razorpayx') && request.method === 'POST') {
+      return handleRazorpayXWebhookProxy(request, env, origin);
     }
 
     return jsonResponse({ success: false, error: 'Not found' }, 404, origin);

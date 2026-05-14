@@ -1,0 +1,20 @@
+{
+  "name": "@jewelry-platform/cordova-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cordova wrapper for Bizmation web app",
+  "scripts": {
+    "platform:add:android": "cordova platform add android",
+    "platform:add:ios": "cordova platform add ios",
+    "plugin:add": "cordova plugin add cordova-plugin-whitelist cordova-plugin-inappbrowser cordova-plugin-network-information",
+    "prepare:web": "node ./scripts/prepare-web-assets.mjs",
+    "prepare": "npm run prepare:web ; cordova prepare",
+    "build:android": "npm run prepare ; cordova build android",
+    "build:ios": "npm run prepare ; cordova build ios",
+    "run:android": "npm run prepare ; cordova run android",
+    "run:ios": "npm run prepare ; cordova run ios"
+  },
+  "devDependencies": {
+    "cordova": "^12.0.0"
+  }
+}
